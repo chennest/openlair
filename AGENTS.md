@@ -2,8 +2,8 @@
 
 ## Current state
 
-- This repo is in early implementation: `lairservice/` contains the FastAPI + LangGraph agent harness runtime; `lairapp/` and `lairweb/` currently contain no files; `docs/` contains backend architecture notes.
-- There are no lockfiles, CI workflows, task runners, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
+- This repo is in early implementation: `lairservice/` contains the FastAPI + LangGraph agent harness runtime; `lairweb/` contains the Vue + TypeScript web admin console; `lairapp/` currently contains no files; `docs/` contains backend architecture notes.
+- There are no CI workflows, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
 - `README.md` and `docs/backend-architecture.md` are the verified project sources of truth at the moment.
 
 ## Verified commands
@@ -13,6 +13,14 @@ Run these from `lairservice/`:
 - Create/recreate the local venv with vfox Python 3.14: `vfox exec python@3.14.5 -- python -m venv --clear .venv`
 - Install backend dev dependencies: `.venv/bin/python -m pip install -e .[dev]`
 - Run backend tests, including real model integration through `~/.openlair/openlair.json` and `~/.openlair/.env`: `.venv/bin/python -m pytest`
+- Start the local backend dev server: `.venv/bin/python -m uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
+
+Run these from `lairweb/`:
+
+- Install web dependencies: `npm install`
+- Start the Vue/Vite dev server: `npm run dev`
+- Build and typecheck the web app: `npm run build`
+- Preview the production build locally: `npm run preview`
 
 Environment notes:
 
@@ -24,7 +32,7 @@ Environment notes:
 
 - `lairservice/`: Python/FastAPI backend, described as the core brain.
 - `lairapp/`: Flutter client for iOS, Android, macOS, and Windows.
-- `lairweb/`: Web admin UI; framework is not chosen yet.
+- `lairweb/`: Vue + TypeScript web admin UI backed by Vite. Browser API base is configured with `VITE_API_BASE_URL` from `.env`/`.env.local`; keep it empty for local same-origin proxying. Vite dev proxy reads `LAIRWEB_API_PROXY_TARGET`, then `VITE_API_BASE_URL`, then defaults to `http://127.0.0.1:8000`.
 - `docs/`: Project documentation.
 
 ## Product modules from README
