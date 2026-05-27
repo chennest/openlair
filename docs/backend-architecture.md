@@ -107,6 +107,8 @@ GLM-Flash can be one supported model/provider, but it is not the only planned LL
 
 Global product configuration is loaded through `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`. If the default file is missing, startup creates a template with real `openai_compatible` fields; there is no implicit Echo fallback in the product path. Model routing lives under the top-level `model` object, mapping logical routes such as `agent`, `chat`, and `summary` to named providers. Provider entries include `kind`, `model`, `base_url`, and `api_key`. When `api_key` starts with `$`, the rest is treated as a variable name resolved from the same OpenLair directory's `.env` file first, then from the process environment; otherwise the value is used as the raw key. The legacy `api_key_env` field is still supported for compatibility with the same `.env`-first priority.
 
+The default backend test command includes real model integration tests. A local developer machine must have a valid `~/.openlair/openlair.json` and matching key in `~/.openlair/.env` or the process environment for the full suite to pass.
+
 ## LangGraph boundaries
 
 - Graph nodes may orchestrate module services, but should not contain durable domain rules such as SM-2 scheduling, accounting categorization storage, or habit streak calculation.

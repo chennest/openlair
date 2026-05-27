@@ -12,7 +12,7 @@ Run these from `lairservice/`:
 
 - Create/recreate the local venv with vfox Python 3.14: `vfox exec python@3.14.5 -- python -m venv --clear .venv`
 - Install backend dev dependencies: `.venv/bin/python -m pip install -e .[dev]`
-- Run backend tests: `.venv/bin/python -m pytest`
+- Run backend tests, including real model integration through `~/.openlair/openlair.json` and `~/.openlair/.env`: `.venv/bin/python -m pytest`
 
 Environment notes:
 
@@ -42,7 +42,7 @@ Environment notes:
 - After adding any build, lint, typecheck, test, codegen, migration, or dev-server command, update this file with the verified command and its working directory.
 - Treat SQLite, SQLAlchemy, the multi-provider model gateway, and LangGraph orchestration as planned stack choices from `README.md` and `docs/backend-architecture.md`; the current core backend focus is the agent harness loop, not product modules.
 - The implemented harness currently covers `learn-claude-code` style `s01` through `s14`, plus `s19`: agent loop, tool dispatch, permission checks, hooks, todo_write, subagent isolation, skill loading, context compact, memory, runtime system prompt assembly, error recovery, persistent task graph, background task execution, cron scheduling tools, and MCP plugin-style external tool routing.
-- Product startup reads global configuration from `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`; create the template file automatically when it is missing. Model settings live under the top-level `model` object. Model provider `api_key` may be a raw key or `$NAME`; `$NAME` resolves from the same directory's `.env` first, then process environment. Do not add implicit Echo/model fallback paths. Tests may inject `ScriptedAgentModelGateway` directly.
+- Product startup reads global configuration from `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`; create the template file automatically when it is missing. Model settings live under the top-level `model` object. Model provider `api_key` may be a raw key or `$NAME`; `$NAME` resolves from the same directory's `.env` first, then process environment. Do not add implicit Echo/model fallback paths. The default pytest suite includes real model integration tests and requires valid local OpenLair model credentials; deterministic unit tests may still inject `ScriptedAgentModelGateway` directly.
 - LangGraph is part of the MVP backend architecture; keep business modules behind service interfaces so graph nodes orchestrate module calls without owning domain logic.
 - Use SQLAlchemy repositories for persistence instead of direct `sqlite3` calls, so SQLite remains replaceable by another SQL database later.
 - Treat `lairservice/` as an agent harness: expose tools, knowledge, observation, action interfaces, and permission boundaries; do not try to encode intelligence with brittle procedural branches.
