@@ -9,7 +9,7 @@
 
 ## Why FastAPI
 
-- FastAPI is a good fit for the API boundary: typed request/response models, dependency injection, async I/O, and automatic OpenAPI docs for the Flutter client and future web admin.
+- FastAPI is a good fit for the API boundary: typed request/response models, dependency injection, async I/O, and automatic OpenAPI docs for the Flutter client and the Vue + TypeScript web admin.
 - The backend is mostly assistant orchestration, model calls, module dispatch, validation, and persistence. Python has the strongest ecosystem for this work.
 - The repo has no existing backend code or manifests, so the move from the earlier Go plan has no implementation migration cost.
 

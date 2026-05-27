@@ -27,7 +27,7 @@ lair/
 |------|------|
 | 服务端 | Python / FastAPI |
 | 客户端 | Flutter |
-| Web | 待定 |
+| Web | Vue + TypeScript / Vite |
 | 数据库 | SQLite |
 | LLM | 多供应商 / 多模型，通过统一模型网关接入 |
 | LLM 编排 | LangGraph |
