@@ -1,0 +1,1 @@
+"""Product module service boundaries."""
