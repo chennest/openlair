@@ -12,6 +12,7 @@ class ProviderConfig:
     kind: str
     model: str
     base_url: str | None = None
+    api_key: str | None = None
     api_key_env: str | None = None
     timeout_seconds: float = 60.0
 
@@ -21,6 +22,7 @@ class ModelGatewayConfig:
     default_route: str
     routes: dict[str, str]
     providers: dict[str, ProviderConfig]
+    env: dict[str, str]
 
     def provider_for_route(self, route: str) -> ProviderConfig:
         provider_name = self.routes.get(route) or self.routes.get(self.default_route)
@@ -40,7 +42,7 @@ def load_model_gateway_config(path: Path | str) -> ModelGatewayConfig:
     return parse_model_gateway_config(data)
 
 
-def parse_model_gateway_config(data: dict[str, Any]) -> ModelGatewayConfig:
+def parse_model_gateway_config(data: dict[str, Any], env: dict[str, str] | None = None) -> ModelGatewayConfig:
     default_route = _required_str(data, "default_route")
     routes_data = data.get("routes", {})
     providers_data = data.get("providers", {})
@@ -58,6 +60,7 @@ def parse_model_gateway_config(data: dict[str, Any]) -> ModelGatewayConfig:
             kind=_required_str(provider_data, "kind"),
             model=_required_str(provider_data, "model"),
             base_url=_optional_str(provider_data, "base_url"),
+            api_key=_optional_str(provider_data, "api_key"),
             api_key_env=_optional_str(provider_data, "api_key_env"),
             timeout_seconds=float(provider_data.get("timeout_seconds", 60.0)),
         )
@@ -65,7 +68,7 @@ def parse_model_gateway_config(data: dict[str, Any]) -> ModelGatewayConfig:
     routes = {str(route): str(provider_name) for route, provider_name in routes_data.items()}
     if default_route not in routes:
         raise ValueError(f"Default route {default_route!r} must exist in routes")
-    config = ModelGatewayConfig(default_route=default_route, routes=routes, providers=providers)
+    config = ModelGatewayConfig(default_route=default_route, routes=routes, providers=providers, env=env or {})
     config.provider_for_route(default_route)
     return config
 

@@ -62,46 +62,46 @@ class ConfiguredModelGateway:
     async def complete(self, request: ModelRequest) -> ModelResponse:
         provider = self._config.provider_for_route(request.route)
         client = self._clients[provider.name]
-        return await client.complete(request, provider)
+        return await client.complete(request, provider, self._config.env)
 
     async def create_agent_response(self, request: AgentModelRequest) -> AgentModelResponse:
         provider = self._config.provider_for_route("agent")
         client = self._clients[provider.name]
-        return await client.create_agent_response(request, provider)
+        return await client.create_agent_response(request, provider, self._config.env)
 
 
 class _ProviderClient(Protocol):
-    async def complete(self, request: ModelRequest, provider: ProviderConfig) -> ModelResponse:
+    async def complete(self, request: ModelRequest, provider: ProviderConfig, env: dict[str, str]) -> ModelResponse:
         ...
 
-    async def create_agent_response(self, request: AgentModelRequest, provider: ProviderConfig) -> AgentModelResponse:
+    async def create_agent_response(self, request: AgentModelRequest, provider: ProviderConfig, env: dict[str, str]) -> AgentModelResponse:
         ...
 
 
 class _OpenAICompatibleProviderClient:
-    async def complete(self, request: ModelRequest, provider: ProviderConfig) -> ModelResponse:
+    async def complete(self, request: ModelRequest, provider: ProviderConfig, env: dict[str, str]) -> ModelResponse:
         payload = {
             "model": provider.model,
             "messages": [{"role": "user", "content": request.message}],
         }
-        data = await asyncio.to_thread(_post_openai_compatible, provider, payload)
+        data = await asyncio.to_thread(_post_openai_compatible, provider, payload, env)
         message = _extract_openai_text(data)
         return ModelResponse(message=message, provider=provider.name, model=provider.model)
 
-    async def create_agent_response(self, request: AgentModelRequest, provider: ProviderConfig) -> AgentModelResponse:
+    async def create_agent_response(self, request: AgentModelRequest, provider: ProviderConfig, env: dict[str, str]) -> AgentModelResponse:
         payload: dict[str, Any] = {
             "model": provider.model,
             "messages": _to_openai_messages(request.messages, request.system),
             "tools": [_to_openai_tool(tool) for tool in request.tools],
             "max_tokens": request.max_tokens,
         }
-        data = await asyncio.to_thread(_post_openai_compatible, provider, payload)
+        data = await asyncio.to_thread(_post_openai_compatible, provider, payload, env)
         return _to_agent_response(data, provider)
 
 
 def create_model_gateway_from_config(path: Path | str | None) -> ModelGateway:
     openlair_config = load_openlair_config(path)
-    return ConfiguredModelGateway(parse_model_gateway_config(openlair_config.model))
+    return ConfiguredModelGateway(parse_model_gateway_config(openlair_config.model, env=openlair_config.env))
 
 
 def _client_for_provider(provider: ProviderConfig) -> _ProviderClient:
@@ -110,12 +110,10 @@ def _client_for_provider(provider: ProviderConfig) -> _ProviderClient:
     raise ValueError(f"Unsupported model provider kind {provider.kind!r}")
 
 
-def _post_openai_compatible(provider: ProviderConfig, payload: dict[str, Any]) -> dict[str, Any]:
+def _post_openai_compatible(provider: ProviderConfig, payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
     if provider.base_url is None:
         raise ValueError(f"Provider {provider.name!r} requires base_url")
-    api_key = os.environ.get(provider.api_key_env or "") if provider.api_key_env else None
-    if provider.api_key_env and not api_key:
-        raise ValueError(f"Environment variable {provider.api_key_env!r} is required for provider {provider.name!r}")
+    api_key = _resolve_api_key(provider, env)
     url = provider.base_url.rstrip("/") + "/chat/completions"
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -129,6 +127,24 @@ def _post_openai_compatible(provider: ProviderConfig, payload: dict[str, Any]) -
         raise RuntimeError(f"Model provider {provider.name} HTTP {error.code}: {body}") from error
     except URLError as error:
         raise RuntimeError(f"Model provider {provider.name} request failed: {error.reason}") from error
+
+
+def _resolve_api_key(provider: ProviderConfig, env: dict[str, str] | None = None) -> str | None:
+    env_values = env or {}
+    if provider.api_key:
+        if provider.api_key.startswith("$"):
+            env_name = provider.api_key[1:]
+            api_key = env_values.get(env_name) or os.environ.get(env_name)
+            if not api_key:
+                raise ValueError(f"OpenLair .env variable {env_name!r} is required for provider {provider.name!r}")
+            return api_key
+        return provider.api_key
+    if provider.api_key_env:
+        api_key = env_values.get(provider.api_key_env) or os.environ.get(provider.api_key_env)
+        if not api_key:
+            raise ValueError(f"OpenLair .env variable {provider.api_key_env!r} is required for provider {provider.name!r}")
+        return api_key
+    return None
 
 
 def _to_openai_messages(messages: list[dict[str, Any]], system: str) -> list[dict[str, str]]:

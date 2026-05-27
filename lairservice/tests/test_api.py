@@ -5,10 +5,11 @@ import time
 from fastapi.testclient import TestClient
 
 from lairservice.agent.compact import ContextCompactor
-from lairservice.config import ensure_openlair_config, load_openlair_config
+from lairservice.config import ensure_openlair_config, load_openlair_config, load_openlair_env
 from lairservice.main import create_app
-from lairservice.models.config import load_model_gateway_config
+from lairservice.models.config import ProviderConfig, load_model_gateway_config
 from lairservice.models.gateway import AgentModelRequest, AgentModelResponse, ScriptedAgentModelGateway, create_model_gateway_from_config
+from lairservice.models.gateway import _resolve_api_key
 from lairservice.runtime.langgraph_runtime import LangGraphAssistantRuntime
 
 
@@ -76,7 +77,7 @@ def test_model_config_loads_json_routes_and_provider(tmp_path) -> None:
                         "kind": "openai_compatible",
                         "model": "glm-4-flash",
                         "base_url": "https://example.invalid/v1",
-                        "api_key_env": "LAIR_TEST_MODEL_KEY",
+                        "api_key": "$LAIR_TEST_MODEL_KEY",
                     }
                 },
             }
@@ -90,7 +91,51 @@ def test_model_config_loads_json_routes_and_provider(tmp_path) -> None:
     assert provider.name == "main"
     assert provider.kind == "openai_compatible"
     assert provider.model == "glm-4-flash"
-    assert provider.api_key_env == "LAIR_TEST_MODEL_KEY"
+    assert provider.api_key == "$LAIR_TEST_MODEL_KEY"
+
+
+def test_provider_api_key_supports_raw_and_env_reference(monkeypatch) -> None:
+    raw = ProviderConfig(name="raw", kind="openai_compatible", model="m", api_key="sk-raw")
+    env_ref = ProviderConfig(name="env-ref", kind="openai_compatible", model="m", api_key="$OPENLAIR_TEST_KEY")
+    legacy_env = ProviderConfig(name="legacy", kind="openai_compatible", model="m", api_key_env="OPENLAIR_TEST_KEY")
+
+    monkeypatch.setenv("OPENLAIR_TEST_KEY", "sk-env")
+
+    assert _resolve_api_key(raw) == "sk-raw"
+    assert _resolve_api_key(env_ref) == "sk-env"
+    assert _resolve_api_key(legacy_env) == "sk-env"
+
+
+def test_openlair_env_file_takes_priority_over_process_env(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / ".openlair" / "openlair.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "model": {
+                    "default_route": "agent",
+                    "routes": {"agent": "main"},
+                    "providers": {
+                        "main": {
+                            "kind": "openai_compatible",
+                            "model": "m",
+                            "base_url": "https://example.invalid/v1",
+                            "api_key": "$OPENLAIR_TEST_KEY",
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (config_path.parent / ".env").write_text("OPENLAIR_TEST_KEY=sk-from-file\n", encoding="utf-8")
+    monkeypatch.setenv("OPENLAIR_TEST_KEY", "sk-from-process")
+
+    config = load_openlair_config(config_path)
+
+    assert config.env["OPENLAIR_TEST_KEY"] == "sk-from-file"
+    model_provider = create_model_gateway_from_config(config_path)._config.provider_for_route("agent")
+    assert _resolve_api_key(model_provider, config.env) == "sk-from-file"
 
 
 def test_model_gateway_creates_openlair_config_template(tmp_path) -> None:
@@ -104,6 +149,7 @@ def test_model_gateway_creates_openlair_config_template(tmp_path) -> None:
     data = json.loads(config_path.read_text(encoding="utf-8"))
     assert data["model"]["routes"]["agent"] == "main"
     assert data["model"]["providers"]["main"]["kind"] == "openai_compatible"
+    assert (config_path.parent / ".env").exists()
     assert gateway is not None
 
 
@@ -133,6 +179,19 @@ def test_openlair_config_exposes_model_section(tmp_path) -> None:
 
     assert config.path == config_path
     assert config.model["providers"]["main"]["model"] == "glm-4-flash"
+
+
+def test_load_openlair_env_parses_quotes_and_comments(tmp_path) -> None:
+    config_path = tmp_path / ".openlair" / "openlair.json"
+    config_path.parent.mkdir(parents=True)
+    (config_path.parent / ".env").write_text(
+        "# comment\nOPENLAIR_A='one'\nOPENLAIR_B=\"two\"\nOPENLAIR_C=three\n",
+        encoding="utf-8",
+    )
+
+    values = load_openlair_env(config_path)
+
+    assert values == {"OPENLAIR_A": "one", "OPENLAIR_B": "two", "OPENLAIR_C": "three"}
 
 
 def test_s01_agent_loop_stops_without_tool_use(tmp_path) -> None:

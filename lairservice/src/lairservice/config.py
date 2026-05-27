@@ -8,6 +8,7 @@ import os
 
 
 DEFAULT_OPENLAIR_CONFIG_PATH = Path.home() / ".openlair" / "openlair.json"
+DEFAULT_OPENLAIR_ENV_FILENAME = ".env"
 
 DEFAULT_OPENLAIR_CONFIG_TEMPLATE: dict[str, Any] = {
     "model": {
@@ -22,7 +23,7 @@ DEFAULT_OPENLAIR_CONFIG_TEMPLATE: dict[str, Any] = {
                 "kind": "openai_compatible",
                 "model": "replace-with-model-name",
                 "base_url": "https://replace-with-provider-base-url/v1",
-                "api_key_env": "OPENLAIR_MODEL_API_KEY",
+                "api_key": "$OPENLAIR_MODEL_API_KEY",
                 "timeout_seconds": 60,
             }
         },
@@ -34,6 +35,7 @@ DEFAULT_OPENLAIR_CONFIG_TEMPLATE: dict[str, Any] = {
 class OpenLairConfig:
     path: Path
     data: dict[str, Any]
+    env: dict[str, str]
 
     @property
     def model(self) -> dict[str, Any]:
@@ -55,9 +57,11 @@ def resolve_openlair_config_path(path: Path | str | None = None) -> Path:
 def ensure_openlair_config(path: Path | str | None = None) -> Path:
     config_path = resolve_openlair_config_path(path)
     if config_path.exists():
+        ensure_openlair_env(config_path)
         return config_path
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(DEFAULT_OPENLAIR_CONFIG_TEMPLATE, ensure_ascii=False, indent=2), encoding="utf-8")
+    ensure_openlair_env(config_path)
     return config_path
 
 
@@ -66,4 +70,31 @@ def load_openlair_config(path: Path | str | None = None) -> OpenLairConfig:
     data = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("OpenLair config must be a JSON object")
-    return OpenLairConfig(path=config_path, data=data)
+    return OpenLairConfig(path=config_path, data=data, env=load_openlair_env(config_path))
+
+
+def ensure_openlair_env(config_path: Path | str) -> Path:
+    env_path = Path(config_path).expanduser().parent / DEFAULT_OPENLAIR_ENV_FILENAME
+    if not env_path.exists():
+        env_path.write_text("OPENLAIR_MODEL_API_KEY=\n", encoding="utf-8")
+    return env_path
+
+
+def load_openlair_env(config_path: Path | str) -> dict[str, str]:
+    env_path = ensure_openlair_env(config_path)
+    values: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key:
+            values[key] = _strip_env_value(value.strip())
+    return values
+
+
+def _strip_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
