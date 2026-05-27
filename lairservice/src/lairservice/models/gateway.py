@@ -8,7 +8,8 @@ import asyncio
 import json
 import os
 
-from lairservice.models.config import ModelGatewayConfig, ProviderConfig, load_model_gateway_config
+from lairservice.config import load_openlair_config
+from lairservice.models.config import ModelGatewayConfig, ProviderConfig, parse_model_gateway_config
 
 
 @dataclass(frozen=True)
@@ -99,12 +100,8 @@ class _OpenAICompatibleProviderClient:
 
 
 def create_model_gateway_from_config(path: Path | str | None) -> ModelGateway:
-    if path is None:
-        raise ValueError("Model config is required. Set LAIR_MODEL_CONFIG or pass model_config_path.")
-    config_path = Path(path)
-    if not config_path.exists():
-        raise ValueError(f"Model config file does not exist: {config_path}")
-    return ConfiguredModelGateway(load_model_gateway_config(config_path))
+    openlair_config = load_openlair_config(path)
+    return ConfiguredModelGateway(parse_model_gateway_config(openlair_config.model))
 
 
 def _client_for_provider(provider: ProviderConfig) -> _ProviderClient:

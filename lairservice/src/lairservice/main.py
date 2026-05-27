@@ -21,7 +21,7 @@ def create_app(
     session_factory = create_session_factory(engine)
     notes_service = NotesService(NotesRepository(session_factory))
     app.state.notes_service = notes_service
-    configured_path = model_config_path or os.environ.get("LAIR_MODEL_CONFIG")
+    configured_path = model_config_path or os.environ.get("OPENLAIR_CONFIG")
     app.state.model_gateway = model_gateway or create_model_gateway_from_config(configured_path)
     app.state.assistant_runtime = LangGraphAssistantRuntime(model_gateway=app.state.model_gateway, workspace_path=".")
     app.include_router(router)

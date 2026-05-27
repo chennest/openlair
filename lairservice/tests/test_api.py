@@ -1,13 +1,11 @@
 import asyncio
 import json
-import os
 import time
-
-os.environ.setdefault("LAIR_MODEL_CONFIG", "/code/lair/lairservice/config/models.example.json")
 
 from fastapi.testclient import TestClient
 
 from lairservice.agent.compact import ContextCompactor
+from lairservice.config import ensure_openlair_config, load_openlair_config
 from lairservice.main import create_app
 from lairservice.models.config import load_model_gateway_config
 from lairservice.models.gateway import AgentModelRequest, AgentModelResponse, ScriptedAgentModelGateway, create_model_gateway_from_config
@@ -95,13 +93,46 @@ def test_model_config_loads_json_routes_and_provider(tmp_path) -> None:
     assert provider.api_key_env == "LAIR_TEST_MODEL_KEY"
 
 
-def test_model_gateway_requires_explicit_config() -> None:
-    try:
-        create_model_gateway_from_config(None)
-    except ValueError as error:
-        assert "Model config is required" in str(error)
-    else:
-        raise AssertionError("missing model config should fail")
+def test_model_gateway_creates_openlair_config_template(tmp_path) -> None:
+    config_path = tmp_path / ".openlair" / "openlair.json"
+
+    ensured_path = ensure_openlair_config(config_path)
+    gateway = create_model_gateway_from_config(config_path)
+
+    assert ensured_path == config_path
+    assert config_path.exists()
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["model"]["routes"]["agent"] == "main"
+    assert data["model"]["providers"]["main"]["kind"] == "openai_compatible"
+    assert gateway is not None
+
+
+def test_openlair_config_exposes_model_section(tmp_path) -> None:
+    config_path = tmp_path / "openlair.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "model": {
+                    "default_route": "agent",
+                    "routes": {"agent": "main"},
+                    "providers": {
+                        "main": {
+                            "kind": "openai_compatible",
+                            "model": "glm-4-flash",
+                            "base_url": "https://example.invalid/v1",
+                            "api_key_env": "OPENLAIR_TEST_KEY",
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_openlair_config(config_path)
+
+    assert config.path == config_path
+    assert config.model["providers"]["main"]["model"] == "glm-4-flash"
 
 
 def test_s01_agent_loop_stops_without_tool_use(tmp_path) -> None:

@@ -37,7 +37,10 @@ def load_model_gateway_config(path: Path | str) -> ModelGatewayConfig:
     data = json.loads(config_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Model config must be a JSON object")
+    return parse_model_gateway_config(data)
 
+
+def parse_model_gateway_config(data: dict[str, Any]) -> ModelGatewayConfig:
     default_route = _required_str(data, "default_route")
     routes_data = data.get("routes", {})
     providers_data = data.get("providers", {})

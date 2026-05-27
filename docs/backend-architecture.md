@@ -105,7 +105,7 @@ Do not call model providers directly from product modules or graph nodes. Route 
 
 GLM-Flash can be one supported model/provider, but it is not the only planned LLM dependency.
 
-Model routing is configured through a JSON file supplied by `LAIR_MODEL_CONFIG` or `create_app(model_config_path=...)`. Product startup intentionally fails when this config is missing; there is no implicit Echo fallback in the product path. The config maps logical routes such as `agent`, `chat`, and `summary` to named providers. Provider entries include `kind`, `model`, `base_url`, and `api_key_env`; secrets stay in environment variables, not in JSON files.
+Global product configuration is loaded through `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`. If the default file is missing, startup creates a template with real `openai_compatible` fields; there is no implicit Echo fallback in the product path. Model routing lives under the top-level `model` object, mapping logical routes such as `agent`, `chat`, and `summary` to named providers. Provider entries include `kind`, `model`, `base_url`, and `api_key_env`; secrets stay in environment variables, not in JSON files.
 
 ## LangGraph boundaries
 
