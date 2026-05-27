@@ -1,4 +1,4 @@
-# OpenLair · 灵穴
+# OpenLair
 
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
@@ -9,7 +9,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-local%20data-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-> A cross-platform personal AI life assistant for one person. The Chinese name is **灵穴**: a private cave for memory, tools, and daily agency.
+> A cross-platform personal AI life assistant for one person.
 
 [简体中文](README.zh-CN.md)
 

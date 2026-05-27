@@ -1,4 +1,4 @@
-# OpenLair · 灵穴
+# OpenLair
 
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
@@ -9,7 +9,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-local%20data-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-> 一个人的全平台个人 AI 生活助理。中文名 **灵穴**：一个存放记忆、工具和日常行动力的私人洞穴。
+> 一个人的全平台个人 AI 生活助理。
 
 [English](README.md)
 
