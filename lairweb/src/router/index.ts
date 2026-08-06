@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
   history: createWebHistory(),
+  // 切换路由后回到顶部：避免旧页面滚动位置残留导致新页面被强制 clamp 跳动
+  scrollBehavior: () => ({ top: 0 }),
   routes: [
     { path: '/', name: 'overview', component: () => import('../modules/overview/index.vue'), meta: { title: '总揽' } },
     { path: '/ledger', name: 'ledger', component: () => import('../modules/ledger/index.vue'), meta: { title: '记账' } },
