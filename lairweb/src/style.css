@@ -414,15 +414,16 @@ h1 {
 .m-workspace {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* 顶部标题栏 */
 .m-header {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -458,19 +459,19 @@ h1 {
 
 /* 内容区：底部留出 TabBar 高度，顶部留出标题栏 */
 .m-content {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
-  padding: 18px 14px 86px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 18px 14px;
   touch-action: pan-y; /* 允许纵向滚动，横向手势留给滑动切换 */
 }
 
 /* 底部 6 Tab */
 .m-tabbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   z-index: 40;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
