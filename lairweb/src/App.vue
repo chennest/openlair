@@ -1,149 +1,62 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 
-type AssistantResponse = {
-  message: string
-  session_id: string
-  route: string
-}
+const route = useRoute()
+const pageTitle = computed(() => (route.meta.title as string) || '总揽')
 
-type ChatMessage = {
-  id: number
-  role: 'user' | 'assistant'
-  content: string
-  meta?: string
-}
-
-const prompt = ref('帮我总结一下今天应该优先推进什么。')
-const sessionId = ref('web-local')
-const userId = ref('local-user')
-const isSending = ref(false)
-const errorMessage = ref('')
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
-const messages = ref<ChatMessage[]>([
-  {
-    id: 1,
-    role: 'assistant',
-    content: 'OpenLair Web 已接入后端助手入口。启动 lairservice 后，可以在这里直接调用 /assistant/invoke。',
-    meta: 'system · ready',
-  },
-])
-
-const canSend = computed(() => prompt.value.trim().length > 0 && !isSending.value)
-
-async function invokeAssistant() {
-  const message = prompt.value.trim()
-  if (!message) return
-
-  errorMessage.value = ''
-  isSending.value = true
-  messages.value.push({ id: Date.now(), role: 'user', content: message, meta: sessionId.value })
-  prompt.value = ''
-
-  try {
-    const response = await fetch(`${apiBaseUrl}/assistant/invoke`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message,
-        user_id: userId.value || 'local-user',
-        session_id: sessionId.value || 'web-local',
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Assistant request failed with ${response.status}`)
-    }
-
-    const data = (await response.json()) as AssistantResponse
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: data.message,
-      meta: `${data.route} · ${data.session_id}`,
-    })
-    sessionId.value = data.session_id
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Assistant request failed'
-  } finally {
-    isSending.value = false
-  }
-}
+const navItems = [
+  { path: '/', label: '总揽', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
+  { path: '/ledger', label: '记账', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm1-13h-2v1.2A4 4 0 0 0 8.5 11h2a2 2 0 0 1 4 0h2a4 4 0 0 0-3.5-3.8V7zm-1 6.5a2 2 0 0 1-2-2h-2a4 4 0 0 0 4 4V19h2v-3.5a4 4 0 0 0 4-4h-2a2 2 0 0 1-4 0z' },
+  { path: '/calendar', label: '日历', icon: 'M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2zm-3 6v11h16V8H4zm3-1h10v2H7V7z' },
+  { path: '/todo', label: '待办', icon: 'M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v12h14V6H5zm3.5 2l3 3 5-5 1.4 1.4-6.4 6.4-3-3L8.5 8z' },
+  { path: '/notes', label: '笔记', icon: 'M5 2h11l4 4v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V7h-3V4H6zm10 9v2H8v-2h8zm0-4v2H8V9h8z' },
+  { path: '/habits', label: '习惯', icon: 'M12 2c1.5 3.2 4.5 5 6 6.5 1.8 1.8 3 4.2 3 6.9A9 9 0 0 1 12 24 9 9 0 0 1 3 15.4c0-2.7 1.2-5.1 3-6.9C7.5 7 10.5 5.2 12 2zm0 4.6C10.8 8 8.4 9.7 6.9 11.3A6.9 6.9 0 0 0 5 15.4 7 7 0 0 0 12 22a7 7 0 0 0 7-6.6c0-1.7-.7-3.1-1.9-4.1C15.6 9.7 13.2 8 12 6.6zm-2 8.9a2 2 0 1 0 4 0c0-1.1-2-3-2-3s-2 1.9-2 3z' },
+]
 </script>
 
 <template>
-  <main class="shell">
-    <section class="hero-panel" aria-labelledby="page-title">
-      <div class="brand-row">
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="brand">
         <span class="brand-mark">穴</span>
-        <span class="brand-name">OpenLair Web</span>
-      </div>
-      <p class="eyebrow">Vue 3 · TypeScript · FastAPI</p>
-      <h1 id="page-title">一个可直接连接真实模型的控制台。</h1>
-      <p class="lede">
-        后端 agent harness 已经跑通真实模型测试；这个 Web 入口先聚焦最重要的闭环：把用户输入送进
-        <code>/assistant/invoke</code>，把 LangGraph runtime 的回答带回来。
-      </p>
-
-      <div class="status-grid" aria-label="Runtime status">
-        <div>
-          <span>Backend</span>
-          <strong>FastAPI</strong>
-        </div>
-        <div>
-          <span>Model route</span>
-          <strong>agent</strong>
-        </div>
-        <div>
-          <span>Session</span>
-          <strong>{{ sessionId || 'web-local' }}</strong>
+        <div class="brand-text">
+          <strong>OpenLair</strong>
+          <span>个人工作台</span>
         </div>
       </div>
-    </section>
 
-    <section class="console-card" aria-labelledby="console-title">
-      <div class="console-header">
+      <nav class="nav" aria-label="模块导航">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.path"
+          :to="item.path"
+          class="nav-item"
+          active-class="is-active"
+          exact-active-class="is-active"
+        >
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path :d="item.icon" />
+          </svg>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
+
+      <div class="sidebar-foot">
+        <span class="dot" aria-hidden="true"></span>
+        <span>本地数据 · v0.1</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="content-header">
         <div>
-          <p class="eyebrow">Assistant Console</p>
-          <h2 id="console-title">本地助手会话</h2>
+          <p class="eyebrow">OpenLair Workspace</p>
+          <h1>{{ pageTitle }}</h1>
         </div>
-        <div class="live-pill"><span></span> {{ apiBaseUrl || 'Vite proxy' }}</div>
-      </div>
-
-      <div class="messages" aria-live="polite">
-        <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
-          <div class="message-meta">{{ message.role }} · {{ message.meta }}</div>
-          <p>{{ message.content }}</p>
-        </article>
-      </div>
-
-      <form class="composer" @submit.prevent="invokeAssistant">
-        <div class="identity-row">
-          <label>
-            User
-            <input v-model="userId" autocomplete="off" />
-          </label>
-          <label>
-            Session
-            <input v-model="sessionId" autocomplete="off" />
-          </label>
-        </div>
-        <label class="prompt-label" for="prompt">Message</label>
-        <textarea
-          id="prompt"
-          v-model="prompt"
-          :disabled="isSending"
-          rows="4"
-          placeholder="输入要交给 OpenLair agent 的任务…"
-        />
-        <div class="composer-footer">
-          <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-          <p v-else>本地代理目标来自 <code>LAIRWEB_API_PROXY_TARGET</code>；浏览器默认使用同源 Vite proxy。</p>
-          <button type="submit" :disabled="!canSend">
-            {{ isSending ? '发送中…' : '发送给助手' }}
-          </button>
-        </div>
-      </form>
-    </section>
-  </main>
+        <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
+      </header>
+      <RouterView />
+    </main>
+  </div>
 </template>

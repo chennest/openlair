@@ -46,6 +46,20 @@ Environment notes:
 
 ## Workflow guidance for future agents
 
+### 前端开发规范（强制读取）
+
+**任何前端改动（含 AI 代理协作）都必须先读取 `docs/frontend/frontend-guide.md`，并严格遵守。**
+
+- 前端代码风格、目录结构、命名规范、组件规范、API 封装、样式 token、mock 约定，全部以该文件为准。
+- 项目文件风格同样遵循该文件：新增业务模块必须走 `src/modules/<模块>/` 目录（api.ts + index.vue + 子组件），禁止在单文件堆大页面。
+- 目录结构速览：
+  - `lairweb/src/modules/<模块>/` 业务模块目录
+  - `lairweb/src/api/request.ts` 公共请求封装
+  - `lairweb/src/components/` 通用组件（BaseModal、Tag）
+  - `lairweb/mock/` mock 数据层（内存态 CRUD，重启恢复）
+
+---
+
 - Before adding code, initialize the relevant module with its real manifest/config first, then document the exact commands here.
 - After adding any build, lint, typecheck, test, codegen, migration, or dev-server command, update this file with the verified command and its working directory.
 - Treat SQLite, SQLAlchemy, the multi-provider model gateway, and LangGraph orchestration as planned stack choices from `README.md` and `docs/backend-architecture.md`; the current core backend focus is the agent harness loop, not product modules.
