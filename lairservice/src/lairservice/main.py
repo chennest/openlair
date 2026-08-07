@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from lairservice.api.v1.router import v1_router
-from lairservice.core.config import resolve_env_value
+from lairservice.core.config import get_settings
 from lairservice.core.envelope import register_envelope_handlers
 from lairservice.db.session import create_database_engine, create_session_factory, init_database
 from lairservice.repositories.books import BookRepository
@@ -26,8 +26,8 @@ from lairservice.services.modules import (
     TodoService,
 )
 
-# 数据库连接串：进程环境 → 项目 .env → 默认 SQLite（见 .env.example）
-DEFAULT_DATABASE_URL = resolve_env_value("DATABASE_URL") or "sqlite+pysqlite:///./data/lair.db"
+# 数据库连接串：环境变量 → 项目 .env → 默认 SQLite（见 .env.example）
+DEFAULT_DATABASE_URL = get_settings().database_url
 
 
 def create_app(

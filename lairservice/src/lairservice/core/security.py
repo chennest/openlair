@@ -4,8 +4,7 @@
 - 密码哈希使用 hashlib.scrypt（NIST 推荐 KDF），格式 `scrypt$salt$hash`；
   生产环境可替换为 passlib/bcrypt。
 - 登出黑名单：jti 写入 revoked_tokens 表（等价于 Redis 黑名单方案）。
-- JWT 密钥读取优先级（config.resolve_env_value）：进程环境 OPENLAIR_JWT_SECRET →
-  项目根 .env（lairservice/.env）→ 开发默认。
+- JWT 密钥来自 Settings（环境变量 → 项目 .env → 开发默认），见 core/config.py。
 """
 
 import hashlib
@@ -15,16 +14,14 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from lairservice.core.config import resolve_env_value
+from lairservice.core.config import get_settings
 
-# 开发默认密钥（>= 32 字节）；生产必须通过 OPENLAIR_JWT_SECRET 配置，见 .env.example
-DEV_SECRET = "openlair-dev-secret-key-0123456789ab"
 ACCESS_TOKEN_TTL = timedelta(days=7)  # 与 mock 一致：7 天
 
 
 def resolve_jwt_secret() -> str:
-    """JWT 密钥解析：进程环境 → 项目根 .env → 开发默认。"""
-    return resolve_env_value("OPENLAIR_JWT_SECRET", DEV_SECRET) or DEV_SECRET
+    """JWT 密钥解析：环境变量 → 项目根 .env → 开发默认（pydantic-settings 处理）。"""
+    return get_settings().jwt_secret
 
 
 SECRET_KEY = resolve_jwt_secret()

@@ -1,43 +1,36 @@
-"""配置读取：项目根 .env（lairservice/.env）+ 进程环境变量。
+"""应用配置（pydantic-settings）：环境变量 → 项目根 .env（lairservice/.env）→ 默认值。
 
-优先级：进程环境 → 项目根 .env → 默认值。
+模板见 lairservice/.env.example；读取细节由 pydantic-settings 处理（引号/注释/类型校验）。
 """
 
 from pathlib import Path
-import os
 
-# 项目根目录（src/lairservice/config.py → 上溯 2 层）
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def _strip_env_value(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
+# 项目根目录（src/lairservice/core/config.py → 上溯 3 层）
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _parse_dotenv(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key:
-            continue
-        values[key] = _strip_env_value(value.strip())
-    return values
+class Settings(BaseSettings):
+    """全部应用配置字段；env 文件缺失字段时落到默认值。"""
+
+    # JWT 签名密钥：HS256 要求 >= 32 字节（生产必须配置，见 .env.example）
+    jwt_secret: str = Field(
+        default="openlair-dev-secret-key-0123456789ab", validation_alias="OPENLAIR_JWT_SECRET"
+    )
+    # 数据库连接串：SQLite / MySQL / PostgreSQL 均可（见 .env.example）
+    database_url: str = Field(
+        default="sqlite+pysqlite:///./data/lair.db", validation_alias="DATABASE_URL"
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=_PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
-def resolve_env_value(key: str, default: str | None = None) -> str | None:
-    """按优先级读取配置值：进程环境 → 项目根 .env（lairservice/.env）→ 默认值。"""
-    from_env = os.environ.get(key)
-    if from_env:
-        return from_env
-    project_env = _parse_dotenv(_PROJECT_ROOT / ".env")
-    if project_env.get(key):
-        return project_env[key]
-    return default
+def get_settings() -> Settings:
+    """每次新建实例：实时读取环境变量与 .env（测试可 monkeypatch 后重新调用）。"""
+    return Settings()

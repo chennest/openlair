@@ -14,7 +14,8 @@ Run these from `lairservice/` (Python environment is managed by `uv`; `uv sync` 
 - Create/recreate the local venv and install all deps: `uv sync`（dev 依赖：`uv sync --extra dev`）
 - Run backend tests (business API suite uses an isolated SQLite file per test; the real-model integration tests additionally need valid `~/.openlair/openlair.json` + `~/.openlair/.env` credentials): `uv run pytest`
 - Start the local backend dev server (port 8001): `uv run uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
-- JWT signing key `OPENLAIR_JWT_SECRET` is read from (priority order): process env → `lairservice/.env` → dev default. Template: `lairservice/.env.example`. Same chain applies to `DATABASE_URL` (default SQLite).
+- Database migrations (Alembic, from `lairservice/`): generate `uv run alembic revision --autogenerate -m "..."`, apply `uv run alembic upgrade head`, revert one step `uv run alembic downgrade -1`. `create_all` on startup still bootstraps fresh SQLite; migrations own schema evolution from there.
+- Settings (`core/config.py`, pydantic-settings) are read from (priority order): process env → `lairservice/.env` → defaults. Keys: `OPENLAIR_JWT_SECRET`, `DATABASE_URL`. Template: `lairservice/.env.example`.
 
 Run these from `lairweb/`:
 
