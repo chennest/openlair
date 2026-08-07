@@ -1,5 +1,5 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
-import { store, type CalendarEvent, guid, date, respond, ok, err, guard } from './store'
+import { store, type CalendarEvent, nextId, date, respond, ok, err, guard } from './store'
 
 
 export default {
@@ -20,7 +20,7 @@ export default {
       guard((req) => {
         const { title, date: reqDate, time, location } = req.body ?? {}
         const item: CalendarEvent = {
-          id: guid(),
+          id: nextId(store.events),
           title: String(title || ''),
           date: String(reqDate || date()),
           time: String(time || '10:00'),

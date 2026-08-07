@@ -7,7 +7,7 @@ defineProps<{ events: CalendarEvent[] }>()
 
 const emit = defineEmits<{
   (e: 'toggle', item: CalendarEvent): void
-  (e: 'remove', id: string): void
+  (e: 'remove', id: number): void
 }>()
 </script>
 

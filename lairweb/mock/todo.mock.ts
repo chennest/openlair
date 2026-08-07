@@ -1,5 +1,5 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
-import { store, QUADRANTS, type TodoItem, guid, respond, ok, err, guard } from './store'
+import { store, QUADRANTS, type TodoItem, nextId, respond, ok, err, guard } from './store'
 
 
 export default {
@@ -20,7 +20,7 @@ export default {
       guard((req) => {
         const { text, quadrant, due } = req.body ?? {}
         const item: TodoItem = {
-          id: guid(),
+          id: nextId(store.todos),
           text: String(text || ''),
           quadrant: QUADRANTS.includes(String(quadrant)) ? String(quadrant) : QUADRANTS[1],
           done: false,

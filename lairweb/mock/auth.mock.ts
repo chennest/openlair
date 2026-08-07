@@ -2,7 +2,7 @@ import { defineMock } from 'vite-plugin-mock-dev-server'
 import {
   store,
   type User,
-  guid,
+  nextId,
   respond,
   ok,
   err,
@@ -42,7 +42,7 @@ export default {
       const mail = email.trim().toLowerCase()
       if (store.users.some((u) => u.email === mail)) return err(409, '该邮箱已被注册')
       const u: User = {
-        id: guid(),
+        id: nextId(store.users),
         name: name.trim(),
         email: mail,
         passwordHash: hashPassword(password),

@@ -6,7 +6,7 @@ defineProps<{ habits: Habit[] }>()
 
 const emit = defineEmits<{
   (e: 'toggle', habit: Habit): void
-  (e: 'remove', id: string): void
+  (e: 'remove', id: number): void
 }>()
 </script>
 

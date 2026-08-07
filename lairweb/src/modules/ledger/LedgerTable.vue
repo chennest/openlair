@@ -14,7 +14,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'remove', id: string): void
+  (e: 'remove', id: number): void
   (e: 'page', page: number): void
 }>()
 

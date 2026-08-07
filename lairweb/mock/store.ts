@@ -22,9 +22,9 @@ function mulberry32(seed: number) {
 // 表结构（与后端 schema 对齐）
 // ══════════════════════════════════════════════════════════════
 
-/** categories 表：分类 */
+/** categories 表：分类（id = 自增 int 主键，与 SQLAlchemy INTEGER PRIMARY KEY 对齐） */
 export interface Category {
-  id: string
+  id: number
   name: string
   type: '支出' | '收入'
   /** 排序权重（小在前） */
@@ -34,9 +34,9 @@ export interface Category {
   createdAt: string
 }
 
-/** users 表：用户（当前登录用户 + 共享账本成员；被邀请成员可以没有登录账号） */
+/** users 表：用户（id = 自增 int；被邀请成员可以没有登录账号） */
 export interface User {
-  id: string
+  id: number
   name: string
   /** 登录邮箱（仅已注册账号有；被邀请的成员无账号时为空） */
   email?: string
@@ -49,7 +49,7 @@ export interface User {
 
 /** books 表：账本（个人 / 共享；「家庭」只是共享账本的一种场景） */
 export interface Book {
-  id: string
+  id: number
   name: string
   type: 'personal' | 'shared'
   createdAt: string
@@ -57,20 +57,20 @@ export interface Book {
 
 /** book_members 表：账本成员关系 */
 export interface BookMember {
-  bookId: string
-  userId: string
+  bookId: number
+  userId: number
   role: 'owner' | 'editor'
   joinedAt: string
 }
 
 /** transactions 表：交易流水（categoryId → categories.id，bookId → books.id，userId → users.id） */
 export interface Transaction {
-  id: string
+  id: number
   type: '支出' | '收入'
-  categoryId: string
-  bookId: string
+  categoryId: number
+  bookId: number
   /** 记账人 */
-  userId: string
+  userId: number
   amount: number
   /** YYYY-MM-DD */
   date: string
@@ -81,8 +81,8 @@ export interface Transaction {
 
 /** budgets 表：月度预算（按账本隔离，month = 'YYYY-MM'） */
 export interface Budget {
-  id: string
-  bookId: string
+  id: number
+  bookId: number
   month: string
   expenseLimit: number
   createdAt: string
@@ -90,7 +90,7 @@ export interface Budget {
 }
 
 export interface TodoItem {
-  id: string
+  id: number
   text: string
   quadrant: string
   done: boolean
@@ -100,7 +100,7 @@ export interface TodoItem {
 }
 
 export interface CalendarEvent {
-  id: string
+  id: number
   title: string
   date: string
   time: string
@@ -111,7 +111,7 @@ export interface CalendarEvent {
 }
 
 export interface Note {
-  id: string
+  id: number
   title: string
   summary: string
   tags: string[]
@@ -120,7 +120,7 @@ export interface Note {
 }
 
 export interface Habit {
-  id: string
+  id: number
   name: string
   streak: number
   done: boolean
@@ -169,18 +169,17 @@ const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)]
 const integer = (min: number, max: number) => Math.floor(rand() * (max - min + 1)) + min
 const float = (min: number, max: number, digits = 2) => Number((rand() * (max - min) + min).toFixed(digits))
 const bool = () => rand() > 0.5
-const guid = () =>
-  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (rand() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
 const pad = (n: number) => String(n).padStart(2, '0')
 const date = (offsetDays = 0) => {
   const d = new Date(Date.now() + offsetDays * 86400000)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 const nowISO = () => new Date().toISOString()
+
+/** 自增主键：模拟 SQLAlchemy 自增 INTEGER PRIMARY KEY（新行 id = 当前最大 id + 1） */
+export function nextId(rows: { id: number }[]): number {
+  return rows.reduce((m, r) => Math.max(m, r.id), 0) + 1
+}
 const csentence = () => {
   const pool = ['推进周报整理', '预约下周会议', '整理报销发票', '完成季度复盘', '更新学习计划', '排查线上告警', '审阅合同条款', '参加技术分享', '优化部署脚本', '补充接口文档']
   return pick(pool)
@@ -267,22 +266,22 @@ export function verifyPassword(password: string, stored: string): boolean {
   return got.length === expect.length && timingSafeEqual(got, expect)
 }
 
-/** 分类表种子：固定 id（跨重启稳定，供外键引用），支出 10 + 收入 6 */
+/** 分类表种子：固定 id（跨重启稳定，供外键引用），支出 1-10 + 收入 11-16 */
 function seedCategories(): Category[] {
   const exp: [string, string][] = [
-    ['cat-exp-food', '餐饮'], ['cat-exp-trans', '交通'], ['cat-exp-shop', '购物'],
-    ['cat-exp-home', '居住'], ['cat-exp-fun', '娱乐'], ['cat-exp-med', '医疗'],
-    ['cat-exp-study', '学习'], ['cat-exp-social', '人情'], ['cat-exp-com', '通讯'],
-    ['cat-exp-other', '其他'],
+    ['餐饮', 1], ['交通', 2], ['购物', 3],
+    ['居住', 4], ['娱乐', 5], ['医疗', 6],
+    ['学习', 7], ['人情', 8], ['通讯', 9],
+    ['其他', 10],
   ]
   const inc: [string, string][] = [
-    ['cat-inc-salary', '工资'], ['cat-inc-bonus', '奖金'], ['cat-inc-inv', '理财'],
-    ['cat-inc-gift', '礼金'], ['cat-inc-refund', '退款'], ['cat-inc-other', '其他'],
+    ['工资', 11], ['奖金', 12], ['理财', 13],
+    ['礼金', 14], ['退款', 15], ['其他', 16],
   ]
   const t = nowISO()
   return [
-    ...exp.map(([id, name], i) => ({ id, name, type: '支出' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
-    ...inc.map(([id, name], i) => ({ id, name, type: '收入' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
+    ...exp.map(([name, id], i) => ({ id, name, type: '支出' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
+    ...inc.map(([name, id], i) => ({ id, name, type: '收入' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
   ]
 }
 
@@ -292,34 +291,35 @@ function seed(): StoreShape {
   const incIds = categories.filter((c) => c.type === '收入').map((c) => c.id)
   const t = nowISO()
 
-  // 用户（当前登录用户 + 共享账本成员）
+  // 用户（当前登录用户 + 共享账本成员；id = 1/2/3，注册用户从 4 自增）
   // 测试账号（密码统一 test123456）：
-  //   test1@openlair.dev → 我；test2@openlair.dev → 小明；test3@openlair.dev → 小美
+  //   test1@openlair.dev → 我(1)；test2@openlair.dev → 小明(2)；test3@openlair.dev → 小美(3)
   const users: User[] = [
-    { id: 'u-me', name: '我', email: 'test1@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#0071e3', createdAt: t },
-    { id: 'u-2', name: '小明', email: 'test2@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#30d158', createdAt: t },
-    { id: 'u-3', name: '小美', email: 'test3@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#ff6b00', createdAt: t },
+    { id: 1, name: '我', email: 'test1@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#0071e3', createdAt: t },
+    { id: 2, name: '小明', email: 'test2@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#30d158', createdAt: t },
+    { id: 3, name: '小美', email: 'test3@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#ff6b00', createdAt: t },
   ]
 
   // 账本：个人账本（默认）+ 共享账本（家庭只是场景之一）
   const books: Book[] = [
-    { id: 'book-personal', name: '我的账本', type: 'personal', createdAt: t },
-    { id: 'book-family', name: '家庭共享账本', type: 'shared', createdAt: t },
+    { id: 1, name: '我的账本', type: 'personal', createdAt: t },
+    { id: 2, name: '家庭共享账本', type: 'shared', createdAt: t },
   ]
 
   const bookMembers: BookMember[] = [
-    { bookId: 'book-personal', userId: 'u-me', role: 'owner', joinedAt: t },
-    { bookId: 'book-family', userId: 'u-me', role: 'owner', joinedAt: t },
-    { bookId: 'book-family', userId: 'u-2', role: 'editor', joinedAt: t },
-    { bookId: 'book-family', userId: 'u-3', role: 'editor', joinedAt: t },
+    { bookId: 1, userId: 1, role: 'owner', joinedAt: t },
+    { bookId: 2, userId: 1, role: 'owner', joinedAt: t },
+    { bookId: 2, userId: 2, role: 'editor', joinedAt: t },
+    { bookId: 2, userId: 3, role: 'editor', joinedAt: t },
   ]
 
   // 近 90 天交易：个人账本 85 + 共享账本 15（收入 ~25%）
-  const makeTx = (bookId: string, userId: string): Transaction => {
+  let txId = 0
+  const makeTx = (bookId: number, userId: number): Transaction => {
     const isIncome = rand() < 0.25
     const createdAt = new Date(Date.now() - integer(0, 89) * 86400000 - integer(0, 23) * 3600000).toISOString()
     return {
-      id: guid(),
+      id: ++txId,
       type: isIncome ? ('收入' as const) : ('支出' as const),
       categoryId: isIncome ? pick(incIds) : pick(expIds),
       bookId,
@@ -331,23 +331,23 @@ function seed(): StoreShape {
       updatedAt: createdAt,
     }
   }
-  const familyUsers = ['u-me', 'u-2', 'u-3']
+  const familyUsers = [1, 2, 3]
   const transactions: Transaction[] = [
-    ...Array.from({ length: 85 }, () => makeTx('book-personal', 'u-me')),
-    ...Array.from({ length: 15 }, () => makeTx('book-family', pick(familyUsers))),
+    ...Array.from({ length: 85 }, () => makeTx(1, 1)),
+    ...Array.from({ length: 15 }, () => makeTx(2, pick(familyUsers))),
   ]
 
   return {
     categories,
     transactions,
-    budgets: [{ id: 'bud-1', bookId: 'book-personal', month: MONTH(), expenseLimit: 5000, createdAt: t, updatedAt: t }],
+    budgets: [{ id: 1, bookId: 1, month: MONTH(), expenseLimit: 5000, createdAt: t, updatedAt: t }],
     users,
     books,
     bookMembers,
-    todos: Array.from({ length: 8 }, () => {
+    todos: Array.from({ length: 8 }, (_, i) => {
       const c = nowISO()
       return {
-        id: guid(),
+        id: i + 1,
         text: csentence(),
         quadrant: pick(QUADRANTS),
         done: bool(),
@@ -356,10 +356,10 @@ function seed(): StoreShape {
         updatedAt: c,
       }
     }),
-    events: Array.from({ length: 6 }, () => {
+    events: Array.from({ length: 6 }, (_, i) => {
       const c = nowISO()
       return {
-        id: guid(),
+        id: i + 1,
         title: csentence(),
         date: date(integer(0, 6)),
         time: `${pad(integer(8, 20))}:00`,
@@ -369,10 +369,10 @@ function seed(): StoreShape {
         updatedAt: c,
       }
     }),
-    notes: ['本周复盘', '阅读摘录', '会议纪要', '灵感速记', '部署备忘'].map((title) => {
+    notes: ['本周复盘', '阅读摘录', '会议纪要', '灵感速记', '部署备忘'].map((title, i) => {
       const c = nowISO()
       return {
-        id: guid(),
+        id: i + 1,
         title,
         summary: csentence() + '，' + csentence() + '。',
         tags: Array.from({ length: integer(1, 3) }, () => pick(TAGS)),
@@ -380,10 +380,10 @@ function seed(): StoreShape {
         createdAt: c,
       }
     }),
-    habits: HABIT_NAMES.map((name) => {
+    habits: HABIT_NAMES.map((name, i) => {
       const c = nowISO()
       return {
-        id: guid(),
+        id: i + 1,
         name,
         streak: integer(0, 15),
         done: bool(),
@@ -401,18 +401,18 @@ if (!rt.store) {
 
 // ---------- 内存态 store（全局唯一，重启即重置） ----------
 export const store: StoreShape = rt.store as StoreShape
-export { guid, date }
+export { date }
 
 // ══════════════════════════════════════════════════════════════
 // Repository 查询层（模拟后端 Service/Repository；各 mock 接口复用）
 // ══════════════════════════════════════════════════════════════
 
 // ---------- 分类 ----------
-export function getCategory(id: string): Category | undefined {
+export function getCategory(id: number): Category | undefined {
   return store.categories.find((c) => c.id === id)
 }
 
-export function categoryName(id: string): string {
+export function categoryName(id: number): string {
   return getCategory(id)?.name ?? '其他'
 }
 
@@ -423,11 +423,11 @@ export function categoriesOf(type: '支出' | '收入'): Category[] {
 // ---------- 交易筛选条件 ----------
 export interface TransactionQuery {
   /** 账本 id（必传，按账本隔离） */
-  bookId?: string
+  bookId?: number
   /** 类型：支出 / 收入 / 空（全部） */
   type?: string
   /** 分类 id：空 = 全部 */
-  categoryId?: string
+  categoryId?: number
   /** 备注/分类名关键字模糊匹配 */
   keyword?: string
   /** 日期范围（含，YYYY-MM-DD） */
@@ -515,30 +515,30 @@ export function monthlyTrend(rows: Transaction[], months = 6) {
 }
 
 /** 当前月预算（按账本） */
-export function currentBudget(bookId: string): Budget {
+export function currentBudget(bookId: number): Budget {
   const month = MONTH()
   const found = store.budgets.find((b) => b.bookId === bookId && b.month === month)
   if (found) return found
   const t = nowISO()
-  const b: Budget = { id: guid(), bookId, month, expenseLimit: 5000, createdAt: t, updatedAt: t }
+  const b: Budget = { id: nextId(store.budgets), bookId, month, expenseLimit: 5000, createdAt: t, updatedAt: t }
   store.budgets.push(b)
   return b
 }
 
 // ---------- 账本 / 成员 ----------
-export function bookOf(id: string): Book | undefined {
+export function bookOf(id: number): Book | undefined {
   return store.books.find((b) => b.id === id)
 }
 
-export function membersOf(bookId: string): BookMember[] {
+export function membersOf(bookId: number): BookMember[] {
   return store.bookMembers.filter((m) => m.bookId === bookId)
 }
 
-export function userOf(id: string): User | undefined {
+export function userOf(id: number): User | undefined {
   return store.users.find((u) => u.id === id)
 }
 
-export function userName(id: string): string {
+export function userName(id: number): string {
   return userOf(id)?.name ?? '未知'
 }
 

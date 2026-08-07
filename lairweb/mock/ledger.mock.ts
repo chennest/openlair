@@ -2,7 +2,7 @@ import { defineMock } from 'vite-plugin-mock-dev-server'
 import {
   store,
   type Transaction,
-  guid,
+  nextId,
   date,
   queryTransactions,
   paginate,
@@ -31,10 +31,14 @@ function toDTO(t: Transaction): TransactionDTO {
 function queryFrom(req: { query?: Record<string, unknown> }): TransactionQuery {
   const q = req.query ?? {}
   const str = (v: unknown) => (v == null ? '' : String(v))
+  const num = (v: unknown) => {
+    const n = Number(v)
+    return Number.isFinite(n) && n > 0 ? n : undefined
+  }
   return {
-    bookId: str(q.bookId) || undefined,
+    bookId: num(q.bookId),
     type: str(q.type) || undefined,
-    categoryId: str(q.categoryId) || undefined,
+    categoryId: num(q.categoryId),
     keyword: str(q.keyword) || undefined,
     startDate: str(q.startDate) || undefined,
     endDate: str(q.endDate) || undefined,
@@ -65,7 +69,7 @@ export default {
         const rows = queryTransactions(q)
         const page = Number(req.query?.page) || 1
         const pageSize = Number(req.query?.pageSize) || 20
-        const budget = currentBudget(q.bookId ?? 'book-personal')
+        const budget = currentBudget(q.bookId ?? 1)
         return ok({
           summary: summarize(rows),
           categoryStats: categoryStats(rows),
@@ -85,7 +89,7 @@ export default {
     method: 'GET',
     response: respond(
       guard((req) => {
-        const bookId = String(req.query?.bookId ?? 'book-personal')
+        const bookId = Number(req.query?.bookId) || 1
         return ok(monthlyTrend(store.transactions.filter((t) => t.bookId === bookId), 6))
       }),
     ),
@@ -97,7 +101,7 @@ export default {
     method: 'GET',
     response: respond(
       guard((req) => {
-        const bookId = String(req.query?.bookId ?? 'book-personal')
+        const bookId = Number(req.query?.bookId) || 1
         return ok({ budget: currentBudget(bookId).expenseLimit })
       }),
     ),
@@ -107,7 +111,7 @@ export default {
     method: 'PUT',
     response: respond(
       guard((req) => {
-        const bookId = String(req.body?.bookId ?? 'book-personal')
+        const bookId = Number(req.body?.bookId) || 1
         const amount = Number(req.body?.amount)
         if (!Number.isFinite(amount) || amount < 0) return err(400, '预算金额不合法')
         const b = currentBudget(bookId)
@@ -126,7 +130,7 @@ export default {
       guard((req, auth) => {
         const { type, categoryId, category, amount, date: reqDate, note, bookId } = req.body ?? {}
         // 兼容：传 categoryId 直接使用；传 category 名字则查表（或兜底「其他」）
-        let cid = String(categoryId || '')
+        let cid = Number(categoryId)
         if (!cid && category) {
           const c = store.categories.find((x) => x.name === String(category))
           if (c) cid = c.id
@@ -137,10 +141,10 @@ export default {
         }
         const t = new Date().toISOString()
         const item: Transaction = {
-          id: guid(),
+          id: nextId(store.transactions),
           type: type === '收入' ? '收入' : '支出',
           categoryId: cid,
-          bookId: String(bookId || 'book-personal'),
+          bookId: Number(bookId) || 1,
           userId: auth.userId,
           amount: Number(amount) || 0,
           date: String(reqDate || date()),

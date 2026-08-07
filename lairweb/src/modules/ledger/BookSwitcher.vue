@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'switch', bookId: string): void
+  (e: 'switch', bookId: number): void
   (e: 'create'): void
   (e: 'manage', book: Book): void
 }>()
@@ -20,7 +20,7 @@ function initials(name: string) {
   return name.slice(0, 1)
 }
 
-function pick(bookId: string) {
+function pick(bookId: number) {
   open.value = false
   if (bookId !== props.current?.id) emit('switch', bookId)
 }

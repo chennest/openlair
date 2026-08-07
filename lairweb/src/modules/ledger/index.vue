@@ -28,7 +28,7 @@ const categories = ref<Category[]>([])
 
 // 账本状态
 const books = ref<Book[]>([])
-const currentBookId = ref('book-personal')
+const currentBookId = ref(1)
 const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
 const showManage = ref(false)
 const showCreate = ref(false)
@@ -71,7 +71,7 @@ async function load() {
   }
 }
 
-async function switchBook(bookId: string) {
+async function switchBook(bookId: number) {
   currentBookId.value = bookId
   query.value = { page: 1, pageSize: 20 }
   await load()
@@ -84,7 +84,8 @@ async function handleQueryChange(q: LedgerQuery) {
 
 async function handleCreate(payload: Parameters<typeof ledgerApi.create>[0]) {
   try {
-    await ledgerApi.create({ ...payload, bookId: currentBookId.value, userId: 'u-me' })
+    // 记账人由后端从 token 解析（mock 与真实后端一致）
+    await ledgerApi.create({ ...payload, bookId: currentBookId.value })
     showDialog.value = false
     savedTip.value = true
     setTimeout(() => (savedTip.value = false), 2000)
@@ -94,7 +95,7 @@ async function handleCreate(payload: Parameters<typeof ledgerApi.create>[0]) {
   }
 }
 
-async function handleRemove(id: string) {
+async function handleRemove(id: number) {
   await ledgerApi.remove(id)
   await load()
 }
@@ -115,7 +116,7 @@ async function handleBookCreate(input: { name: string; type: 'personal' | 'share
   }
 }
 
-async function handleMemberAdd(userId: string) {
+async function handleMemberAdd(userId: number) {
   const r = await bookApi.addMember(currentBookId.value, { userId })
   if (r.book) await loadBooks()
   showManage.value = false
@@ -127,7 +128,7 @@ async function handleMemberAddByName(name: string) {
   showManage.value = false
 }
 
-async function handleMemberRemove(userId: string) {
+async function handleMemberRemove(userId: number) {
   const r = await bookApi.removeMember(currentBookId.value, userId)
   if (r.book) await loadBooks()
 }

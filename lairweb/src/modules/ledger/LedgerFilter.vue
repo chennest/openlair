@@ -64,7 +64,7 @@ function pickType(type: LedgerQuery['type']) {
   change({ type, categoryId: undefined, page: 1 })
 }
 
-function pickCategory(categoryId: string) {
+function pickCategory(categoryId: number) {
   change({ categoryId: categoryId || undefined, page: 1 })
 }
 
@@ -107,9 +107,9 @@ function clearAll() {
     </div>
 
     <!-- 分类 -->
-    <select class="select" :value="value.categoryId ?? ''" @change="pickCategory(($event.target as HTMLSelectElement).value)">
+    <select class="select" :value="value.categoryId ? String(value.categoryId) : ''" @change="pickCategory(Number(($event.target as HTMLSelectElement).value))">
       <option value="">全部分类</option>
-      <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+      <option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
     </select>
 
     <!-- 关键字 -->

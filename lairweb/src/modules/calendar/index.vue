@@ -39,7 +39,7 @@ async function toggleDone(e: CalendarEvent) {
   await load()
 }
 
-async function removeEvent(id: string) {
+async function removeEvent(id: number) {
   await calendarApi.remove(id)
   await load()
 }

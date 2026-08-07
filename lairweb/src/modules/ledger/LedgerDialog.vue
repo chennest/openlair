@@ -23,12 +23,12 @@ const today = () => {
 
 const defaultCategoryId = (type: '支出' | '收入') => {
   const list = props.categories.filter((c) => c.type === type)
-  return list.find((c) => c.isDefault)?.id ?? list[0]?.id ?? ''
+  return list.find((c) => c.isDefault)?.id ?? list[0]?.id ?? 0
 }
 
-const form = ref<{ type: '支出' | '收入'; categoryId: string; amount: number; date: string; note: string }>({
+const form = ref<{ type: '支出' | '收入'; categoryId: number; amount: number; date: string; note: string }>({
   type: '支出',
-  categoryId: '',
+  categoryId: 0,
   amount: 0,
   date: today(),
   note: '',
@@ -56,7 +56,7 @@ watch(
   },
 )
 
-function pickCategory(id: string) {
+function pickCategory(id: number) {
   form.value.categoryId = id
 }
 

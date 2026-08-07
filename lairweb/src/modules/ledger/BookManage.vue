@@ -9,14 +9,14 @@ const props = defineProps<{
   open: boolean
   book: Book | null
   /** 可选添加的用户池（当前不是成员的人） */
-  candidates: { id: string; name: string; avatarColor: string }[]
+  candidates: { id: number; name: string; avatarColor: string }[]
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'add', userId: string): void
+  (e: 'add', userId: number): void
   (e: 'addByName', name: string): void
-  (e: 'remove', userId: string): void
+  (e: 'remove', userId: number): void
 }>()
 
 const mode = ref<'list' | 'add'>('list')

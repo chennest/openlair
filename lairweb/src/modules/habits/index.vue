@@ -45,7 +45,7 @@ async function toggleDone(h: Habit) {
   await load()
 }
 
-async function removeHabit(id: string) {
+async function removeHabit(id: number) {
   await habitApi.remove(id)
   await load()
 }

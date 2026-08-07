@@ -2,7 +2,7 @@ import { get, post, put, del } from '../../api/request'
 
 // ---------- 类型（对齐 mock 表结构 / 后端 DTO） ----------
 export interface Category {
-  id: string
+  id: number
   name: string
   type: '支出' | '收入'
   sortOrder: number
@@ -10,14 +10,14 @@ export interface Category {
 }
 
 export interface Transaction {
-  id: string
+  id: number
   type: '支出' | '收入'
-  categoryId: string
+  categoryId: number
   /** join 分类名（后端 DTO 返回） */
   category: string
-  bookId: string
+  bookId: number
   /** 记账人 id */
-  userId: string
+  userId: number
   /** join 记账人名字 */
   userName: string
   amount: number
@@ -27,27 +27,27 @@ export interface Transaction {
 
 // ---------- 账本 / 成员 ----------
 export interface User {
-  id: string
+  id: number
   name: string
   avatarColor: string
 }
 
 export interface BookMember {
-  bookId: string
-  userId: string
+  bookId: number
+  userId: number
   role: 'owner' | 'editor'
   user?: User
 }
 
 export interface Book {
-  id: string
+  id: number
   name: string
   type: 'personal' | 'shared'
   members: BookMember[]
 }
 
 export interface CategoryStat {
-  categoryId: string
+  categoryId: number
   name: string
   amount: number
   percent: number
@@ -68,11 +68,11 @@ export interface TrendPoint {
 /** 历史查询参数（与后端 query 对齐） */
 export interface LedgerQuery {
   /** 账本 id */
-  bookId?: string
+  bookId?: number
   /** 支出 / 收入 / 空 = 全部 */
   type?: '支出' | '收入' | ''
   /** 分类 id */
-  categoryId?: string
+  categoryId?: number
   keyword?: string
   /** YYYY-MM-DD，含边界 */
   startDate?: string
@@ -93,9 +93,9 @@ export interface LedgerData {
 
 export interface CreateTransactionInput {
   type: '支出' | '收入'
-  categoryId: string
-  bookId?: string
-  userId?: string
+  categoryId: number
+  bookId?: number
+  userId?: number
   amount: number
   date?: string
   note?: string
@@ -109,9 +109,9 @@ export const CATEGORIES = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORI
 // ---------- API ----------
 function qs(query: LedgerQuery): string {
   const params = new URLSearchParams()
-  if (query.bookId) params.set('bookId', query.bookId)
+  if (query.bookId) params.set('bookId', String(query.bookId))
   if (query.type) params.set('type', query.type)
-  if (query.categoryId) params.set('categoryId', query.categoryId)
+  if (query.categoryId) params.set('categoryId', String(query.categoryId))
   if (query.keyword) params.set('keyword', query.keyword)
   if (query.startDate) params.set('startDate', query.startDate)
   if (query.endDate) params.set('endDate', query.endDate)
@@ -127,13 +127,13 @@ export const ledgerApi = {
   /** 交易列表（按账本隔离 + 筛选 + 分页） */
   list: (query: LedgerQuery = {}) => get<LedgerData>(`/api/ledger${qs(query)}`),
   /** 近 6 月收支趋势（按账本） */
-  trend: (bookId?: string) => get<TrendPoint[]>(`/api/ledger/trend${bookId ? `?bookId=${bookId}` : ''}`),
+  trend: (bookId?: number) => get<TrendPoint[]>(`/api/ledger/trend${bookId ? `?bookId=${bookId}` : ''}`),
   /** 当前月预算（按账本） */
-  getBudget: (bookId?: string) => get<{ budget: number }>(`/api/ledger/budget${bookId ? `?bookId=${bookId}` : ''}`),
-  updateBudget: (bookId: string, amount: number) =>
-    put<{ ok: boolean; budget: number }>('/api/ledger/budget', { bookId, amount }),
-  create: (input: CreateTransactionInput) => post<{ ok: boolean; id: string }>('/api/ledger', input),
-  remove: (id: string) => del<{ ok: boolean }>(`/api/ledger/${id}`),
+  getBudget: (bookId?: number) => get<{ budget: number }>(`/api/ledger/budget${bookId ? `?bookId=${bookId}` : ''}`),
+  updateBudget: (bookId: number, amount: number) =>
+    put<{ budget: number }>('/api/ledger/budget', { bookId, amount }),
+  create: (input: CreateTransactionInput) => post<{ id: number; item: Transaction }>('/api/ledger', input),
+  remove: (id: number) => del<{ ok: boolean }>(`/api/ledger/${id}`),
 }
 
 /** 账本 API（共享账单核心） */
@@ -141,8 +141,8 @@ export const bookApi = {
   list: () => get<Book[]>('/api/books'),
   create: (input: { name: string; type: 'personal' | 'shared' }) =>
     post<{ ok: boolean; book: Book }>('/api/books', input),
-  addMember: (bookId: string, input: { userId?: string; name?: string }) =>
+  addMember: (bookId: number, input: { userId?: number; name?: string }) =>
     post<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members`, input),
-  removeMember: (bookId: string, userId: string) =>
+  removeMember: (bookId: number, userId: number) =>
     del<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members/${userId}`),
 }

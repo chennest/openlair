@@ -1,7 +1,7 @@
 import { get, post } from '../../api/request'
 
 export interface AuthUser {
-  id: string
+  id: number
   name: string
   email: string
   avatarColor: string

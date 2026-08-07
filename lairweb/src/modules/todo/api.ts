@@ -1,7 +1,7 @@
 import { get, post, put, del } from '../../api/request'
 
 export interface TodoItem {
-  id: string
+  id: number
   text: string
   quadrant: string
   done: boolean
@@ -19,7 +19,7 @@ export const DUES = ['今天', '明天', '本周', '下月', '无期限']
 
 export const todoApi = {
   list: () => get<{ todos: TodoItem[] }>('/api/todo'),
-  create: (input: CreateTodoInput) => post<{ ok: boolean; id: string }>('/api/todo', input),
-  update: (id: string, patch: Partial<TodoItem>) => put<{ ok: boolean }>(`/api/todo/${id}`, patch),
-  remove: (id: string) => del<{ ok: boolean }>(`/api/todo/${id}`),
+  create: (input: CreateTodoInput) => post<{ ok: boolean; id: number }>('/api/todo', input),
+  update: (id: number, patch: Partial<TodoItem>) => put<{ ok: boolean }>(`/api/todo/${id}`, patch),
+  remove: (id: number) => del<{ ok: boolean }>(`/api/todo/${id}`),
 }

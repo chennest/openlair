@@ -4,7 +4,7 @@ import {
   type Book,
   type BookMember,
   type User,
-  guid,
+  nextId,
   membersOf,
   userOf,
   respond,
@@ -43,7 +43,7 @@ export default {
       guard((req, auth) => {
         const { name, type } = req.body ?? {}
         const b: Book = {
-          id: guid(),
+          id: nextId(store.books),
           name: String(name || '共享账本'),
           type: type === 'shared' ? 'shared' : 'personal',
           createdAt: new Date().toISOString(),
@@ -66,12 +66,12 @@ export default {
     method: 'POST',
     response: respond(
       guard((req) => {
-        const bookId = String(req.params?.id)
+        const bookId = Number(req.params?.id)
         const { userId, name } = req.body ?? {}
-        let uid = String(userId || '')
+        let uid = Number(userId)
         if (!uid && name) {
           const u: User = {
-            id: guid(),
+            id: nextId(store.users),
             name: String(name).slice(0, 12),
             avatarColor: ['#30d158', '#ff6b00', '#5e5ce6', '#ff375f', '#1d9bf0', '#ff9f0a'][Math.floor(Math.random() * 6)],
             createdAt: new Date().toISOString(),
@@ -97,8 +97,8 @@ export default {
     method: 'DELETE',
     response: respond(
       guard((req) => {
-        const bookId = String(req.params?.id)
-        const userId = String(req.params?.userId)
+        const bookId = Number(req.params?.id)
+        const userId = Number(req.params?.userId)
         const m = store.bookMembers.find((x) => x.bookId === bookId && x.userId === userId)
         if (!m) return err(404, '该成员不在账本中')
         if (m.role === 'owner') return err(400, '不能移除账本创建者')

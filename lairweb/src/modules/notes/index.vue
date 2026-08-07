@@ -31,7 +31,7 @@ async function createNote(payload: Parameters<typeof noteApi.create>[0]) {
   }
 }
 
-async function removeNote(id: string) {
+async function removeNote(id: number) {
   await noteApi.remove(id)
   await load()
 }

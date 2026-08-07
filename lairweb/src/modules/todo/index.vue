@@ -39,7 +39,7 @@ async function toggleDone(item: TodoItem) {
   await load()
 }
 
-async function removeTodo(id: string) {
+async function removeTodo(id: number) {
   await todoApi.remove(id)
   await load()
 }

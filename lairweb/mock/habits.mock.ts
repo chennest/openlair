@@ -1,5 +1,5 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
-import { store, type Habit, guid, respond, ok, err, guard } from './store'
+import { store, type Habit, nextId, respond, ok, err, guard } from './store'
 
 
 export default {
@@ -20,7 +20,7 @@ export default {
       guard((req) => {
         const { name } = req.body ?? {}
         const item: Habit = {
-          id: guid(),
+          id: nextId(store.habits),
           name: String(name || '新习惯'),
           streak: 0,
           done: false,

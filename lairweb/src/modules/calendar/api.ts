@@ -1,7 +1,7 @@
 import { get, post, put, del } from '../../api/request'
 
 export interface CalendarEvent {
-  id: string
+  id: number
   title: string
   date: string
   time: string
@@ -18,7 +18,7 @@ export interface CreateEventInput {
 
 export const calendarApi = {
   list: () => get<{ events: CalendarEvent[] }>('/api/calendar'),
-  create: (input: CreateEventInput) => post<{ ok: boolean; id: string }>('/api/calendar', input),
-  update: (id: string, patch: Partial<CalendarEvent>) => put<{ ok: boolean }>(`/api/calendar/${id}`, patch),
-  remove: (id: string) => del<{ ok: boolean }>(`/api/calendar/${id}`),
+  create: (input: CreateEventInput) => post<{ ok: boolean; id: number }>('/api/calendar', input),
+  update: (id: number, patch: Partial<CalendarEvent>) => put<{ ok: boolean }>(`/api/calendar/${id}`, patch),
+  remove: (id: number) => del<{ ok: boolean }>(`/api/calendar/${id}`),
 }

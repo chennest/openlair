@@ -1,7 +1,7 @@
 import { get, post, put, del } from '../../api/request'
 
 export interface Habit {
-  id: string
+  id: number
   name: string
   streak: number
   done: boolean
@@ -16,7 +16,7 @@ export interface UpdateHabitInput {
 
 export const habitApi = {
   list: () => get<{ habits: Habit[] }>('/api/habits'),
-  create: (name: string) => post<{ ok: boolean; id: string }>('/api/habits', { name }),
-  update: (id: string, patch: UpdateHabitInput) => put<{ ok: boolean }>(`/api/habits/${id}`, patch),
-  remove: (id: string) => del<{ ok: boolean }>(`/api/habits/${id}`),
+  create: (name: string) => post<{ ok: boolean; id: number }>('/api/habits', { name }),
+  update: (id: number, patch: UpdateHabitInput) => put<{ ok: boolean }>(`/api/habits/${id}`, patch),
+  remove: (id: number) => del<{ ok: boolean }>(`/api/habits/${id}`),
 }

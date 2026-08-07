@@ -7,7 +7,7 @@ defineProps<{ title: string; items: TodoItem[] }>()
 
 const emit = defineEmits<{
   (e: 'toggle', item: TodoItem): void
-  (e: 'remove', id: string): void
+  (e: 'remove', id: number): void
 }>()
 </script>
 

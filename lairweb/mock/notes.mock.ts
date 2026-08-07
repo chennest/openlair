@@ -1,5 +1,5 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
-import { store, type Note, guid, date, respond, ok, err, guard } from './store'
+import { store, type Note, nextId, date, respond, ok, err, guard } from './store'
 
 
 export default {
@@ -20,7 +20,7 @@ export default {
       guard((req) => {
         const { title, summary, tags } = req.body ?? {}
         const item: Note = {
-          id: guid(),
+          id: nextId(store.notes),
           title: String(title || '未命名'),
           summary: String(summary || ''),
           tags: Array.isArray(tags) ? tags.map(String) : [],
