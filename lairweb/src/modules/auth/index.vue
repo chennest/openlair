@@ -153,7 +153,7 @@ async function submit() {
         </button>
       </form>
 
-      <p v-if="isLogin" class="demo-hint">测试账号：me@openlair.dev / openlair123</p>
+      <p v-if="isLogin" class="demo-hint">测试账号：test1@openlair.dev / test2@openlair.dev / test3@openlair.dev<br />密码统一 test123456</p>
     </div>
   </div>
 </template>

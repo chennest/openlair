@@ -293,11 +293,12 @@ function seed(): StoreShape {
   const t = nowISO()
 
   // 用户（当前登录用户 + 共享账本成员）
-  // 测试账号：me@openlair.dev / openlair123（seed 用 scrypt 哈希，重启后仍可登录）
+  // 测试账号（密码统一 test123456）：
+  //   test1@openlair.dev → 我；test2@openlair.dev → 小明；test3@openlair.dev → 小美
   const users: User[] = [
-    { id: 'u-me', name: '我', email: 'me@openlair.dev', passwordHash: hashPassword('openlair123'), avatarColor: '#0071e3', createdAt: t },
-    { id: 'u-2', name: '小明', avatarColor: '#30d158', createdAt: t },
-    { id: 'u-3', name: '小美', avatarColor: '#ff6b00', createdAt: t },
+    { id: 'u-me', name: '我', email: 'test1@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#0071e3', createdAt: t },
+    { id: 'u-2', name: '小明', email: 'test2@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#30d158', createdAt: t },
+    { id: 'u-3', name: '小美', email: 'test3@openlair.dev', passwordHash: hashPassword('test123456'), avatarColor: '#ff6b00', createdAt: t },
   ]
 
   // 账本：个人账本（默认）+ 共享账本（家庭只是场景之一）
