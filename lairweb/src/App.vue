@@ -128,10 +128,7 @@ function goTo(index: number) {
 
     <main class="content">
       <header class="content-header">
-        <div>
-          <p class="eyebrow">OpenLair Workspace</p>
-          <h1>{{ pageTitle }}</h1>
-        </div>
+        <h1>{{ pageTitle }}</h1>
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
       </header>
       <RouterView />

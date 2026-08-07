@@ -76,15 +76,16 @@ onMounted(async () => {
   <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p></div></div>
 
   <div v-else class="ledger">
-    <!-- 顶部操作条 -->
-    <div class="toolbar">
-      <button class="add-btn" @click="showDialog = true">＋ 记一笔</button>
-      <Transition name="fade">
-        <span v-if="savedTip" class="saved-tip">✓ 已记录</span>
-      </Transition>
-    </div>
-
-    <LedgerSummary :summary="data!.summary" />
+    <LedgerSummary :summary="data!.summary">
+      <template #action>
+        <div class="hero-actions">
+          <button class="add-btn" @click="showDialog = true">＋ 记一笔</button>
+          <Transition name="fade">
+            <span v-if="savedTip" class="saved-tip">✓ 已记录</span>
+          </Transition>
+        </div>
+      </template>
+    </LedgerSummary>
 
     <!-- 查询筛选 -->
     <LedgerFilter :categories="categories" :value="query" @change="handleQueryChange" />
@@ -112,37 +113,43 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.toolbar {
+.ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.hero-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 12px;
 }
+/* 渐变 hero 上的玻璃 chip（components.md §8：glass-chip 配方） */
 .add-btn {
   display: inline-flex;
   align-items: center;
-  height: 44px;
-  padding: 0 22px;
-  border: 0;
+  height: 40px;
+  padding: 0 20px;
   border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: #fff;
-  background: var(--accent);
   font-weight: 600;
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
+  transition: transform 160ms var(--ease-out-quart), background 160ms ease;
 }
 .add-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--sh-cta);
+  background: rgba(255, 255, 255, 0.26);
 }
 .add-btn:active {
   transform: scale(0.97);
 }
 .saved-tip {
-  color: var(--live);
+  color: rgba(255, 255, 255, 0.92);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 .fade-enter-active,
 .fade-leave-active {
@@ -151,11 +158,6 @@ onMounted(async () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-}
-.ledger {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 .lower-grid {
   display: grid;
