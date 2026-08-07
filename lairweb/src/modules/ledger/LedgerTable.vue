@@ -86,7 +86,7 @@ const emit = defineEmits<{
   color: var(--live);
 }
 .table .expense {
-  color: var(--heat);
+  color: var(--text);
 }
 .sub {
   color: var(--text-3);

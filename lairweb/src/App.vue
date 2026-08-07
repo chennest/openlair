@@ -7,13 +7,23 @@ const router = useRouter()
 const pageTitle = computed(() => (route.meta.title as string) || '总揽')
 
 const navItems = [
-  { path: '/', label: '总揽', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
-  { path: '/ledger', label: '记账', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm1-13h-2v1.2A4 4 0 0 0 8.5 11h2a2 2 0 0 1 4 0h2a4 4 0 0 0-3.5-3.8V7zm-1 6.5a2 2 0 0 1-2-2h-2a4 4 0 0 0 4 4V19h2v-3.5a4 4 0 0 0 4-4h-2a2 2 0 0 1-4 0z' },
-  { path: '/calendar', label: '日历', icon: 'M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2zm-3 6v11h16V8H4zm3-1h10v2H7V7z' },
-  { path: '/todo', label: '待办', icon: 'M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v12h14V6H5zm3.5 2l3 3 5-5 1.4 1.4-6.4 6.4-3-3L8.5 8z' },
-  { path: '/notes', label: '笔记', icon: 'M5 2h11l4 4v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V7h-3V4H6zm10 9v2H8v-2h8zm0-4v2H8V9h8z' },
-  { path: '/habits', label: '习惯', icon: 'M12 2c1.5 3.2 4.5 5 6 6.5 1.8 1.8 3 4.2 3 6.9A9 9 0 0 1 12 24 9 9 0 0 1 3 15.4c0-2.7 1.2-5.1 3-6.9C7.5 7 10.5 5.2 12 2zm0 4.6C10.8 8 8.4 9.7 6.9 11.3A6.9 6.9 0 0 0 5 15.4 7 7 0 0 0 12 22a7 7 0 0 0 7-6.6c0-1.7-.7-3.1-1.9-4.1C15.6 9.7 13.2 8 12 6.6zm-2 8.9a2 2 0 1 0 4 0c0-1.1-2-3-2-3s-2 1.9-2 3z' },
+  { path: '/', label: '总揽', icon: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'] },
+  { path: '/ledger', label: '记账', icon: ['M21 12V7H5a2 2 0 0 1 0-4h14v4', 'M3 5v14a2 2 0 0 0 2 2h16v-5', 'M18 12a2 2 0 0 0 0 4h4v-4Z'] },
+  { path: '/calendar', label: '日历', icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'] },
+  { path: '/todo', label: '待办', icon: ['m9 11 3 3L22 4', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'] },
+  { path: '/notes', label: '笔记', icon: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'] },
+  { path: '/habits', label: '习惯', icon: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'] },
 ]
+
+// Lucide 线性图标：24 网格、单笔画 1.75、currentColor（icons.md）
+const iconProps = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': 1.75,
+  'stroke-linecap': 'round' as const,
+  'stroke-linejoin': 'round' as const,
+}
 
 // ---------- 响应式：桌面 / 手机布局切换 ----------
 const isMobile = ref(false)
@@ -42,6 +52,13 @@ let touchStartX = 0
 let touchStartY = 0
 let touchActive = false
 const swipeDirection = ref<'forward' | 'back'>('forward')
+
+// 手机顶栏 scroll-edge：内容滚动后才出现 hairline（design-system.md §4）
+const mHeaderEl = ref<HTMLElement | null>(null)
+function onMScroll(e: Event) {
+  const el = e.currentTarget as HTMLElement
+  mHeaderEl.value?.classList.toggle('scrolled', el.scrollTop > 8)
+}
 
 function onTouchStart(e: TouchEvent) {
   const t = e.touches[0]
@@ -96,8 +113,8 @@ function goTo(index: number) {
           active-class="is-active"
           exact-active-class="is-active"
         >
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path :d="item.icon" />
+          <svg class="nav-icon" v-bind="iconProps" aria-hidden="true">
+            <path v-for="(d, i) in item.icon" :key="i" :d="d" />
           </svg>
           <span>{{ item.label }}</span>
         </RouterLink>
@@ -123,13 +140,13 @@ function goTo(index: number) {
 
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
-    <header class="m-header">
+    <header class="m-header" ref="mHeaderEl">
       <span class="m-brand">穴</span>
       <strong>{{ pageTitle }}</strong>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
     </header>
 
-    <main class="m-content">
+    <main class="m-content" @scroll="onMScroll">
       <Transition :name="swipeDirection === 'forward' ? 'slide-fwd' : 'slide-back'" mode="out-in">
         <RouterView :key="route.path" />
       </Transition>
@@ -143,8 +160,8 @@ function goTo(index: number) {
         :class="{ 'is-active': route.path === item.path }"
         @click="goTo(index)"
       >
-        <svg class="m-tab-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path :d="item.icon" />
+        <svg class="m-tab-icon" v-bind="iconProps" aria-hidden="true">
+          <path v-for="(d, i) in item.icon" :key="i" :d="d" />
         </svg>
         <span>{{ item.label }}</span>
       </button>

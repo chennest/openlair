@@ -1,54 +1,86 @@
 <script setup lang="ts">
-// 收支摘要三卡（纯展示）
+// 收支摘要：渐变结余 hero（唯一彩色时刻，wallet.html 模式）+ 收入/支出灰度卡
 import type { LedgerSummary } from './api'
 
 defineProps<{ summary: LedgerSummary }>()
 </script>
 
 <template>
-  <section class="card-grid" aria-label="收支摘要">
-    <article class="card">
-      <div class="card-title"><span>本月收入</span></div>
-      <div class="big-num">¥{{ Number(summary.income).toFixed(2) }}</div>
-    </article>
-    <article class="card">
-      <div class="card-title"><span>本月支出</span></div>
-      <div class="big-num expense">¥{{ Number(summary.expense).toFixed(2) }}</div>
-    </article>
-    <article class="card">
-      <div class="card-title"><span>结余</span></div>
-      <div class="big-num">¥{{ Number(summary.balance).toFixed(2) }}</div>
-    </article>
+  <section class="summary" aria-label="收支摘要">
+    <div class="hero">
+      <div class="orb o1"></div>
+      <div class="orb o2"></div>
+      <div class="hero-in">
+        <span class="lbl">本月结余</span>
+        <div class="amt">¥{{ Number(summary.balance).toFixed(2) }}</div>
+        <div class="meta">
+          <span class="num">收入 ¥{{ Number(summary.income).toFixed(2) }}</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span class="num">支出 ¥{{ Number(summary.expense).toFixed(2) }}</span>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 18px;
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-hero);
+  padding: clamp(24px, 3.6vw, 36px);
+  background: var(--grad-cta);
+  box-shadow: var(--sh-cta);
 }
-.card {
-  padding: 22px 22px 20px;
-  border-radius: var(--r-panel);
-  background: var(--surface);
-  box-shadow: var(--sh-panel);
+.orb {
+  position: absolute;
+  border-radius: 50%;
 }
-.card-title {
-  margin-bottom: 16px;
-  color: var(--text-2);
-  font-size: 0.8rem;
+.o1 {
+  width: 260px;
+  height: 260px;
+  background: rgba(255, 255, 255, 0.18);
+  filter: blur(48px);
+  top: -90px;
+  right: -40px;
+}
+.o2 {
+  width: 200px;
+  height: 200px;
+  background: rgba(120, 80, 255, 0.5);
+  filter: blur(52px);
+  bottom: -100px;
+  left: 14%;
+}
+.hero-in {
+  position: relative;
+}
+.lbl {
+  font-size: 13px;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.8);
+}
+.amt {
+  margin-top: 6px;
+  font-size: clamp(30px, 4vw, 40px);
   font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.big-num {
-  font-size: 2.1rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  color: var(--text);
+  color: #fff;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.expense {
-  color: var(--heat);
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.82);
+  font-variant-numeric: tabular-nums;
+}
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
 }
 </style>

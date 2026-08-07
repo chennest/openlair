@@ -72,6 +72,11 @@ onMounted(async () => {
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--sh-panel);
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart);
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-lift);
 }
 .card-title {
   display: flex;
