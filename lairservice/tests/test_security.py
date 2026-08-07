@@ -12,8 +12,6 @@ def test_resolve_jwt_secret_priority_env(monkeypatch) -> None:
 
 def test_resolve_jwt_secret_falls_back_through_chain(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("OPENLAIR_JWT_SECRET", raising=False)
-    # 指向不存在的 OpenLair 配置目录，隔离本机 ~/.openlair/.env 干扰
-    monkeypatch.setenv("OPENLAIR_CONFIG", str(tmp_path / "nope" / "openlair.json"))
     secret = resolve_jwt_secret()
     assert isinstance(secret, str)
     assert len(secret) >= 32  # 无论走项目 .env 还是 DEV_SECRET，都满足 HS256 最小密钥长度

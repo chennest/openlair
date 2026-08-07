@@ -1,100 +1,43 @@
-from __future__ import annotations
+"""配置读取：项目根 .env（lairservice/.env）+ 进程环境变量。
 
-from dataclasses import dataclass
+优先级：进程环境 → 项目根 .env → 默认值。
+"""
+
 from pathlib import Path
-from typing import Any
-import json
 import os
 
-
-DEFAULT_OPENLAIR_CONFIG_PATH = Path.home() / ".openlair" / "openlair.json"
-DEFAULT_OPENLAIR_ENV_FILENAME = ".env"
-
-DEFAULT_OPENLAIR_CONFIG_TEMPLATE: dict[str, Any] = {
-    "model": {
-        "default_route": "agent",
-        "routes": {
-            "agent": "main",
-            "chat": "main",
-            "summary": "main",
-        },
-        "providers": {
-            "main": {
-                "kind": "openai_compatible",
-                "model": "replace-with-model-name",
-                "base_url": "https://replace-with-provider-base-url/v1",
-                "api_key": "$OPENLAIR_MODEL_API_KEY",
-                "timeout_seconds": 60,
-            }
-        },
-    }
-}
-
-
-@dataclass(frozen=True)
-class OpenLairConfig:
-    path: Path
-    data: dict[str, Any]
-    env: dict[str, str]
-
-    @property
-    def model(self) -> dict[str, Any]:
-        model_config = self.data.get("model")
-        if not isinstance(model_config, dict):
-            raise ValueError("OpenLair config field 'model' must be an object")
-        return model_config
-
-
-def resolve_openlair_config_path(path: Path | str | None = None) -> Path:
-    if path is not None:
-        return Path(path).expanduser()
-    configured = os.environ.get("OPENLAIR_CONFIG")
-    if configured:
-        return Path(configured).expanduser()
-    return DEFAULT_OPENLAIR_CONFIG_PATH
-
-
-def ensure_openlair_config(path: Path | str | None = None) -> Path:
-    config_path = resolve_openlair_config_path(path)
-    if config_path.exists():
-        ensure_openlair_env(config_path)
-        return config_path
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(DEFAULT_OPENLAIR_CONFIG_TEMPLATE, ensure_ascii=False, indent=2), encoding="utf-8")
-    ensure_openlair_env(config_path)
-    return config_path
-
-
-def load_openlair_config(path: Path | str | None = None) -> OpenLairConfig:
-    config_path = ensure_openlair_config(path)
-    data = json.loads(config_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("OpenLair config must be a JSON object")
-    return OpenLairConfig(path=config_path, data=data, env=load_openlair_env(config_path))
-
-
-def ensure_openlair_env(config_path: Path | str) -> Path:
-    env_path = Path(config_path).expanduser().parent / DEFAULT_OPENLAIR_ENV_FILENAME
-    if not env_path.exists():
-        env_path.write_text("OPENLAIR_MODEL_API_KEY=\n", encoding="utf-8")
-    return env_path
-
-
-def load_openlair_env(config_path: Path | str) -> dict[str, str]:
-    env_path = ensure_openlair_env(config_path)
-    values: dict[str, str] = {}
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if key:
-            values[key] = _strip_env_value(value.strip())
-    return values
+# 项目根目录（src/lairservice/config.py → 上溯 2 层）
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _strip_env_value(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def _parse_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        values[key] = _strip_env_value(value.strip())
+    return values
+
+
+def resolve_env_value(key: str, default: str | None = None) -> str | None:
+    """按优先级读取配置值：进程环境 → 项目根 .env（lairservice/.env）→ 默认值。"""
+    from_env = os.environ.get(key)
+    if from_env:
+        return from_env
+    project_env = _parse_dotenv(_PROJECT_ROOT / ".env")
+    if project_env.get(key):
+        return project_env[key]
+    return default

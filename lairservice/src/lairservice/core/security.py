@@ -4,63 +4,27 @@
 - 密码哈希使用 hashlib.scrypt（NIST 推荐 KDF），格式 `scrypt$salt$hash`；
   生产环境可替换为 passlib/bcrypt。
 - 登出黑名单：jti 写入 revoked_tokens 表（等价于 Redis 黑名单方案）。
-- JWT 密钥读取优先级：进程环境 OPENLAIR_JWT_SECRET → OpenLair .env（~/.openlair/.env
-  或 OPENLAIR_CONFIG 同目录）→ 项目根 .env（lairservice/.env）→ 开发默认（仅本地）。
+- JWT 密钥读取优先级（config.resolve_env_value）：进程环境 OPENLAIR_JWT_SECRET →
+  项目根 .env（lairservice/.env）→ 开发默认。
 """
 
 import hashlib
 import hmac
-import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import jwt
 
-from lairservice.config import load_openlair_env, resolve_openlair_config_path
+from lairservice.config import resolve_env_value
 
 # 开发默认密钥（>= 32 字节）；生产必须通过 OPENLAIR_JWT_SECRET 配置，见 .env.example
 DEV_SECRET = "openlair-dev-secret-key-0123456789ab"
 ACCESS_TOKEN_TTL = timedelta(days=7)  # 与 mock 一致：7 天
 
-# 项目根目录（src/lairservice/core/security.py → 上溯 3 层）
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-
-def _parse_dotenv(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        values[key] = value
-    return values
-
 
 def resolve_jwt_secret() -> str:
-    """JWT 密钥解析：进程环境 → OpenLair .env → 项目根 .env → 开发默认。"""
-    from_env = os.environ.get("OPENLAIR_JWT_SECRET")
-    if from_env:
-        return from_env
-    try:
-        openlair_env = load_openlair_env(resolve_openlair_config_path())
-    except Exception:
-        openlair_env = {}
-    if openlair_env.get("OPENLAIR_JWT_SECRET"):
-        return openlair_env["OPENLAIR_JWT_SECRET"]
-    project_env = _parse_dotenv(_PROJECT_ROOT / ".env")
-    if project_env.get("OPENLAIR_JWT_SECRET"):
-        return project_env["OPENLAIR_JWT_SECRET"]
-    return DEV_SECRET
+    """JWT 密钥解析：进程环境 → 项目根 .env → 开发默认。"""
+    return resolve_env_value("OPENLAIR_JWT_SECRET", DEV_SECRET) or DEV_SECRET
 
 
 SECRET_KEY = resolve_jwt_secret()

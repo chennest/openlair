@@ -1,11 +1,10 @@
 [project]
 name = "lairservice"
 version = "0.1.0"
-description = "FastAPI backend and LangGraph runtime for Lair."
+description = "FastAPI backend for Lair: unified envelope API, JWT auth, ledger/books/todo/calendar/notes/habits modules."
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115,<1.0",
-    "langgraph>=0.3,<1.0",
     "pydantic>=2.8,<3.0",
     "PyJWT>=2.10,<3.0",
     "sqlalchemy>=2.0,<3.0",

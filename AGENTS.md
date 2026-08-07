@@ -2,7 +2,7 @@
 
 ## Current state
 
-- `lairservice/` contains the FastAPI + LangGraph agent harness runtime plus the full business API: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services.
+- `lairservice/` contains the FastAPI backend: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services.
 - `lairweb/` contains the Vue + TypeScript web admin console. In dev it runs against the in-memory mock layer (`lairweb/mock/`); the real backend on port 8001 serves the identical API contract, so switching means pointing the Vite proxy at it.
 - There are no CI workflows, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
 - `README.md` and `docs/backend-architecture.md` are the verified project sources of truth at the moment.
@@ -14,7 +14,7 @@ Run these from `lairservice/` (Python environment is managed by `uv`; `uv sync` 
 - Create/recreate the local venv and install all deps: `uv sync`（dev 依赖：`uv sync --extra dev`）
 - Run backend tests (business API suite uses an isolated SQLite file per test; the real-model integration tests additionally need valid `~/.openlair/openlair.json` + `~/.openlair/.env` credentials): `uv run pytest`
 - Start the local backend dev server (port 8001): `uv run uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
-- JWT signing key `OPENLAIR_JWT_SECRET` is read from (priority order): process env → `~/.openlair/.env` (or the dir of `OPENLAIR_CONFIG`) → `lairservice/.env` → dev default. Template: `lairservice/.env.example`.
+- JWT signing key `OPENLAIR_JWT_SECRET` is read from (priority order): process env → `lairservice/.env` → dev default. Template: `lairservice/.env.example`. Same chain applies to `DATABASE_URL` (default SQLite).
 
 Run these from `lairweb/`:
 
@@ -62,12 +62,8 @@ Environment notes:
 
 - Before adding code, initialize the relevant module with its real manifest/config first, then document the exact commands here.
 - After adding any build, lint, typecheck, test, codegen, migration, or dev-server command, update this file with the verified command and its working directory.
-- Treat SQLite, SQLAlchemy, the multi-provider model gateway, and LangGraph orchestration as planned stack choices from `README.md` and `docs/backend-architecture.md`; the current core backend focus is the agent harness loop, not product modules.
-- The implemented harness currently covers `learn-claude-code` style `s01` through `s14`, plus `s19`: agent loop, tool dispatch, permission checks, hooks, todo_write, subagent isolation, skill loading, context compact, memory, runtime system prompt assembly, error recovery, persistent task graph, background task execution, cron scheduling tools, and MCP plugin-style external tool routing.
-- Product startup reads global configuration from `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`; create the template file automatically when it is missing. Model settings live under the top-level `model` object. Model provider `api_key` may be a raw key or `$NAME`; `$NAME` resolves from the same directory's `.env` first, then process environment. Do not add implicit Echo/model fallback paths. The default pytest suite includes real model integration tests and requires valid local OpenLair model credentials; deterministic unit tests may still inject `ScriptedAgentModelGateway` directly.
-- LangGraph is part of the MVP backend architecture; keep business modules behind service interfaces so graph nodes orchestrate module calls without owning domain logic.
+- Treat SQLite (replaceable via `DATABASE_URL`: MySQL/PostgreSQL) and SQLAlchemy as the planned stack; the business API contract is `{ code, message, data }` + Bearer JWT, identical between `lairweb/mock/` and the real backend.
+- Backend layering: `api/routes` (thin HTTP) → `services` (business logic + DTO) → `repositories` (SQLAlchemy persistence) → `models` (ORM). Keep services callable without HTTP and repositories the only data access path.
+- JWT secret and database URL are read from process env → `lairservice/.env` → defaults; template is `lairservice/.env.example`.
 - Use SQLAlchemy repositories for persistence instead of direct `sqlite3` calls, so SQLite remains replaceable by another SQL database later.
-- Treat `lairservice/` as an agent harness: expose tools, knowledge, observation, action interfaces, and permission boundaries; do not try to encode intelligence with brittle procedural branches.
-- Add runtime extension points around model calls, tool/module calls, and database writes before scattering cross-cutting concerns through graph nodes.
-- Keep prompts/context lean: load detailed module instructions or skills only when a flow needs them, rather than putting everything into the default graph state or system prompt.
 - Commit discipline: after each complete feature is implemented and verified, create a git commit so work is recoverable. A complete feature may span multiple files; commit by complete feature boundary, not by individual file.
