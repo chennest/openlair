@@ -5,7 +5,7 @@
 ## 〇、设计语言：Apple Liquid Glass
 
 - `lairweb/` 使用 **Apple Liquid Glass** 视觉语言（apple.com / Apple Newsroom / 最新 macOS 的冷静、高级、克制的质感）。
-- **权威设计系统 = agent skill**：`agents/skills/apple-design-skill/`（来源 [`naplesblue/apple-design-skill`](https://github.com/naplesblue/apple-design-skill)，MIT，已克隆进仓库）。**风格规则、token、组件、动效规范就是 skill 文件本身**，本文件只做索引与要点浓缩，不维护平行副本；前端工作必须加载并遵循该 skill。
+- **权威设计系统 = agent skill**：`.agents/skills/apple-design-skill/`（来源 [`naplesblue/apple-design-skill`](https://github.com/naplesblue/apple-design-skill)，MIT，已克隆进仓库）。**风格规则、token、组件、动效规范就是 skill 文件本身**，本文件只做索引与要点浓缩，不维护平行副本；前端工作必须加载并遵循该 skill。
 - Skill 是框架无关的：在 Vue 中把 CSS 翻译成 SFC scoped 样式 / 全局 token，但保留**精确 token 值**、panel-not-cards 模式、glass-only-on-overlap 规则。
 
 ### Skill 文件索引（实际风格规范）
@@ -125,7 +125,7 @@ export const ledgerApi = {
 
 ## 五、样式规范
 
-### 5.1 设计 token（全局 `style.css`，来源 `agents/skills/apple-design-skill/tokens.css`，勿另起炉灶）
+### 5.1 设计 token（全局 `style.css`，来源 `.agents/skills/apple-design-skill/tokens.css`，勿另起炉灶）
 
 | Token | 值 | 用途 |
 |---|---|---|
