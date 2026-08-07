@@ -35,9 +35,9 @@ const emit = defineEmits<{
 <style scoped>
 .card {
   padding: 22px 22px 20px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .card-title {
   display: flex;
@@ -45,20 +45,19 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
-  color: rgba(242, 234, 223, 0.72);
+  color: var(--text-2);
   font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .tag {
   flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: 999px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
   font-size: 0.72rem;
-  font-weight: 700;
-  color: #0e1f16;
-  background: #8ee6a5;
+  font-weight: 600;
+  color: #0a5a2c;
+  background: rgba(48, 209, 88, 0.16);
 }
 .row-list {
   display: flex;
@@ -70,7 +69,7 @@ const emit = defineEmits<{
   align-items: center;
   gap: 12px;
   padding: 9px 4px;
-  border-bottom: 1px solid rgba(242, 234, 223, 0.06);
+  border-bottom: 1px solid var(--hairline);
   font-size: 0.9rem;
 }
 .row:last-child {
@@ -87,8 +86,8 @@ const emit = defineEmits<{
   flex: 1;
 }
 .streak {
-  color: #f6d37a;
-  font-weight: 800;
+  color: var(--text-2);
+  font-weight: 700;
   font-size: 0.86rem;
   flex: 0 0 auto;
 }
@@ -107,31 +106,33 @@ const emit = defineEmits<{
   width: 14px;
   height: 14px;
   border-radius: 4px;
-  background: rgba(242, 234, 223, 0.1);
+  background: var(--track);
   transition: background 160ms ease;
 }
 .day-dot.on {
-  background: #8ee6a5;
-  box-shadow: 0 0 8px rgba(142, 230, 165, 0.45);
+  background: var(--accent);
 }
 .mini {
   min-width: 0;
   padding: 6px 12px;
-  border-radius: 10px;
+  border-radius: var(--r-pill);
   border: 0;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 .mini.gold {
-  color: #14120f;
-  background: #f6d37a;
+  color: #fff;
+  background: var(--accent);
+}
+.mini.gold:hover {
+  box-shadow: var(--sh-cta);
 }
 .mini.ghost {
-  color: rgba(242, 234, 223, 0.6);
+  color: var(--text-3);
   background: transparent;
 }
 .mini.ghost:hover {
-  color: #ffac8b;
+  color: var(--heat);
 }
 </style>

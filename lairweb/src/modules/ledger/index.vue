@@ -76,23 +76,29 @@ onMounted(load)
   margin-bottom: 18px;
 }
 .add-btn {
-  padding: 12px 22px;
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 22px;
   border: 0;
-  border-radius: 14px;
-  color: #14120f;
-  background: #f6d37a;
-  font-weight: 900;
+  border-radius: var(--r-pill);
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
   font-size: 0.98rem;
   cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
 }
 .add-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(246, 211, 122, 0.22);
+  box-shadow: var(--sh-cta);
+}
+.add-btn:active {
+  transform: scale(0.97);
 }
 .saved-tip {
-  color: #8ee6a5;
-  font-weight: 700;
+  color: var(--live);
+  font-weight: 600;
   font-size: 0.9rem;
 }
 .fade-enter-active,
@@ -114,15 +120,15 @@ onMounted(load)
   place-items: center;
   min-height: 46vh;
   text-align: center;
-  border: 1px dashed rgba(242, 234, 223, 0.16);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.4);
-  color: rgba(242, 234, 223, 0.48);
+  border: 1px dashed var(--faint);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  color: var(--text-3);
 }
 .placeholder .symbol {
   font-size: 2.4rem;
   margin-bottom: 12px;
-  color: rgba(246, 211, 122, 0.7);
+  color: var(--accent);
 }
 @media (max-width: 960px) {
   .lower-grid {

@@ -46,9 +46,9 @@ defineExpose({ reset })
   gap: 10px;
   margin-bottom: 18px;
   padding: 14px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 18px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .composer textarea {
   grid-column: span 3;
@@ -60,27 +60,39 @@ defineExpose({ reset })
 input,
 textarea {
   width: 100%;
-  border: 1px solid rgba(242, 234, 223, 0.14);
-  border-radius: 12px;
-  color: #f2eadf;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-thumb);
+  color: var(--text);
   outline: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface);
   padding: 10px 12px;
   font: inherit;
+  transition: border-color 160ms ease;
 }
 input:focus,
 textarea:focus {
-  border-color: rgba(246, 211, 122, 0.7);
+  border-color: var(--accent);
 }
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 120px;
-  padding: 11px 16px;
-  border-radius: 12px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
   border: 0;
-  color: #14120f;
-  background: #f6d37a;
-  font-weight: 800;
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
+}
+button:hover {
+  box-shadow: var(--sh-cta);
+}
+button:active {
+  transform: scale(0.97);
 }
 button:disabled {
   opacity: 0.5;

@@ -82,9 +82,9 @@ onMounted(load)
   gap: 10px;
   margin-bottom: 18px;
   padding: 14px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 18px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .composer input {
   flex: 1;
@@ -100,42 +100,53 @@ onMounted(load)
   place-items: center;
   min-height: 46vh;
   text-align: center;
-  border: 1px dashed rgba(242, 234, 223, 0.16);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.4);
-  color: rgba(242, 234, 223, 0.48);
+  border: 1px dashed var(--faint);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  color: var(--text-3);
 }
 .placeholder .symbol {
   font-size: 2.4rem;
   margin-bottom: 12px;
-  color: rgba(246, 211, 122, 0.7);
+  color: var(--accent);
 }
 input,
 select {
-  border: 1px solid rgba(242, 234, 223, 0.14);
-  border-radius: 12px;
-  color: #f2eadf;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-thumb);
+  color: var(--text);
   outline: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface);
   padding: 10px 12px;
   font: inherit;
+  transition: border-color 160ms ease;
 }
 select option {
-  color: #14120f;
+  color: var(--text);
 }
 input:focus,
 select:focus {
-  border-color: rgba(246, 211, 122, 0.7);
+  border-color: var(--accent);
 }
 .composer button {
+  display: inline-flex;
+  align-items: center;
   min-width: 90px;
-  padding: 11px 16px;
-  border-radius: 12px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
   border: 0;
-  color: #14120f;
-  background: #f6d37a;
-  font-weight: 800;
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
+}
+.composer button:hover {
+  box-shadow: var(--sh-cta);
+}
+.composer button:active {
+  transform: scale(0.97);
 }
 .composer button:disabled {
   opacity: 0.5;

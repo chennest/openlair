@@ -36,9 +36,9 @@ const emit = defineEmits<{
 <style scoped>
 .card {
   padding: 22px 22px 20px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .card-title {
   display: flex;
@@ -46,11 +46,10 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
-  color: rgba(242, 234, 223, 0.72);
+  color: var(--text-2);
   font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .row-list {
   display: flex;
@@ -63,7 +62,7 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: 12px;
   padding: 9px 4px;
-  border-bottom: 1px solid rgba(242, 234, 223, 0.06);
+  border-bottom: 1px solid var(--hairline);
   font-size: 0.9rem;
 }
 .row:last-child {
@@ -82,14 +81,15 @@ const emit = defineEmits<{
   flex: 0 0 18px;
   display: grid;
   place-items: center;
-  border: 1.5px solid rgba(242, 234, 223, 0.3);
+  border: 1.5px solid var(--text-4);
   border-radius: 6px;
   font-size: 0.72rem;
-  color: #14120f;
+  color: #fff;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 .check.on {
-  border-color: #8ee6a5;
-  background: #8ee6a5;
+  border-color: var(--accent);
+  background: var(--accent);
 }
 .text {
   overflow: hidden;
@@ -107,23 +107,24 @@ const emit = defineEmits<{
 }
 .due {
   font-size: 0.78rem;
-  color: rgba(242, 234, 223, 0.45);
+  color: var(--text-3);
 }
 .mini.ghost {
   min-width: 0;
   padding: 3px 8px;
   border: 0;
   border-radius: 8px;
-  color: rgba(242, 234, 223, 0.5);
+  color: var(--text-3);
   background: transparent;
   cursor: pointer;
+  transition: color 160ms ease;
 }
 .mini.ghost:hover {
-  color: #ffac8b;
+  color: var(--heat);
 }
 .empty {
   margin: 6px 4px;
-  color: rgba(242, 234, 223, 0.32);
+  color: var(--text-4);
   font-size: 0.84rem;
 }
 </style>

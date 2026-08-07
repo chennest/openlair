@@ -29,9 +29,14 @@ const emit = defineEmits<{
 <style scoped>
 .card {
   padding: 22px 22px 20px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--sh-card);
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart);
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-lift);
 }
 .card-title {
   display: flex;
@@ -39,31 +44,30 @@ const emit = defineEmits<{
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
-  color: rgba(242, 234, 223, 0.72);
-  font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  color: var(--text-3);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .more {
-  color: rgba(242, 234, 223, 0.4);
+  color: var(--text-3);
   font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0;
+  font-weight: 600;
   cursor: pointer;
+  transition: color 160ms ease;
 }
 .more:hover {
-  color: #ffac8b;
+  color: var(--heat);
 }
 .note-title {
   margin: 0 0 8px;
   font-size: 1.05rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 .hint {
   margin: 0;
-  color: rgba(242, 234, 223, 0.5);
+  color: var(--text-2);
   font-size: 0.82rem;
   line-height: 1.6;
 }
@@ -75,11 +79,11 @@ const emit = defineEmits<{
 }
 .tag {
   flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: 999px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
   font-size: 0.72rem;
-  font-weight: 700;
-  color: rgba(242, 234, 223, 0.7);
-  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(0, 0, 0, 0.05);
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 通用弹窗：Teleport + 遮罩点击关闭 + 缩放动画 + 标题栏
+// 通用弹窗：Teleport + 遮罩点击关闭 + materialize 动画 + 标题栏
+// 材质规范：.agents/skills/apple-design-skill/motion.md（blur+scale+opacity 同时进场）
 defineProps<{
   title?: string
 }>()
@@ -33,18 +34,16 @@ const emit = defineEmits<{
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(8, 7, 5, 0.66);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.28);
 }
 .modal {
   width: min(460px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
   padding: 26px 26px 22px;
-  border: 1px solid rgba(242, 234, 223, 0.14);
-  border-radius: 26px;
-  background: rgba(28, 24, 18, 0.97);
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  border-radius: var(--r-hero);
+  background: var(--surface);
+  box-shadow: var(--sh-overlay);
 }
 .modal-head {
   display: flex;
@@ -62,23 +61,28 @@ const emit = defineEmits<{
   height: 34px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(242, 234, 223, 0.14);
-  border-radius: 999px;
-  color: rgba(242, 234, 223, 0.6);
-  background: transparent;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--text-3);
+  background: rgba(0, 0, 0, 0.05);
   cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
 }
 .close-btn:hover {
-  color: #ffac8b;
-  border-color: rgba(255, 172, 139, 0.4);
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.08);
 }
+/* materialize：遮罩淡入略快于表面；表面 blur+scale+opacity 同路进出 */
 .modal-enter-active,
 .modal-leave-active {
-  transition: opacity 220ms ease;
+  transition: opacity 250ms ease;
 }
 .modal-enter-active .modal,
 .modal-leave-active .modal {
-  transition: transform 220ms ease;
+  transition:
+    opacity 400ms var(--ease-spring),
+    transform 400ms var(--ease-spring),
+    backdrop-filter 400ms var(--ease-spring);
 }
 .modal-enter-from,
 .modal-leave-to {
@@ -86,6 +90,27 @@ const emit = defineEmits<{
 }
 .modal-enter-from .modal,
 .modal-leave-to .modal {
-  transform: translateY(14px) scale(0.97);
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  backdrop-filter: blur(0px);
+}
+.modal-enter-to .modal,
+.modal-leave-from .modal {
+  opacity: 1;
+  transform: none;
+  backdrop-filter: blur(20px) saturate(180%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-enter-active .modal,
+  .modal-leave-active .modal {
+    transition: opacity 200ms ease;
+    transform: none !important;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .modal {
+    backdrop-filter: none;
+  }
 }
 </style>

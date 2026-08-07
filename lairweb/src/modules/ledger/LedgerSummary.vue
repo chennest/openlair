@@ -30,25 +30,25 @@ defineProps<{ summary: LedgerSummary }>()
 }
 .card {
   padding: 22px 22px 20px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .card-title {
   margin-bottom: 16px;
-  color: rgba(242, 234, 223, 0.72);
+  color: var(--text-2);
   font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .big-num {
   font-size: 2.1rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.04em;
-  color: #f6d37a;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 .expense {
-  color: #ffac8b;
+  color: var(--heat);
 }
 </style>

@@ -71,14 +71,14 @@ onMounted(load)
   place-items: center;
   min-height: 46vh;
   text-align: center;
-  border: 1px dashed rgba(242, 234, 223, 0.16);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.4);
-  color: rgba(242, 234, 223, 0.48);
+  border: 1px dashed var(--faint);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  color: var(--text-3);
 }
 .placeholder .symbol {
   font-size: 2.4rem;
   margin-bottom: 12px;
-  color: rgba(246, 211, 122, 0.7);
+  color: var(--accent);
 }
 </style>

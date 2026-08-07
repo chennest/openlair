@@ -20,17 +20,16 @@ defineProps<{ stats: CategoryStat[] }>()
 <style scoped>
 .card {
   padding: 22px 22px 20px;
-  border: 1px solid rgba(242, 234, 223, 0.12);
-  border-radius: 22px;
-  background: rgba(25, 22, 17, 0.66);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 .card-title {
   margin-bottom: 16px;
-  color: rgba(242, 234, 223, 0.72);
+  color: var(--text-2);
   font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .row-list {
   display: flex;
@@ -43,7 +42,7 @@ defineProps<{ stats: CategoryStat[] }>()
   justify-content: space-between;
   gap: 12px;
   padding: 9px 4px;
-  border-bottom: 1px solid rgba(242, 234, 223, 0.06);
+  border-bottom: 1px solid var(--hairline);
   font-size: 0.9rem;
 }
 .row:last-child {
@@ -55,7 +54,8 @@ defineProps<{ stats: CategoryStat[] }>()
   white-space: nowrap;
 }
 .sub {
-  color: rgba(242, 234, 223, 0.45);
+  color: var(--text-3);
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
 }
 </style>
