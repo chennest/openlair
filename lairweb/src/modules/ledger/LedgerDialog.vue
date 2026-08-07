@@ -1,10 +1,14 @@
 <script setup lang="ts">
-// 记一笔弹窗：基于 BaseModal，表单状态由父组件传入
-import { ref, watch } from 'vue'
+// 记一笔弹窗：基于 BaseModal；分类列表随类型切换（支出/收入分类表）
+import { ref, watch, computed } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
-import { CATEGORIES, type CreateTransactionInput } from './api'
+import type { Category, CreateTransactionInput } from './api'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{
+  open: boolean
+  categories: Category[]
+}>()
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'submit', payload: CreateTransactionInput): void
@@ -16,31 +20,63 @@ const today = () => {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
-const form = ref<CreateTransactionInput>({ type: '支出', category: '餐饮', amount: 0, date: today(), note: '' })
 
-// 每次打开时重置表单
+const defaultCategoryId = (type: '支出' | '收入') => {
+  const list = props.categories.filter((c) => c.type === type)
+  return list.find((c) => c.isDefault)?.id ?? list[0]?.id ?? ''
+}
+
+const form = ref<{ type: '支出' | '收入'; categoryId: string; amount: number; date: string; note: string }>({
+  type: '支出',
+  categoryId: '',
+  amount: 0,
+  date: today(),
+  note: '',
+})
+
+// 当前类型对应的分类（数据源：分类表接口）
+const categoryOptions = computed(() => props.categories.filter((c) => c.type === form.value.type))
+
+// 每次打开时重置表单；类型切换时若分类不属于该类型则重置
 watch(
   () => props.open,
   (open) => {
-    if (open) form.value = { type: '支出', category: '餐饮', amount: 0, date: today(), note: '' }
+    if (open) {
+      form.value = { type: '支出', categoryId: defaultCategoryId('支出'), amount: 0, date: today(), note: '' }
+    }
   },
 )
 
-function pickCategory(name: string) {
-  form.value.category = name
+watch(
+  () => form.value.type,
+  (type) => {
+    if (!categoryOptions.value.some((c) => c.id === form.value.categoryId)) {
+      form.value.categoryId = defaultCategoryId(type)
+    }
+  },
+)
+
+function pickCategory(id: string) {
+  form.value.categoryId = id
 }
 
 function submit() {
   const amount = Number(form.value.amount)
-  if (!amount || amount <= 0) return
+  if (!amount || amount <= 0 || !form.value.categoryId) return
   saving.value = true
-  emit('submit', { ...form.value, amount, date: form.value.date || undefined })
+  emit('submit', {
+    type: form.value.type,
+    categoryId: form.value.categoryId,
+    amount,
+    date: form.value.date || undefined,
+    note: form.value.note,
+  })
 }
 </script>
 
 <template>
   <BaseModal v-if="open" title="记一笔" @close="emit('close')">
-    <!-- 类型切换 -->
+    <!-- 类型切换（白胶囊 segmented） -->
     <div class="type-switch">
       <button class="type-btn" :class="{ on: form.type === '支出' }" @click="form.type = '支出'">支出</button>
       <button class="type-btn income" :class="{ on: form.type === '收入' }" @click="form.type = '收入'">收入</button>
@@ -61,16 +97,16 @@ function submit() {
       />
     </div>
 
-    <!-- 分类 -->
+    <!-- 分类（随类型切换） -->
     <label class="field-label">分类</label>
     <div class="cat-grid">
       <button
-        v-for="c in CATEGORIES"
-        :key="c"
+        v-for="c in categoryOptions"
+        :key="c.id"
         class="cat-btn"
-        :class="{ on: form.category === c }"
-        @click="pickCategory(c)"
-      >{{ c }}</button>
+        :class="{ on: form.categoryId === c.id }"
+        @click="pickCategory(c.id)"
+      >{{ c.name }}</button>
     </div>
 
     <!-- 日期 + 备注 -->
@@ -87,7 +123,7 @@ function submit() {
 
     <div class="modal-foot">
       <button class="btn-ghost" @click="emit('close')">取消</button>
-      <button class="btn-primary" :disabled="saving || !form.amount || Number(form.amount) <= 0" @click="submit">
+      <button class="btn-primary" :disabled="saving || !form.amount || Number(form.amount) <= 0 || !form.categoryId" @click="submit">
         {{ saving ? '保存中…' : '保存这笔' }}
       </button>
     </div>
@@ -198,9 +234,11 @@ function submit() {
   color: var(--text);
   background: var(--surface);
   font: inherit;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 .input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
 }
 .modal-foot {
   display: flex;

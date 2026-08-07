@@ -1,42 +1,104 @@
 <script setup lang="ts">
-// 流水表格（纯展示 + 删除）
+// 流水列表：按日分组（今天/昨天/日期）+ 日合计 + 分页
+import { computed } from 'vue'
 import Tag from '../../components/Tag.vue'
 import type { Transaction } from './api'
 
-defineProps<{ transactions: Transaction[] }>()
+const props = defineProps<{
+  transactions: Transaction[]
+  total: number
+  page: number
+  pageSize: number
+}>()
 
 const emit = defineEmits<{
   (e: 'remove', id: string): void
+  (e: 'page', page: number): void
 }>()
+
+const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+
+// ---------- 按日分组 ----------
+interface DayGroup {
+  label: string
+  expense: number
+  income: number
+  rows: Transaction[]
+}
+
+const dayLabel = (d: string) => {
+  const today = new Date()
+  const t = (offset: number) => {
+    const x = new Date(today)
+    x.setDate(today.getDate() - offset)
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  }
+  if (d === t(0)) return '今天'
+  if (d === t(1)) return '昨天'
+  return d
+}
+
+const groups = computed<DayGroup[]>(() => {
+  const map = new Map<string, DayGroup>()
+  for (const tr of props.transactions) {
+    let g = map.get(tr.date)
+    if (!g) {
+      g = { label: dayLabel(tr.date), expense: 0, income: 0, rows: [] }
+      map.set(tr.date, g)
+    }
+    g.rows.push(tr)
+    if (tr.type === '收入') g.income += tr.amount
+    else g.expense += tr.amount
+  }
+  return [...map.values()].map((g) => ({
+    ...g,
+    expense: Number(g.expense.toFixed(2)),
+    income: Number(g.income.toFixed(2)),
+  }))
+})
 </script>
 
 <template>
   <article class="card">
     <div class="card-title">
-      <span>最近流水</span>
-      <Tag variant="gray">{{ transactions.length }} 条</Tag>
+      <span>历史流水</span>
+      <Tag variant="gray">{{ total }} 条</Tag>
     </div>
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>日期</th><th>分类</th><th>备注</th><th>类型</th><th class="num">金额</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="t in transactions" :key="t.id">
-            <td class="sub">{{ t.date }}</td>
-            <td>{{ t.category }}</td>
-            <td class="sub">{{ t.note }}</td>
-            <td><Tag :variant="t.type === '收入' ? 'green' : 'gray'">{{ t.type }}</Tag></td>
-            <td class="num" :class="t.type === '收入' ? 'income' : 'expense'">
+
+    <div v-if="transactions.length === 0" class="empty">
+      没有符合条件的记录，试试调整筛选条件。
+    </div>
+
+    <div v-for="g in groups" :key="g.label" class="day-group">
+      <div class="day-head">
+        <span class="day-label">{{ g.label }}</span>
+        <span class="day-sum">
+          <span v-if="g.income > 0" class="income num">+¥{{ g.income.toFixed(2) }}</span>
+          <span v-if="g.expense > 0" class="expense num">-¥{{ g.expense.toFixed(2) }}</span>
+        </span>
+      </div>
+      <div class="row-list">
+        <div v-for="t in g.rows" :key="t.id" class="row">
+          <span class="main">
+            <span class="cat">{{ t.category }}</span>
+            <span class="text">{{ t.note || '—' }}</span>
+          </span>
+          <span class="sub">
+            <span class="amt num" :class="t.type === '收入' ? 'income' : 'expense'">
               {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
-            </td>
-            <td class="num"><button class="mini ghost" @click="emit('remove', t.id)">✕</button></td>
-          </tr>
-        </tbody>
-      </table>
+            </span>
+            <button class="mini ghost" aria-label="删除" @click="emit('remove', t.id)">✕</button>
+          </span>
+        </div>
+      </div>
     </div>
+
+    <!-- 分页 -->
+    <nav v-if="totalPages > 1" class="pager" aria-label="分页">
+      <button class="page-btn" :disabled="page <= 1" @click="emit('page', page - 1)">‹ 上一页</button>
+      <span class="page-info num">{{ page }} / {{ totalPages }}</span>
+      <button class="page-btn" :disabled="page >= totalPages" @click="emit('page', page + 1)">下一页 ›</button>
+    </nav>
   </article>
 </template>
 
@@ -58,39 +120,99 @@ const emit = defineEmits<{
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-.table-wrap {
-  overflow-x: auto;
-}
-.table {
-  width: 100%;
-  border-collapse: collapse;
+.empty {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--text-4);
   font-size: 0.88rem;
 }
-.table th,
-.table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--hairline);
+.day-group + .day-group {
+  margin-top: 22px;
 }
-.table th {
-  color: var(--text-3);
-  font-size: 0.74rem;
+.day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 4px 6px;
+}
+.day-label {
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
 }
-.table .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.day-sum {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
 }
-.table .income {
+.day-sum .income {
   color: var(--live);
 }
-.table .expense {
-  color: var(--text);
+.day-sum .expense {
+  color: var(--text-3);
+}
+.row-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-card);
+  background: var(--hover);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.9rem;
+  background: var(--surface);
+  transition: background 150ms ease;
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.row:hover {
+  background: var(--hover);
+}
+.main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cat {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(0, 0, 0, 0.05);
+}
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
 }
 .sub {
-  color: var(--text-3);
-  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.amt {
+  font-weight: 600;
+}
+.income {
+  color: var(--live);
+}
+.expense {
+  color: var(--text);
 }
 .mini.ghost {
   min-width: 0;
@@ -104,5 +226,35 @@ const emit = defineEmits<{
 }
 .mini.ghost:hover {
   color: var(--heat);
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.page-btn {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.page-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(0, 113, 227, 0.04);
+}
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.page-info {
+  font-size: 13px;
+  color: var(--text-3);
 }
 </style>
