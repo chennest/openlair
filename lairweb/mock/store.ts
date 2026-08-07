@@ -33,11 +33,39 @@ export interface Category {
   createdAt: string
 }
 
-/** transactions 表：交易流水（categoryId 外键 → categories.id） */
+/** users 表：账本成员（模拟真实用户） */
+export interface User {
+  id: string
+  name: string
+  /** 头像底色（无图片，用色块 + 首字） */
+  avatarColor: string
+  createdAt: string
+}
+
+/** books 表：账本（个人 / 共享；「家庭」只是共享账本的一种场景） */
+export interface Book {
+  id: string
+  name: string
+  type: 'personal' | 'shared'
+  createdAt: string
+}
+
+/** book_members 表：账本成员关系 */
+export interface BookMember {
+  bookId: string
+  userId: string
+  role: 'owner' | 'editor'
+  joinedAt: string
+}
+
+/** transactions 表：交易流水（categoryId → categories.id，bookId → books.id，userId → users.id） */
 export interface Transaction {
   id: string
   type: '支出' | '收入'
   categoryId: string
+  bookId: string
+  /** 记账人 */
+  userId: string
   amount: number
   /** YYYY-MM-DD */
   date: string
@@ -46,9 +74,10 @@ export interface Transaction {
   updatedAt: string
 }
 
-/** budgets 表：月度预算（month = 'YYYY-MM'） */
+/** budgets 表：月度预算（按账本隔离，month = 'YYYY-MM'） */
 export interface Budget {
   id: string
+  bookId: string
   month: string
   expenseLimit: number
   createdAt: string
@@ -112,6 +141,9 @@ export interface StoreShape {
   categories: Category[]
   transactions: Transaction[]
   budgets: Budget[]
+  users: User[]
+  books: Book[]
+  bookMembers: BookMember[]
   todos: TodoItem[]
   events: CalendarEvent[]
   notes: Note[]
@@ -179,26 +211,56 @@ function seed(): StoreShape {
   const incIds = categories.filter((c) => c.type === '收入').map((c) => c.id)
   const t = nowISO()
 
-  // 近 90 天交易：约 85 笔（收入 ~25%），历史查询有数据可筛
-  const transactions: Transaction[] = Array.from({ length: 85 }, () => {
+  // 用户（当前用户 + 共享账本成员）
+  const users: User[] = [
+    { id: 'u-me', name: '我', avatarColor: '#0071e3', createdAt: t },
+    { id: 'u-2', name: '小明', avatarColor: '#30d158', createdAt: t },
+    { id: 'u-3', name: '小美', avatarColor: '#ff6b00', createdAt: t },
+  ]
+
+  // 账本：个人账本（默认）+ 共享账本（家庭只是场景之一）
+  const books: Book[] = [
+    { id: 'book-personal', name: '我的账本', type: 'personal', createdAt: t },
+    { id: 'book-family', name: '家庭共享账本', type: 'shared', createdAt: t },
+  ]
+
+  const bookMembers: BookMember[] = [
+    { bookId: 'book-personal', userId: 'u-me', role: 'owner', joinedAt: t },
+    { bookId: 'book-family', userId: 'u-me', role: 'owner', joinedAt: t },
+    { bookId: 'book-family', userId: 'u-2', role: 'editor', joinedAt: t },
+    { bookId: 'book-family', userId: 'u-3', role: 'editor', joinedAt: t },
+  ]
+
+  // 近 90 天交易：个人账本 85 + 共享账本 15（收入 ~25%）
+  const makeTx = (bookId: string, userId: string): Transaction => {
     const isIncome = rand() < 0.25
     const createdAt = new Date(Date.now() - integer(0, 89) * 86400000 - integer(0, 23) * 3600000).toISOString()
     return {
       id: guid(),
       type: isIncome ? ('收入' as const) : ('支出' as const),
       categoryId: isIncome ? pick(incIds) : pick(expIds),
+      bookId,
+      userId,
       amount: isIncome ? float(200, 15000) : float(5, 800),
       date: date(-integer(0, 89)),
       note: isIncome ? pick(['工资', '季度奖金', '理财收益', '红包']) : pick(NOTES),
       createdAt,
       updatedAt: createdAt,
     }
-  })
+  }
+  const familyUsers = ['u-me', 'u-2', 'u-3']
+  const transactions: Transaction[] = [
+    ...Array.from({ length: 85 }, () => makeTx('book-personal', 'u-me')),
+    ...Array.from({ length: 15 }, () => makeTx('book-family', pick(familyUsers))),
+  ]
 
   return {
     categories,
     transactions,
-    budgets: [{ id: 'bud-1', month: MONTH(), expenseLimit: 5000, createdAt: t, updatedAt: t }],
+    budgets: [{ id: 'bud-1', bookId: 'book-personal', month: MONTH(), expenseLimit: 5000, createdAt: t, updatedAt: t }],
+    users,
+    books,
+    bookMembers,
     todos: Array.from({ length: 8 }, () => {
       const c = nowISO()
       return {
@@ -277,6 +339,8 @@ export function categoriesOf(type: '支出' | '收入'): Category[] {
 
 // ---------- 交易筛选条件 ----------
 export interface TransactionQuery {
+  /** 账本 id（必传，按账本隔离） */
+  bookId?: string
   /** 类型：支出 / 收入 / 空（全部） */
   type?: string
   /** 分类 id：空 = 全部 */
@@ -296,6 +360,7 @@ export function queryTransactions(q: TransactionQuery = {}): Transaction[] {
   const kw = (q.keyword ?? '').trim().toLowerCase()
   return store.transactions
     .filter((t) => {
+      if (q.bookId && t.bookId !== q.bookId) return false
       if (q.type && t.type !== q.type) return false
       if (q.categoryId && t.categoryId !== q.categoryId) return false
       if (q.startDate && cmpDate(t.date, q.startDate) < 0) return false
@@ -366,13 +431,30 @@ export function monthlyTrend(rows: Transaction[], months = 6) {
   return points
 }
 
-/** 当前月预算 */
-export function currentBudget(): Budget {
+/** 当前月预算（按账本） */
+export function currentBudget(bookId: string): Budget {
   const month = MONTH()
-  const found = store.budgets.find((b) => b.month === month)
+  const found = store.budgets.find((b) => b.bookId === bookId && b.month === month)
   if (found) return found
   const t = nowISO()
-  const b: Budget = { id: guid(), month, expenseLimit: 5000, createdAt: t, updatedAt: t }
+  const b: Budget = { id: guid(), bookId, month, expenseLimit: 5000, createdAt: t, updatedAt: t }
   store.budgets.push(b)
   return b
+}
+
+// ---------- 账本 / 成员 ----------
+export function bookOf(id: string): Book | undefined {
+  return store.books.find((b) => b.id === id)
+}
+
+export function membersOf(bookId: string): BookMember[] {
+  return store.bookMembers.filter((m) => m.bookId === bookId)
+}
+
+export function userOf(id: string): User | undefined {
+  return store.users.find((u) => u.id === id)
+}
+
+export function userName(id: string): string {
+  return userOf(id)?.name ?? '未知'
 }

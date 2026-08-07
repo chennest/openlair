@@ -9,6 +9,8 @@ const props = defineProps<{
   total: number
   page: number
   pageSize: number
+  /** 是否共享账本（显示记账人） */
+  shared?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -80,6 +82,7 @@ const groups = computed<DayGroup[]>(() => {
       <div class="row-list">
         <div v-for="t in g.rows" :key="t.id" class="row">
           <span class="main">
+            <span v-if="shared" class="face" :title="`${t.userName} 记的`" aria-hidden="true">{{ t.userName.slice(0, 1) }}</span>
             <span class="cat">{{ t.category }}</span>
             <span class="text">{{ t.note || '—' }}</span>
           </span>
@@ -192,6 +195,18 @@ const groups = computed<DayGroup[]>(() => {
   font-weight: 600;
   color: var(--text-2);
   background: rgba(0, 0, 0, 0.05);
+}
+.face {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  flex: 0 0 auto;
 }
 .text {
   overflow: hidden;

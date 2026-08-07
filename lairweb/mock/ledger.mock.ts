@@ -13,20 +13,22 @@ import {
   categoryName,
   getCategory,
   categoriesOf,
+  userName,
   type TransactionQuery,
 } from './store'
 
-/** DTO：交易 + join 分类名（真实后端同样返回扁平 DTO） */
-type TransactionDTO = Transaction & { category: string }
+/** DTO：交易 + join 分类名 + 记账人（真实后端同样返回扁平 DTO） */
+type TransactionDTO = Transaction & { category: string; userName: string }
 
 function toDTO(t: Transaction): TransactionDTO {
-  return { ...t, category: categoryName(t.categoryId) }
+  return { ...t, category: categoryName(t.categoryId), userName: userName(t.userId) }
 }
 
 function queryFrom(req: { query?: Record<string, unknown> }): TransactionQuery {
   const q = req.query ?? {}
   const str = (v: unknown) => (v == null ? '' : String(v))
   return {
+    bookId: str(q.bookId) || undefined,
     type: str(q.type) || undefined,
     categoryId: str(q.categoryId) || undefined,
     keyword: str(q.keyword) || undefined,
@@ -47,7 +49,7 @@ export default {
     },
   }),
 
-  // 列表：筛选 + 分页；摘要/分类统计跟随筛选结果
+  // 列表：按账本隔离 + 筛选 + 分页；摘要/分类统计跟随筛选结果
   list: defineMock({
     url: '/api/ledger',
     method: 'GET',
@@ -56,7 +58,7 @@ export default {
       const rows = queryTransactions(q)
       const page = Number(req.query?.page) || 1
       const pageSize = Number(req.query?.pageSize) || 20
-      const budget = currentBudget()
+      const budget = currentBudget(q.bookId ?? 'book-personal')
       return {
         summary: summarize(rows),
         categoryStats: categoryStats(rows),
@@ -69,26 +71,33 @@ export default {
     },
   }),
 
-  // 近 6 个月收支趋势
+  // 近 6 个月收支趋势（按账本）
   trend: defineMock({
     url: '/api/ledger/trend',
     method: 'GET',
-    body: () => monthlyTrend(store.transactions, 6),
+    body: (req) => {
+      const bookId = String(req.query?.bookId ?? 'book-personal')
+      return monthlyTrend(store.transactions.filter((t) => t.bookId === bookId), 6)
+    },
   }),
 
-  // 读取/更新当前月预算
+  // 读取/更新当前月预算（按账本）
   budget: defineMock({
     url: '/api/ledger/budget',
     method: 'GET',
-    body: () => ({ budget: currentBudget().expenseLimit }),
+    body: (req) => {
+      const bookId = String(req.query?.bookId ?? 'book-personal')
+      return { budget: currentBudget(bookId).expenseLimit }
+    },
   }),
   updateBudget: defineMock({
     url: '/api/ledger/budget',
     method: 'PUT',
     body: (req) => {
+      const bookId = String(req.body?.bookId ?? 'book-personal')
       const amount = Number(req.body?.amount)
       if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid budget' }
-      const b = currentBudget()
+      const b = currentBudget(bookId)
       b.expenseLimit = Number(amount.toFixed(2))
       b.updatedAt = new Date().toISOString()
       return { ok: true, budget: b.expenseLimit }
@@ -100,7 +109,7 @@ export default {
     url: '/api/ledger',
     method: 'POST',
     body: (req) => {
-      const { type, categoryId, category, amount, date: reqDate, note } = req.body ?? {}
+      const { type, categoryId, category, amount, date: reqDate, note, bookId, userId } = req.body ?? {}
       // 兼容：传 categoryId 直接使用；传 category 名字则查表（或兜底「其他」）
       let cid = String(categoryId || '')
       if (!cid && category) {
@@ -116,6 +125,8 @@ export default {
         id: guid(),
         type: type === '收入' ? '收入' : '支出',
         categoryId: cid,
+        bookId: String(bookId || 'book-personal'),
+        userId: String(userId || 'u-me'),
         amount: Number(amount) || 0,
         date: String(reqDate || date()),
         note: String(note || ''),

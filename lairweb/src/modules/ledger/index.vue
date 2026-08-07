@@ -1,7 +1,17 @@
 <script setup lang="ts">
-// 记账模块页：组装 摘要/预算/趋势/统计/筛选/流水/弹窗，负责数据加载与查询状态
-import { onMounted, ref } from 'vue'
-import { ledgerApi, type Category, type LedgerData, type LedgerQuery } from './api'
+// 记账模块页：账本切换 + 摘要/预算/趋势/统计/筛选/流水/弹窗，负责数据加载与查询状态
+import { computed, onMounted, ref } from 'vue'
+import {
+  ledgerApi,
+  bookApi,
+  type Book,
+  type Category,
+  type LedgerData,
+  type LedgerQuery,
+} from './api'
+import BookSwitcher from './BookSwitcher.vue'
+import BookManage from './BookManage.vue'
+import BookCreate from './BookCreate.vue'
 import LedgerSummary from './LedgerSummary.vue'
 import LedgerBudget from './LedgerBudget.vue'
 import LedgerTrend from './LedgerTrend.vue'
@@ -15,16 +25,43 @@ const error = ref('')
 const data = ref<LedgerData | null>(null)
 const trend = ref<Awaited<ReturnType<typeof ledgerApi.trend>>>([])
 const categories = ref<Category[]>([])
+
+// 账本状态
+const books = ref<Book[]>([])
+const currentBookId = ref('book-personal')
+const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
+const showManage = ref(false)
+const showCreate = ref(false)
+
+// 成员管理：可添加候选（非当前成员的用户）
+const manageCandidates = computed(() => {
+  const memberIds = new Set(currentBook.value?.members.map((m) => m.userId) ?? [])
+  return books.value
+    .flatMap((b) => b.members)
+    .map((m) => m.user)
+    .filter((u): u is NonNullable<typeof u> => !!u && !memberIds.has(u.id))
+    .filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i)
+})
+
 const showDialog = ref(false)
 const savedTip = ref(false)
 
-// 查询状态（筛选栏 + 分页）
+// 查询状态（筛选栏 + 分页；bookId 跟随当前账本）
 const query = ref<LedgerQuery>({ page: 1, pageSize: 20 })
+
+async function loadBooks() {
+  try {
+    books.value = await bookApi.list()
+  } catch {
+    books.value = []
+  }
+}
 
 async function load() {
   loading.value = true
   try {
-    const [d, t] = await Promise.all([ledgerApi.list(query.value), ledgerApi.trend()])
+    const q: LedgerQuery = { ...query.value, bookId: currentBookId.value }
+    const [d, t] = await Promise.all([ledgerApi.list(q), ledgerApi.trend(currentBookId.value)])
     data.value = d
     trend.value = t
   } catch (e) {
@@ -34,6 +71,12 @@ async function load() {
   }
 }
 
+async function switchBook(bookId: string) {
+  currentBookId.value = bookId
+  query.value = { page: 1, pageSize: 20 }
+  await load()
+}
+
 async function handleQueryChange(q: LedgerQuery) {
   query.value = { ...query.value, ...q }
   await load()
@@ -41,7 +84,7 @@ async function handleQueryChange(q: LedgerQuery) {
 
 async function handleCreate(payload: Parameters<typeof ledgerApi.create>[0]) {
   try {
-    await ledgerApi.create(payload)
+    await ledgerApi.create({ ...payload, bookId: currentBookId.value, userId: 'u-me' })
     showDialog.value = false
     savedTip.value = true
     setTimeout(() => (savedTip.value = false), 2000)
@@ -57,8 +100,36 @@ async function handleRemove(id: string) {
 }
 
 async function handleBudgetSave(amount: number) {
-  await ledgerApi.updateBudget(amount)
+  await ledgerApi.updateBudget(currentBookId.value, amount)
   await load()
+}
+
+// 账本操作
+async function handleBookCreate(input: { name: string; type: 'personal' | 'shared' }) {
+  const r = await bookApi.create(input)
+  showCreate.value = false
+  await loadBooks()
+  if (r.book) {
+    currentBookId.value = r.book.id
+    await load()
+  }
+}
+
+async function handleMemberAdd(userId: string) {
+  const r = await bookApi.addMember(currentBookId.value, { userId })
+  if (r.book) await loadBooks()
+  showManage.value = false
+}
+
+async function handleMemberAddByName(name: string) {
+  const r = await bookApi.addMember(currentBookId.value, { name })
+  if (r.book) await loadBooks()
+  showManage.value = false
+}
+
+async function handleMemberRemove(userId: string) {
+  const r = await bookApi.removeMember(currentBookId.value, userId)
+  if (r.book) await loadBooks()
 }
 
 onMounted(async () => {
@@ -67,6 +138,7 @@ onMounted(async () => {
   } catch {
     categories.value = []
   }
+  await loadBooks()
   await load()
 })
 </script>
@@ -76,6 +148,16 @@ onMounted(async () => {
   <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p></div></div>
 
   <div v-else class="ledger">
+    <div class="book-bar">
+      <BookSwitcher
+        :books="books"
+        :current="currentBook"
+        @switch="switchBook"
+        @create="showCreate = true"
+        @manage="showManage = true"
+      />
+    </div>
+
     <LedgerSummary :summary="data!.summary">
       <template #action>
         <div class="hero-actions">
@@ -102,6 +184,7 @@ onMounted(async () => {
           :total="data!.total"
           :page="data!.page"
           :page-size="data!.pageSize"
+          :shared="currentBook?.type === 'shared'"
           @remove="handleRemove"
           @page="(p: number) => handleQueryChange({ page: p })"
         />
@@ -109,6 +192,18 @@ onMounted(async () => {
     </div>
 
     <LedgerDialog :open="showDialog" :categories="categories" @close="showDialog = false" @submit="handleCreate" />
+
+    <BookManage
+      :open="showManage"
+      :book="currentBook"
+      :candidates="manageCandidates"
+      @close="showManage = false"
+      @add="handleMemberAdd"
+      @add-by-name="handleMemberAddByName"
+      @remove="handleMemberRemove"
+    />
+
+    <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
   </div>
 </template>
 
@@ -117,6 +212,11 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.book-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .hero-actions {
   display: flex;
