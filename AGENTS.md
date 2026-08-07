@@ -2,18 +2,19 @@
 
 ## Current state
 
-- This repo is in early implementation: `lairservice/` contains the FastAPI + LangGraph agent harness runtime; `lairweb/` contains the Vue + TypeScript web admin console; `lairapp/` currently contains no files; `docs/` contains backend architecture notes.
+- `lairservice/` contains the FastAPI + LangGraph agent harness runtime plus the full business API: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services.
+- `lairweb/` contains the Vue + TypeScript web admin console. In dev it runs against the in-memory mock layer (`lairweb/mock/`); the real backend on port 8001 serves the identical API contract, so switching means pointing the Vite proxy at it.
 - There are no CI workflows, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
 - `README.md` and `docs/backend-architecture.md` are the verified project sources of truth at the moment.
 
 ## Verified commands
 
-Run these from `lairservice/`:
+Run these from `lairservice/` (Python environment is managed by `uv`; `uv sync` auto-downloads CPython 3.14.5 into `.venv` and writes `uv.lock`):
 
-- Create/recreate the local venv with vfox Python 3.14: `vfox exec python@3.14.5 -- python -m venv --clear .venv`
-- Install backend dev dependencies: `.venv/bin/python -m pip install -e .[dev]`
-- Run backend tests, including real model integration through `~/.openlair/openlair.json` and `~/.openlair/.env`: `.venv/bin/python -m pytest`
-- Start the local backend dev server: `.venv/bin/python -m uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
+- Create/recreate the local venv and install all deps: `uv sync`（dev 依赖：`uv sync --extra dev`）
+- Run backend tests (business API suite uses an isolated SQLite file per test; the real-model integration tests additionally need valid `~/.openlair/openlair.json` + `~/.openlair/.env` credentials): `uv run pytest`
+- Start the local backend dev server (port 8001): `uv run uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
+- JWT signing key `OPENLAIR_JWT_SECRET` is read from (priority order): process env → `~/.openlair/.env` (or the dir of `OPENLAIR_CONFIG`) → `lairservice/.env` → dev default. Template: `lairservice/.env.example`.
 
 Run these from `lairweb/`:
 
@@ -24,9 +25,8 @@ Run these from `lairweb/`:
 
 Environment notes:
 
-- Python is managed through vfox; the verified interpreter is Python 3.14.5.
-- Global pyenv was removed to avoid `python` resolution conflicts.
-- `.venv/` is local-only and ignored by `.gitignore`.
+- Python is managed by `uv` (auto-installed CPython 3.14.5; lockfile `lairservice/uv.lock`).
+- `.venv/`, `lairservice/.env`, `data/` are local-only and ignored by `.gitignore`.
 
 ## Planned boundaries
 

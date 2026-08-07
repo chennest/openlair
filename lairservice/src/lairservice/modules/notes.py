@@ -1,41 +1,33 @@
-from datetime import UTC, datetime
+"""Agent 快速记录模块（早期 harness 能力）。
 
-from sqlalchemy import DateTime, Integer, String, Text, select
-from sqlalchemy.orm import Mapped, Session, mapped_column
+Note 模型已统一迁移至 `lairservice.models.note`；本模块只保留
+agent 侧的提取逻辑与仓库适配（user_id 字符串 → int 用户 id）。
+"""
 
-from lairservice.db.base import Base
-from lairservice.db.session import SessionFactory
 from lairservice.modules.base import ModuleContext
+from lairservice.models.note import Note
+from lairservice.repositories.notes import NoteRepository
+from lairservice.db.session import SessionFactory
 
 
-class Note(Base):
-    __tablename__ = "notes"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(128), index=True)
-    content: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+def _resolve_user_id(user_id: str) -> int:
+    """agent 上下文里的 user_id 是字符串；非数字 id（如 local-user/u1）映射到演示用户 1。"""
+    if user_id.isdigit():
+        return int(user_id)
+    return 1
 
 
 class NotesRepository:
+    """agent 侧适配：委托给统一 NoteRepository。"""
+
     def __init__(self, session_factory: SessionFactory) -> None:
-        self._session_factory = session_factory
+        self._repo = NoteRepository(session_factory)
 
     def create(self, *, user_id: str, content: str) -> Note:
-        with self._session_factory() as session:
-            note = Note(user_id=user_id, content=content, created_at=datetime.now(UTC))
-            session.add(note)
-            session.commit()
-            session.refresh(note)
-            return note
+        return self._repo.create_quick(user_id=_resolve_user_id(user_id), content=content, title=content[:40])
 
     def list_by_user(self, *, user_id: str) -> list[Note]:
-        with self._session_factory() as session:
-            return list(
-                session.scalars(
-                    select(Note).where(Note.user_id == user_id).order_by(Note.created_at.desc(), Note.id.desc())
-                )
-            )
+        return self._repo.list_content_by_user(_resolve_user_id(user_id))
 
 
 class NotesService:

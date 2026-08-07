@@ -56,13 +56,16 @@ def test_assistant_invoke_runs_agent_runtime(tmp_path) -> None:
     }
 
 
-def test_notes_endpoint_starts_empty(tmp_path) -> None:
+def test_notes_endpoint_returns_seeded_notes(tmp_path) -> None:
     client = make_client(tmp_path)
 
     response = client.get("/notes", params={"user_id": "u1"})
 
     assert response.status_code == 200
-    assert response.json() == []
+    notes = response.json()
+    assert isinstance(notes, list)
+    assert len(notes) == 5  # seed 演示数据（u1 → 演示用户 1）
+    assert {"id", "content"} <= set(notes[0])
 
 
 def test_model_config_loads_json_routes_and_provider(tmp_path) -> None:
