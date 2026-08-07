@@ -14,6 +14,10 @@ import {
   getCategory,
   categoriesOf,
   userName,
+  respond,
+  ok,
+  err,
+  guard,
   type TransactionQuery,
 } from './store'
 
@@ -42,131 +46,148 @@ export default {
   categories: defineMock({
     url: '/api/ledger/categories',
     method: 'GET',
-    body: (req) => {
-      const type = String(req.query?.type ?? '')
-      const rows = type ? categoriesOf(type as '支出' | '收入') : store.categories
-      return rows.map((c) => ({ ...c }))
-    },
+    response: respond(
+      guard((req) => {
+        const type = String(req.query?.type ?? '')
+        const rows = type ? categoriesOf(type as '支出' | '收入') : store.categories
+        return ok(rows.map((c) => ({ ...c })))
+      }),
+    ),
   }),
 
   // 列表：按账本隔离 + 筛选 + 分页；摘要/分类统计跟随筛选结果
   list: defineMock({
     url: '/api/ledger',
     method: 'GET',
-    body: (req) => {
-      const q = queryFrom(req)
-      const rows = queryTransactions(q)
-      const page = Number(req.query?.page) || 1
-      const pageSize = Number(req.query?.pageSize) || 20
-      const budget = currentBudget(q.bookId ?? 'book-personal')
-      return {
-        summary: summarize(rows),
-        categoryStats: categoryStats(rows),
-        transactions: paginate(rows, page, pageSize).map(toDTO),
-        total: rows.length,
-        page,
-        pageSize,
-        budget: budget.expenseLimit,
-      }
-    },
+    response: respond(
+      guard((req) => {
+        const q = queryFrom(req)
+        const rows = queryTransactions(q)
+        const page = Number(req.query?.page) || 1
+        const pageSize = Number(req.query?.pageSize) || 20
+        const budget = currentBudget(q.bookId ?? 'book-personal')
+        return ok({
+          summary: summarize(rows),
+          categoryStats: categoryStats(rows),
+          transactions: paginate(rows, page, pageSize).map(toDTO),
+          total: rows.length,
+          page,
+          pageSize,
+          budget: budget.expenseLimit,
+        })
+      }),
+    ),
   }),
 
   // 近 6 个月收支趋势（按账本）
   trend: defineMock({
     url: '/api/ledger/trend',
     method: 'GET',
-    body: (req) => {
-      const bookId = String(req.query?.bookId ?? 'book-personal')
-      return monthlyTrend(store.transactions.filter((t) => t.bookId === bookId), 6)
-    },
+    response: respond(
+      guard((req) => {
+        const bookId = String(req.query?.bookId ?? 'book-personal')
+        return ok(monthlyTrend(store.transactions.filter((t) => t.bookId === bookId), 6))
+      }),
+    ),
   }),
 
   // 读取/更新当前月预算（按账本）
   budget: defineMock({
     url: '/api/ledger/budget',
     method: 'GET',
-    body: (req) => {
-      const bookId = String(req.query?.bookId ?? 'book-personal')
-      return { budget: currentBudget(bookId).expenseLimit }
-    },
+    response: respond(
+      guard((req) => {
+        const bookId = String(req.query?.bookId ?? 'book-personal')
+        return ok({ budget: currentBudget(bookId).expenseLimit })
+      }),
+    ),
   }),
   updateBudget: defineMock({
     url: '/api/ledger/budget',
     method: 'PUT',
-    body: (req) => {
-      const bookId = String(req.body?.bookId ?? 'book-personal')
-      const amount = Number(req.body?.amount)
-      if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid budget' }
-      const b = currentBudget(bookId)
-      b.expenseLimit = Number(amount.toFixed(2))
-      b.updatedAt = new Date().toISOString()
-      return { ok: true, budget: b.expenseLimit }
-    },
+    response: respond(
+      guard((req) => {
+        const bookId = String(req.body?.bookId ?? 'book-personal')
+        const amount = Number(req.body?.amount)
+        if (!Number.isFinite(amount) || amount < 0) return err(400, '预算金额不合法')
+        const b = currentBudget(bookId)
+        b.expenseLimit = Number(amount.toFixed(2))
+        b.updatedAt = new Date().toISOString()
+        return ok({ budget: b.expenseLimit })
+      }),
+    ),
   }),
 
-  // 新增
+  // 新增（记账人 = 当前登录用户）
   create: defineMock({
     url: '/api/ledger',
     method: 'POST',
-    body: (req) => {
-      const { type, categoryId, category, amount, date: reqDate, note, bookId, userId } = req.body ?? {}
-      // 兼容：传 categoryId 直接使用；传 category 名字则查表（或兜底「其他」）
-      let cid = String(categoryId || '')
-      if (!cid && category) {
-        const c = store.categories.find((x) => x.name === String(category))
-        if (c) cid = c.id
-      }
-      if (!cid) {
-        const fallback = store.categories.find((c) => c.type === (type === '收入' ? '收入' : '支出') && c.isDefault)
-        cid = fallback?.id ?? store.categories[0].id
-      }
-      const t = new Date().toISOString()
-      const item: Transaction = {
-        id: guid(),
-        type: type === '收入' ? '收入' : '支出',
-        categoryId: cid,
-        bookId: String(bookId || 'book-personal'),
-        userId: String(userId || 'u-me'),
-        amount: Number(amount) || 0,
-        date: String(reqDate || date()),
-        note: String(note || ''),
-        createdAt: t,
-        updatedAt: t,
-      }
-      store.transactions.push(item)
-      return { ok: true, id: item.id, item: toDTO(item) }
-    },
+    response: respond(
+      guard((req, auth) => {
+        const { type, categoryId, category, amount, date: reqDate, note, bookId } = req.body ?? {}
+        // 兼容：传 categoryId 直接使用；传 category 名字则查表（或兜底「其他」）
+        let cid = String(categoryId || '')
+        if (!cid && category) {
+          const c = store.categories.find((x) => x.name === String(category))
+          if (c) cid = c.id
+        }
+        if (!cid) {
+          const fallback = store.categories.find((c) => c.type === (type === '收入' ? '收入' : '支出') && c.isDefault)
+          cid = fallback?.id ?? store.categories[0].id
+        }
+        const t = new Date().toISOString()
+        const item: Transaction = {
+          id: guid(),
+          type: type === '收入' ? '收入' : '支出',
+          categoryId: cid,
+          bookId: String(bookId || 'book-personal'),
+          userId: auth.userId,
+          amount: Number(amount) || 0,
+          date: String(reqDate || date()),
+          note: String(note || ''),
+          createdAt: t,
+          updatedAt: t,
+        }
+        store.transactions.push(item)
+        return ok({ id: item.id, item: toDTO(item) })
+      }),
+    ),
   }),
 
   // 更新
   update: defineMock({
     url: '/api/ledger/:id',
     method: 'PUT',
-    body: (req) => {
-      const id = String(req.params?.id)
-      const index = store.transactions.findIndex((t) => t.id === id)
-      if (index < 0) return { ok: false, error: 'not found' }
-      const patch = (req.body ?? {}) as Partial<Transaction>
-      store.transactions[index] = {
-        ...store.transactions[index],
-        ...patch,
-        id,
-        updatedAt: new Date().toISOString(),
-      }
-      return { ok: true, item: toDTO(store.transactions[index]) }
-    },
+    response: respond(
+      guard((req) => {
+        const id = String(req.params?.id)
+        const index = store.transactions.findIndex((t) => t.id === id)
+        if (index < 0) return err(404, '流水不存在')
+        const patch = (req.body ?? {}) as Partial<Transaction>
+        store.transactions[index] = {
+          ...store.transactions[index],
+          ...patch,
+          id,
+          updatedAt: new Date().toISOString(),
+        }
+        return ok({ item: toDTO(store.transactions[index]) })
+      }),
+    ),
   }),
 
   // 删除
   remove: defineMock({
     url: '/api/ledger/:id',
     method: 'DELETE',
-    body: (req) => {
-      const id = String(req.params?.id)
-      const before = store.transactions.length
-      store.transactions = store.transactions.filter((t) => t.id !== id)
-      return { ok: before !== store.transactions.length }
-    },
+    response: respond(
+      guard((req) => {
+        const id = String(req.params?.id)
+        const before = store.transactions.length
+        store.transactions = store.transactions.filter((t) => t.id !== id)
+        if (store.transactions.length === before) return err(404, '流水不存在')
+        return ok({ ok: true })
+      }),
+    ),
   }),
 }
 

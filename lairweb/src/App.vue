@@ -1,10 +1,36 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { setToken, setUser, getUser } from './api/request'
+import { authApi, type AuthUser } from './modules/auth/api'
 
 const route = useRoute()
 const router = useRouter()
 const pageTitle = computed(() => (route.meta.title as string) || '总揽')
+
+// ---------- 登录态：路由变化时从 localStorage 刷新（登录/登出后生效） ----------
+const user = ref<AuthUser | null>(getUser() as AuthUser | null)
+watch(
+  () => route.path,
+  () => {
+    user.value = getUser() as AuthUser | null
+  },
+)
+
+async function logout() {
+  try {
+    await authApi.logout()
+  } catch {
+    // token 已失效也无妨，本地照常清理
+  }
+  setToken(null)
+  setUser(null)
+  user.value = null
+  router.push('/login')
+}
+
+/** /login 独立全屏页（无侧边导航与底栏） */
+const isAuthPage = computed(() => route.path === '/login')
 
 const navItems = [
   { path: '/', label: '总揽', icon: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'] },
@@ -93,8 +119,11 @@ function goTo(index: number) {
 </script>
 
 <template>
+  <!-- ============ 登录页（独立全屏，无导航壳） ============ -->
+  <RouterView v-if="isAuthPage" />
+
   <!-- ============ 桌面布局（>860px） ============ -->
-  <div v-if="!isMobile" class="workspace">
+  <div v-else-if="!isMobile" class="workspace">
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark">穴</span>
@@ -121,8 +150,15 @@ function goTo(index: number) {
       </nav>
 
       <div class="sidebar-foot">
-        <span class="dot" aria-hidden="true"></span>
-        <span>本地数据 · v0.1</span>
+        <template v-if="user">
+          <span class="avatar" :style="{ background: user.avatarColor }">{{ user.name.slice(0, 1) }}</span>
+          <span class="user-name">{{ user.name }}</span>
+          <button class="logout-btn" title="退出登录" @click="logout">退出</button>
+        </template>
+        <template v-else>
+          <span class="dot" aria-hidden="true"></span>
+          <span>本地数据 · v0.1</span>
+        </template>
       </div>
     </aside>
 
@@ -141,6 +177,13 @@ function goTo(index: number) {
       <span class="m-brand">穴</span>
       <strong>{{ pageTitle }}</strong>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
+      <button
+        v-if="user"
+        class="m-avatar"
+        :style="{ background: user.avatarColor }"
+        :title="`${user.name} · 退出登录`"
+        @click="logout"
+      >{{ user.name.slice(0, 1) }}</button>
     </header>
 
     <main class="m-content" @scroll="onMScroll">
@@ -165,3 +208,58 @@ function goTo(index: number) {
     </nav>
   </div>
 </template>
+
+<style scoped>
+/* ---------- 用户区（侧边栏底部） ---------- */
+.avatar {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.user-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.logout-btn {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  color: var(--text-3);
+  background: var(--surface);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.logout-btn:hover {
+  color: var(--heat);
+  border-color: rgba(255, 107, 0, 0.4);
+}
+
+/* ---------- 用户区（手机顶栏右侧） ---------- */
+.m-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+</style>
