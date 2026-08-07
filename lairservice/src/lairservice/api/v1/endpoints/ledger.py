@@ -4,8 +4,8 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from lairservice.api.deps import get_current_user
-from lairservice.api.schemas import CreateTransactionInput, UpdateBudgetInput, UpdateTransactionInput
+from lairservice.api.v1.deps import get_current_user
+from lairservice.api.v1.schemas import CreateTransactionInput, UpdateBudgetInput, UpdateTransactionInput
 from lairservice.core.envelope import ok_response
 from lairservice.models.user import User
 

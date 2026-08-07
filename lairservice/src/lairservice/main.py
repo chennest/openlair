@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from lairservice.api.routes import api_router
-from lairservice.config import resolve_env_value
+from lairservice.api.v1.router import v1_router
+from lairservice.core.config import resolve_env_value
 from lairservice.core.envelope import register_envelope_handlers
 from lairservice.db.session import create_database_engine, create_session_factory, init_database
 from lairservice.repositories.books import BookRepository
@@ -71,7 +71,7 @@ def create_app(
     app.state.user_repository = user_repo
     app.state.token_repository = token_repo
 
-    app.include_router(api_router)
+    app.include_router(v1_router)
     return app
 
 

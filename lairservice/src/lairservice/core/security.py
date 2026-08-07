@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from lairservice.config import resolve_env_value
+from lairservice.core.config import resolve_env_value
 
 # 开发默认密钥（>= 32 字节）；生产必须通过 OPENLAIR_JWT_SECRET 配置，见 .env.example
 DEV_SECRET = "openlair-dev-secret-key-0123456789ab"

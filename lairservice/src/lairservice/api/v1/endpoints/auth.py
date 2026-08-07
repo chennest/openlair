@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, Header, Request
 
-from lairservice.api.deps import get_current_user
-from lairservice.api.schemas import LoginInput, RegisterInput
+from lairservice.api.v1.deps import get_current_user
+from lairservice.api.v1.schemas import LoginInput, RegisterInput
 from lairservice.core.envelope import ok_response
 from lairservice.models.user import User
 
