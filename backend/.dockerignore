@@ -1,0 +1,15 @@
+# 构建上下文排除（backend/ 内）
+.venv/
+__pycache__/
+*.pyc
+data/
+.env
+.env.*
+!.env.example
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.git/
+.memory/
