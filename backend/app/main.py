@@ -66,7 +66,7 @@ def create_app(
 
     # ---------- 服务（业务逻辑层） ----------
     app.state.auth_service = AuthService(user_repo, token_repo)
-    app.state.ledger_service = LedgerService(ledger_repo, user_repo)
+    app.state.ledger_service = LedgerService(ledger_repo, user_repo, book_repo)
     app.state.book_service = BookService(book_repo, user_repo)
     app.state.todo_service = TodoService(todo_repo)
     app.state.event_service = EventService(event_repo)

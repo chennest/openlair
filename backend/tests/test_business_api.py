@@ -336,6 +336,29 @@ def test_books_trash_restore_purge(tmp_path) -> None:
     r = client.delete(f"/api/books/{book_id}/purge", headers=headers)
     assert r.json()["data"]["ok"] is True
     assert all(b["id"] != book_id for b in client.get("/api/books/trash", headers=headers).json()["data"])
-    # 原流水已随账本级联删除
+    # 账本已彻底删除：查询该账本流水 → 404（原流水随账本级联删除，不可再访问）
     r = client.get(f"/api/ledger?bookId={book_id}&pageSize=1", headers=headers)
-    assert r.json()["data"]["total"] == 0
+    assert r.status_code == 404
+
+def test_ledger_create_requires_existing_book(tmp_path) -> None:
+    """账本不存在/已删除时禁止入账（修复 fallback 到默认账本的隐患）。"""
+    client = make_client(tmp_path)
+    token, _ = login(client)
+    headers = auth_headers(token)
+
+    # 不传 bookId → 400
+    r = client.post("/api/ledger", json={"type": "支出", "categoryId": 1, "amount": 10}, headers=headers)
+    assert r.status_code == 400
+
+    # 不存在的账本 → 404
+    r = client.post(
+        "/api/ledger", json={"type": "支出", "categoryId": 1, "amount": 10, "bookId": 999}, headers=headers
+    )
+    assert r.status_code == 404
+
+    # 软删除的账本 → 404
+    client.delete("/api/books/2", headers=headers)
+    r = client.post(
+        "/api/ledger", json={"type": "支出", "categoryId": 1, "amount": 10, "bookId": 2}, headers=headers
+    )
+    assert r.status_code == 404

@@ -4,10 +4,9 @@ from datetime import date, datetime, timedelta
 
 from app.core.envelope import ApiError
 from app.models.transaction import Transaction
+from app.repositories.books import BookRepository
 from app.repositories.ledger import LedgerRepository
 from app.repositories.users import UserRepository
-
-DEFAULT_BOOK_ID = 1  # 个人账本
 
 
 def _money(value) -> float:
@@ -76,9 +75,24 @@ def monthly_trend(rows: list[Transaction], months: int = 6) -> list[dict]:
 
 
 class LedgerService:
-    def __init__(self, ledger: LedgerRepository, users: UserRepository) -> None:
+    def __init__(
+        self,
+        ledger: LedgerRepository,
+        users: UserRepository,
+        books: BookRepository,
+    ) -> None:
         self._ledger = ledger
         self._users = users
+        self._books = books
+
+    def _require_book(self, book_id: int | None) -> int:
+        """账本校验：必须显式指定、存在且未删除；否则报错（禁止 fallback 到默认账本）。"""
+        if book_id is None:
+            raise ApiError(400, "缺少账本，请先创建账本")
+        book = self._books.get(book_id)
+        if book is None or book.deleted_at is not None:
+            raise ApiError(404, "账本不存在或已删除，请先创建账本")
+        return book_id
 
     # ---------- 分类 ----------
 
@@ -108,7 +122,7 @@ class LedgerService:
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
-        bid = book_id or DEFAULT_BOOK_ID
+        bid = self._require_book(book_id)
         rows = self._ledger.query_transactions(
             book_id=bid,
             type=type or None,
@@ -142,19 +156,19 @@ class LedgerService:
         }
 
     def trend(self, *, book_id: int | None = None, months: int = 6) -> list[dict]:
-        bid = book_id or DEFAULT_BOOK_ID
+        bid = self._require_book(book_id)
         rows = self._ledger.query_transactions(book_id=bid)
         return monthly_trend(rows, months)
 
     def get_budget(self, *, book_id: int | None = None) -> dict:
-        bid = book_id or DEFAULT_BOOK_ID
+        bid = self._require_book(book_id)
         budget = self._ledger.budget_for(bid, f"{date.today().year}-{date.today().month:02d}")
         return {"budget": _money(budget.expense_limit)}
 
     def update_budget(self, *, book_id: int | None, amount: float) -> dict:
         if amount is None or amount < 0:
             raise ApiError(400, "预算金额不合法")
-        bid = book_id or DEFAULT_BOOK_ID
+        bid = self._require_book(book_id)
         budget = self._ledger.update_budget(bid, f"{date.today().year}-{date.today().month:02d}", amount)
         return {"budget": _money(budget.expense_limit)}
 
@@ -182,7 +196,7 @@ class LedgerService:
         tx = self._ledger.create_transaction(
             type=tx_type,
             category_id=cid,
-            book_id=book_id or DEFAULT_BOOK_ID,
+            book_id=self._require_book(book_id),
             user_id=user_id,
             amount=amount or 0,
             date=date or datetime.now().date(),
