@@ -1,146 +1,159 @@
-# Backend architecture decision
+# 后端架构（backend/）
 
-## Decision
+## 概述
 
-- Use Python/FastAPI for `backend/` as the core backend.
-- Use LangGraph as the MVP orchestration layer for assistant flows.
-- Use a multi-provider, multi-model gateway instead of binding the backend to one LLM vendor or model.
-- Use SQLite for the initial single-user data store.
+- 技术栈：FastAPI + SQLAlchemy 2 + SQLite（可通过 `DATABASE_URL` 换 MySQL/PostgreSQL）+ PyJWT + Alembic + pydantic-settings，`uv` 管理（CPython 3.14）。
+- 目录结构对齐官方 [full-stack-fastapi-template](https://github.com/fastapi/full-stack-fastapi-template)：`backend/app`（flat layout，包名 `app`）+ `backend/migrations` + `backend/tests`。
+- 核心原则：**后端与前端 mock 层（`lairweb/mock/`）的 API 契约完全一致**——统一信封、字段命名（camelCase）、错误语义，切换 Vite proxy 目标即可在 mock 与真实后端之间切换。
 
-## Why FastAPI
-
-- FastAPI is a good fit for the API boundary: typed request/response models, dependency injection, async I/O, and automatic OpenAPI docs for the Flutter client and the Vue + TypeScript web admin.
-- The backend is mostly assistant orchestration, model calls, module dispatch, validation, and persistence. Python has the strongest ecosystem for this work.
-- The repo has no existing backend code or manifests, so the move from the earlier Go plan has no implementation migration cost.
-
-## Why LangGraph is in MVP
-
-Lair's MVP target is not only a single-shot intent classifier. It needs assistant-like behavior from the start:
-
-- choose among multiple model providers and model capabilities
-- call tools and product modules
-- keep conversation/task state across steps
-- branch when user intent is ambiguous
-- support confirmation or correction loops
-- compose proactive flows such as morning review, evening summary, and vocabulary reminders
-
-LangGraph should own orchestration state and flow control. Domain services should still own business logic.
-
-## MVP backend shape
+## 目录结构
 
 ```text
-client apps
-  -> FastAPI routes
-  -> LangGraph assistant graph
-  -> model gateway
-  -> module services
-  -> SQLite repositories
+backend/
+├── pyproject.toml            # uv 项目（openlair-backend，hatchling packages=["app"]）
+├── alembic.ini
+├── .env / .env.example       # OPENLAIR_JWT_SECRET、DATABASE_URL（模板含 3 种数据库示例）
+├── app/                      # 源码包（包名 app）
+│   ├── main.py               # create_app()：组装 engine/seed/仓储/服务，挂 /api 路由
+│   ├── seed.py               # 幂等 seed：3 测试账号、2 账本、16 分类、演示数据
+│   ├── api/v1/
+│   │   ├── router.py         # APIRouter(prefix="/api")，汇总 8 个子路由
+│   │   ├── deps.py           # get_current_user：Bearer 验签 + 过期 + 黑名单
+│   │   ├── schemas.py        # Pydantic 请求模型（camelCase，与前端契约一致）
+│   │   └── endpoints/        # auth / books / ledger / modules（薄 HTTP 层）
+│   ├── core/
+│   │   ├── config.py         # Settings(BaseSettings)：OPENLAIR_JWT_SECRET / DATABASE_URL
+│   │   ├── envelope.py       # {code, message, data} 统一信封 + 异常处理器
+│   │   └── security.py       # JWT 签发/验签 + scrypt 密码哈希
+│   ├── db/
+│   │   ├── base.py           # Base(DeclarativeBase)
+│   │   └── session.py        # engine / session_factory 工厂
+│   ├── models/               # 11 张 ORM 表，一表一文件
+│   ├── repositories/         # SQLAlchemy 持久化（唯一数据访问路径）
+│   └── services/             # 业务逻辑 + DTO（auth / books / ledger / modules）
+├── migrations/               # Alembic（versions/ 下每变更一个迁移文件）
+├── tests/                    # test_business_api.py（17 项全链路）+ test_security.py（3 项）
+└── data/                     # SQLite 数据文件（本地，gitignore）
 ```
 
-The first implementation lives in `backend/` and uses an `AssistantRuntime` abstraction backed by a LangGraph runtime implementation. Keep this abstraction even while LangGraph is the only runtime implementation, so Lair owns the runtime boundary and can evolve it later.
-
-### Core layers
-
-- FastAPI routes: HTTP API, auth/session boundary, validation, streaming responses where needed.
-- LangGraph assistant graph: intent routing, multi-step orchestration, tool/module calls, clarification loops, and state transitions.
-- Model gateway: provider/model selection, failover hooks, request normalization, response normalization, and capability metadata.
-- Module services: vocabulary, accounting, calendar, notes, habits, and proactive assistant logic.
-- SQLAlchemy repositories: persistence abstraction for app data, using SQLite for early local/light deployment.
-
-## Implemented first work
-
-The current core backend work is the agent harness loop, adapted from the `s01` through `s14` harness pattern, plus `s19` MCP plugin-style external tool routing:
+## 分层架构
 
 ```text
-POST /assistant/invoke
-  -> LangGraphAssistantRuntime
-  -> model step
-  -> optional tool execution step
-  -> tool_result messages loop back to model
-  -> final assistant text response
+HTTP 请求
+  -> api/v1/endpoints     薄层：取参、调用服务、包信封
+  -> services             业务逻辑 + DTO，可脱离 HTTP 直接单测
+  -> repositories         SQLAlchemy 持久化（唯一数据访问路径）
+  -> models               ORM 表定义
 ```
 
-Implemented harness mechanisms:
+- **endpoints 只做转发**：参数校验交给 Pydantic schema，业务规则全部下沉到 services。
+- **services 可脱离 HTTP 调用**：构造注入 repositories，不依赖 FastAPI Request（单测友好）。
+- **repositories 是唯一数据访问路径**：禁止在 endpoints/services 里直接写 SQL/ORM 查询，保证未来换数据库只改这一层。
+- **组装在 main.py**：`create_app(database_url=None)` 创建 engine → seed → 实例化仓储与服务 → 挂到 `app.state.*`；endpoints 通过 `request.app.state` 取服务，FastAPI 依赖只承担鉴权（`get_current_user`）。测试通过传 `database_url` 注入隔离数据库。
 
-- `s01` Agent loop: model responses continue while `stop_reason == "tool_use"`.
-- `s02` Tool use: tools register through a dispatch map and model-facing schemas.
-- `s03` Permission: tool calls pass through a deny/rule policy before execution.
-- `s04` Hooks: lifecycle extension points wrap prompt submit, tool use, and stop events.
-- `s05` TodoWrite: `todo_write` updates the current task list and supports reminders.
-- `s06` Subagent: the `task` tool runs a child loop with fresh context and returns only a summary.
-- `s07` Skill Loading: skill catalogs stay cheap in the system prompt; `load_skill` loads full content on demand.
-- `s08` Context Compact: tool-result budgeting, snip compaction, micro compaction, transcript persistence, and reactive compaction protect the model context.
-- `s09` Memory: `.memory/MEMORY.md` indexes persistent memories, and clear `remember ...` user facts are extracted into files.
-- `s10` System Prompt: system prompts are assembled at runtime from identity, tools, workspace, skills, and memory context.
-- `s11` Error Recovery: model calls retry transient errors, reactively compact oversized prompts, and escalate `max_tokens` responses before continuing.
-- `s12` Task System: persistent harness tasks live under `.tasks/`, support dependencies, claiming, completion, and unlocked downstream reporting.
-- `s13` Background Tasks: slow or explicitly marked tool calls can run in daemon background threads and later inject `<task_notification>` messages.
-- `s14` Cron Scheduler: `schedule_cron`, `list_crons`, and `cancel_cron` manage five-field cron prompts with durable `.scheduled_tasks.json` persistence.
-- `s19` MCP Plugin: `connect_mcp` connects mock MCP servers, dynamically exposes prefixed tools such as `mcp__docs__search`, and routes those calls through the normal tool registry.
+## API 契约（与前端 mock 完全一致）
 
-This is implemented as a FastAPI + LangGraph service runtime rather than a CLI script. The loop is owned by `LangGraphAssistantRuntime`; tool definitions and handlers live under `app.agent`; model access stays behind `ModelGateway`.
+统一信封，所有接口（含错误）都包一层：
 
-The first business slice is Notes quick capture:
-
-```text
-POST /assistant/invoke
-  -> LangGraphAssistantRuntime
-  -> AssistantService routes to notes
-  -> NotesService
-  -> SQLAlchemy NotesRepository
-  -> SQLite
+```json
+{ "code": 200, "message": "成功", "data": { ... } }
 ```
 
-This is intentionally small: it proves the runtime, module boundary, and SQL persistence path without mixing note business logic into graph nodes.
+- 成功：`code=200`，`data` 为业务数据。
+- 失败：`code` = HTTP 状态码（401/403/404/409/422/500...），`message` 为人类可读错误，`data=null`。
+- **HTTP 状态码与 `code` 保持一致**。
+- 错误处理链（`core/envelope.py`）：`ApiError(status, message)` 业务错误（401 自动带 `WWW-Authenticate: Bearer`）→ `HTTPException` 转换 → 未捕获异常兜底 500「服务器内部错误」。
+- 鉴权：`Authorization: Bearer <token>`；未登录 / token 无效 / 过期 / 已登出 → 401「未登录或登录已过期，请重新登录」。
+- 字段命名 camelCase（`bookId`、`categoryId`、`pageSize`），与 mock 层逐字段对齐。
 
-## Model gateway requirements
+## 认证与安全（core/security.py）
 
-Do not call model providers directly from product modules or graph nodes. Route all model access through a gateway interface so the backend can support:
+- **JWT HS256**（PyJWT，RFC 7519）：签发 claims `{ sub: 用户id, iat, exp: now+7天, jti }`；验签 `jwt.decode(token, secret, algorithms=["HS256"])`。
+- **登出黑名单**：登出时把 `jti` 写入 `revoked_tokens` 表（等价于 Redis 黑名单方案），后续携带该 token 的请求一律 401。
+- **密码哈希**：`hashlib.scrypt`（n=2^14, r=8, p=1, dklen=64），存储格式 `scrypt$salt$hash`，比较用 `hmac.compare_digest`。
+- **密钥来源**：`OPENLAIR_JWT_SECRET`（进程环境 → `backend/.env` → 开发默认值），HS256 要求 ≥ 32 字节；生产必须显式配置。
+- 鉴权依赖 `get_current_user`（api/v1/deps.py）执行：验签 → 过期检查 → 黑名单检查 → 用户存在性检查，任一失败统一 401。
 
-- multiple providers
-- multiple model classes, such as cheap intent models, stronger reasoning models, embedding models, and summarization models
-- per-task model selection
-- fallback and retry policies
-- consistent logging and cost/latency tracking later
+## 数据模型（11 张表，models/）
 
-GLM-Flash can be one supported model/provider, but it is not the only planned LLM dependency.
+| 表 | 说明 |
+|---|---|
+| `users` | 用户：id（自增 int）、name、email（唯一）、password_hash |
+| `books` | 账本：name、type（personal/shared）、owner_id |
+| `book_members` | 账本成员：book_id + user_id，多对多 |
+| `categories` | 分类：16 个固定项——支出 id 1-10（餐饮/交通/购物/居住/娱乐/医疗/学习/人情/通讯/其他），收入 id 11-16（工资/奖金/理财/礼金/退款/其他） |
+| `transactions` | 流水：book_id、type（expense/income）、category、amount、date、note |
+| `budgets` | 月预算：book_id + amount（每月一条） |
+| `todos` | 待办：text、quadrant（四象限）、done、due |
+| `events` | 日历日程：title、date、time、location、done |
+| `notes` | 笔记：title、summary、tags（JSON） |
+| `habits` | 习惯打卡：name、streak、week（7 天布尔数组） |
+| `revoked_tokens` | JWT 登出黑名单：jti |
 
-Global product configuration is loaded through `OPENLAIR_CONFIG` when set, otherwise `~/.openlair/openlair.json`. If the default file is missing, startup creates a template with real `openai_compatible` fields; there is no implicit Echo fallback in the product path. Model routing lives under the top-level `model` object, mapping logical routes such as `agent`, `chat`, and `summary` to named providers. Provider entries include `kind`, `model`, `base_url`, and `api_key`. When `api_key` starts with `$`, the rest is treated as a variable name resolved from the same OpenLair directory's `.env` file first, then from the process environment; otherwise the value is used as the raw key. The legacy `api_key_env` field is still supported for compatibility with the same `.env`-first priority.
+## API 端点清单（全部挂 `/api`，除 auth 均需 Bearer token）
 
-The default backend test command includes real model integration tests. A local developer machine must have a valid `~/.openlair/openlair.json` and matching key in `~/.openlair/.env` or the process environment for the full suite to pass.
+### /api/auth
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /register | 注册（name/email/password） |
+| POST | /login | 登录，返回 `{ token, user }` |
+| POST | /logout | 登出，撤销当前 token（jti 入黑名单） |
+| GET | /me | 当前用户信息 |
 
-## LangGraph boundaries
+### /api/ledger
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | /categories | 分类列表（带 type） |
+| GET | /?bookId=&page=&pageSize= | 流水分页列表（按账本隔离，带 total） |
+| POST | / | 记一笔（type/categoryId|category/amount/date/note/bookId） |
+| PUT | /{transaction_id} | 改流水 |
+| DELETE | /{transaction_id} | 删流水 |
+| GET | /trend | 趋势统计（按日/月聚合支出收入） |
+| GET | /budget?bookId= | 当月预算 |
+| PUT | /budget | 设置预算 |
 
-- Graph nodes may orchestrate module services, but should not contain durable domain rules such as SM-2 scheduling, accounting categorization storage, or habit streak calculation.
-- Keep module services callable outside LangGraph so they can be unit tested directly.
-- Keep graph state schemas explicit and small; store durable business data in repositories, not only in graph state.
-- Prefer simple subgraphs per assistant capability once flows grow, instead of one giant graph.
+### /api/books
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | / | 我的账本列表 |
+| POST | / | 创建账本（name/type） |
+| POST | /{book_id}/members | 添加成员（userId 或 name 查找） |
+| DELETE | /{book_id}/members/{user_id} | 移除成员 |
 
-## Harness principles
+### /api/todo · /api/calendar · /api/notes · /api/habits
+统一模式：`GET ""` 列表、`POST ""` 创建、`PUT /{id}` 更新、`DELETE /{id}` 删除（数据按用户隔离）。
 
-Lair should treat the backend as an agent harness, not as a hand-coded intelligence engine. The model supplies the agency; the backend supplies the controlled environment around it:
+### /api/overview
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | / | 首页总览：流水/待办/日程/习惯聚合数据 |
 
-- Tools: module services, repositories, external APIs, and model gateway capabilities.
-- Knowledge: product/module instructions, user context, and retrieved memories.
-- Observation: tool results, database reads, traces, and runtime state.
-- Action interfaces: FastAPI endpoints, scheduled entrypoints, module methods, and database writes.
-- Permissions: checks before sensitive tool calls, module side effects, or durable writes.
+## 配置（pydantic-settings，core/config.py）
 
-Keep the core runtime path stable and add cross-cutting behavior through explicit extension points. Useful early hook points are before model calls, after model responses, before module/tool calls, after module/tool calls, and before database writes. These hooks should enforce permissions, logging, tracing, and validation without moving business logic into LangGraph nodes.
+- `Settings(BaseSettings)` 字段：`jwt_secret`（别名 `OPENLAIR_JWT_SECRET`）、`database_url`（别名 `DATABASE_URL`）。
+- 读取优先级：**进程环境 → `backend/.env` → 默认值**；`env_file` 指向项目根 `.env`（不读 `~/` 下的全局配置）。
+- `.env.example` 提供 SQLite / MySQL（`mysql+pymysql://`）/ PostgreSQL（`postgresql+psycopg://`）三种连接串示例。
 
-Context should be loaded progressively. The default graph state should stay small; detailed module instructions, examples, or skill-like guidance should be loaded only when the routed flow needs them.
+## 数据库与迁移
 
-## Scheduling and background work
+- **启动兜底**：`create_app` 内 `init_database`（create_all）+ 幂等 `seed`——新建空库自动建表并灌入测试账号（`test1/2/3@openlair.dev`，密码 `test123456`）与演示数据。
+- **schema 演进走 Alembic**（`backend/migrations/`，env.py 从 Settings 读连接串、注册全部 ORM metadata）：
+  - 生成：`uv run alembic revision --autogenerate -m "..."`（从 backend/ 执行）
+  - 应用：`uv run alembic upgrade head`；回退：`uv run alembic downgrade -1`
+  - 初始迁移 `7435700fd27f_initial_schema` 已包含全部 11 张表。
+- 换库只需改 `DATABASE_URL`；Alembic 迁移同样适用 MySQL/PostgreSQL。
 
-- FastAPI `BackgroundTasks` is only suitable for short, non-durable work after a response.
-- Proactive reminders and daily summaries need a recoverable scheduling strategy before they are treated as reliable features.
-- Scheduled jobs should trigger graph entrypoints or service methods rather than duplicating assistant flow logic.
-- The current s13/s14 harness implementation is intentionally local and lightweight: background work uses daemon threads, and cron tools persist definitions but do not yet run a service-wide scheduler loop. Treat reliable proactive execution as a later infrastructure step.
-- The current s19 MCP implementation follows the upstream teaching shape with in-process mock servers (`docs`, `deploy`). Real stdio JSON-RPC MCP server management is a later integration step.
+## 测试
 
-## SQLite constraints
+- `backend/tests/`，命令 `uv run pytest`（当前 20 项全绿）。
+- `test_business_api.py`（17 项）：全链路业务测试——注册/登录/登出、账本创建与成员、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
+- `test_security.py`（3 项）：JWT 密钥解析优先级（环境变量 > .env > 默认）与 `.env.example` 键完整性。
+- 手工验收：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001` 后按契约调 `/api/auth/login` 等端点核对信封格式。
 
-- SQLite is appropriate for early single-user local/light deployment.
-- Access SQLite through SQLAlchemy models/repositories, not direct `sqlite3` calls, so the backend can move to another SQL database later.
-- Avoid assuming high write concurrency.
-- If the backend later runs multiple workers or concurrent write-heavy tasks, document the locking behavior and evaluate WAL mode or migration to a server database.
+## 演进约束
+
+- **契约同步**：任何接口变更必须 mock 层（`lairweb/mock/`）与后端同步修改，两端契约以本文档 + 测试为准。
+- **schema 变更必须走 Alembic 迁移**，`create_all` 只负责新库兜底。
+- 保持分层纪律：services 不含 HTTP 依赖，repositories 是唯一数据访问路径（换库不动业务层）。
+- SQLite 适用早期单用户本地部署；未来多 worker 或写密集场景再评估 WAL/服务数据库。
+- 后续方向（未实现）：主动提醒/每日总结等定时调度基础设施、生产环境密钥强制校验、多用户并发与锁行为。
