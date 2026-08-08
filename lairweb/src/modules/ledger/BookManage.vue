@@ -147,8 +147,8 @@ function initials(name: string) {
 
     <div class="foot">
       <div class="foot-left">
-        <button v-if="mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
-        <button v-else class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
+        <button v-if="book.type === 'shared' && mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
+        <button v-if="book.type === 'shared' && mode === 'add'" class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
       </div>
       <button v-if="isOwner && mode === 'list'" class="btn-danger" @click="showDeleteConfirm = true">
         删除账本

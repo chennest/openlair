@@ -62,8 +62,8 @@ function pick(bookId: number) {
 
         <div class="menu-actions">
           <button class="act" @click="open = false; emit('create')">＋ 新建账本</button>
-          <button v-if="current && current.type === 'shared'" class="act" @click="open = false; emit('manage', current)">
-            管理成员
+          <button v-if="current" class="act" @click="open = false; emit('manage', current)">
+            管理账本
           </button>
           <button class="act act-trash" @click="open = false; emit('trash')">
             <svg class="act-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
