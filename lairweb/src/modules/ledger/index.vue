@@ -206,7 +206,7 @@ onMounted(async () => {
     <LedgerSummary :summary="data!.summary">
       <template #action>
         <div class="hero-actions">
-          <button class="add-btn" @click="showDialog = true">＋ 记一笔</button>
+          <button class="add-btn" :disabled="books.length === 0" :title="books.length === 0 ? '请先创建账本' : ''" @click="showDialog = true">＋ 记一笔</button>
           <Transition name="fade">
             <span v-if="savedTip" class="saved-tip">✓ 已记录</span>
           </Transition>
@@ -299,6 +299,11 @@ onMounted(async () => {
 }
 .add-btn:active {
   transform: scale(0.97);
+}
+.add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 .saved-tip {
   color: rgba(255, 255, 255, 0.92);
