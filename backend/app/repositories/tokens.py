@@ -1,5 +1,8 @@
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import delete, select
+
+from app.core.security import ACCESS_TOKEN_TTL
 from app.db.session import SessionFactory
 from app.models.revoked_token import RevokedToken
 
@@ -16,5 +19,9 @@ class TokenRepository:
 
     def revoke(self, *, jti: str, user_id: int) -> None:
         with self._session_factory() as session:
+            # 惰性清理：token 过期（TTL 窗口）后的黑名单记录不会再被校验到，顺手删掉，
+            # 保证表只保留 TTL 窗口内的数据，无需定时任务。
+            cutoff = datetime.now(UTC) - ACCESS_TOKEN_TTL
+            session.execute(delete(RevokedToken).where(RevokedToken.revoked_at < cutoff))
             session.add(RevokedToken(jti=jti, user_id=user_id))
             session.commit()
