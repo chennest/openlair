@@ -16,6 +16,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!lairweb/.env
 *.local
 
 # OMO / Sisyphus / agent runtime state
