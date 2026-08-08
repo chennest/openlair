@@ -29,10 +29,13 @@ const categories = ref<Category[]>([])
 
 // 账本状态
 const books = ref<Book[]>([])
-const currentBookId = ref(1)
+const currentBookId = ref(0)
 const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
 const showManage = ref(false)
 const showCreate = ref(false)
+
+/** 无账本空态 */
+const noBooks = computed(() => books.value.length === 0)
 const showTrash = ref(false)
 const trashBooks = ref<Book[]>([])
 
@@ -55,12 +58,22 @@ const query = ref<LedgerQuery>({ page: 1, pageSize: 20 })
 async function loadBooks() {
   try {
     books.value = await bookApi.list()
+    // 当前账本失效（被删/不存在）时切到第一个账本
+    if (!books.value.some((b) => b.id === currentBookId.value)) {
+      currentBookId.value = books.value[0]?.id ?? 0
+    }
   } catch {
     books.value = []
+    currentBookId.value = 0
   }
 }
 
 async function load() {
+  if (!currentBookId.value) {
+    data.value = null
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     const q: LedgerQuery = { ...query.value, bookId: currentBookId.value }
@@ -190,6 +203,12 @@ onMounted(async () => {
 <template>
   <div v-if="loading" class="placeholder"><div><p>正在加载账本…</p></div></div>
   <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p></div></div>
+  <div v-else-if="noBooks" class="empty-state">
+    <p class="empty-symbol">📒</p>
+    <p class="empty-title">还没有账本</p>
+    <p class="empty-desc">创建一个账本开始记账，或邀请家人朋友共享账本</p>
+    <button class="empty-btn" @click="showCreate = true">＋ 新建账本</button>
+  </div>
 
   <div v-else class="ledger">
     <div class="book-bar">
@@ -249,8 +268,6 @@ onMounted(async () => {
       @delete="handleBookDelete"
     />
 
-    <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
-
     <BookTrash
       :open="showTrash"
       :books="trashBooks"
@@ -259,6 +276,9 @@ onMounted(async () => {
       @purge="handlePurge"
     />
   </div>
+
+  <!-- 新建账本弹窗（空态/正常态共用） -->
+  <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
 </template>
 
 <style scoped>
@@ -345,6 +365,49 @@ onMounted(async () => {
   font-size: 2.4rem;
   margin-bottom: 12px;
   color: var(--accent);
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 72px 24px;
+  border: 1px dashed var(--faint);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  text-align: center;
+}
+.empty-symbol {
+  font-size: 2.6rem;
+  margin: 0 0 4px;
+}
+.empty-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.empty-desc {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: var(--text-3);
+}
+.empty-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+.empty-btn:hover {
+  opacity: 0.88;
 }
 @media (max-width: 960px) {
   .lower-grid {

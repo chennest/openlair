@@ -26,12 +26,14 @@ function toDTO(b: Book): BookDTO {
 }
 
 export default {
-  // 账本列表（未删除账本；单用户场景不分权限）
+  // 账本列表（仅当前用户是成员的账本，多用户隔离）
   list: defineMock({
     url: '/api/books',
     method: 'GET',
     response: respond(
-      guard(() => ok(store.books.filter((b) => !b.deletedAt).map(toDTO))),
+      guard((_req, auth) =>
+        ok(store.books.filter((b) => !b.deletedAt && isMember(b.id, Number(auth.userId))).map(toDTO)),
+      ),
     ),
   }),
 
@@ -111,12 +113,14 @@ export default {
 
   // ---------- 回收站（软删除） ----------
 
-  // 回收站列表：软删除的账本
+  // 回收站列表：仅当前用户的回收站账本
   trash: defineMock({
     url: '/api/books/trash',
     method: 'GET',
     response: respond(
-      guard(() => ok(store.books.filter((b) => b.deletedAt).map(toDTO))),
+      guard((_req, auth) =>
+        ok(store.books.filter((b) => b.deletedAt && isMember(b.id, Number(auth.userId))).map(toDTO)),
+      ),
     ),
   }),
 
@@ -175,4 +179,9 @@ export default {
 /** 是否账本创建者（owner） */
 function isOwner(bookId: number, userId: number): boolean {
   return store.bookMembers.some((m) => m.bookId === bookId && m.userId === userId && m.role === 'owner')
+}
+
+/** 是否账本成员 */
+function isMember(bookId: number, userId: number): boolean {
+  return store.bookMembers.some((m) => m.bookId === bookId && m.userId === userId)
 }
