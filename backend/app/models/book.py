@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -24,7 +24,7 @@ class BookMember(Base):
     __table_args__ = (UniqueConstraint("book_id", "user_id", name="uq_book_member"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    book_id: Mapped[int] = mapped_column(Integer, index=True)  # 逻辑关联 books.id（无硬外键）
+    user_id: Mapped[int] = mapped_column(Integer, index=True)  # 逻辑关联 users.id（无硬外键）
     role: Mapped[str] = mapped_column(String(16), default="editor")  # owner | editor
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,7 +12,7 @@ class TodoItem(Base):
     __tablename__ = "todos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)  # 逻辑关联 users.id（无硬外键）
     text: Mapped[str] = mapped_column(String(200))
     quadrant: Mapped[str] = mapped_column(String(20))
     done: Mapped[bool] = mapped_column(Boolean, default=False)

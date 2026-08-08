@@ -68,6 +68,7 @@ def seed(session: Session) -> None:
     for c in categories:
         c.created_at = now
         session.add(c)
+    session.flush()  # 无依赖表（users/categories）先落库；无硬外键后为防御性步骤
 
     # ---------- 账本 + 成员 + 预算 ----------
     session.add(Book(id=1, name="我的账本", type="personal", created_at=now))
