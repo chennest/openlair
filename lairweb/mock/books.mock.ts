@@ -124,6 +124,23 @@ export default {
     ),
   }),
 
+  // 个人账本 → 共享账本（单向：共享不可转回个人）
+  convert: defineMock({
+    url: '/api/books/:id/convert',
+    method: 'POST',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        if (b.type === 'shared') return err(400, '已是共享账本')
+        b.type = 'shared'
+        return ok({ book: toDTO(b) })
+      }),
+    ),
+  }),
+
   // 删除账本 → 移入回收站（软删除，owner 校验）
   softDelete: defineMock({
     url: '/api/books/:id',

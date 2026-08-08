@@ -153,6 +153,8 @@ export const bookApi = {
   softDelete: (bookId: number) => del<{ ok: boolean }>(`/api/books/${bookId}`),
   /** 从回收站恢复 */
   restore: (bookId: number) => post<{ ok: boolean }>(`/api/books/${bookId}/restore`, {}),
+  /** 个人账本 → 共享账本（单向，不可倒转） */
+  convertToShared: (bookId: number) => post<{ ok: boolean; book: Book }>(`/api/books/${bookId}/convert`, {}),
   /** 彻底删除（级联清流水/预算/成员） */
   purge: (bookId: number) => del<{ ok: boolean }>(`/api/books/${bookId}/purge`),
 }

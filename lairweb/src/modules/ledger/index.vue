@@ -149,6 +149,15 @@ async function handleMemberRemove(userId: number) {
   if (r.book) await loadBooks()
 }
 
+async function handleBookConvert() {
+  if (!currentBookId.value) return
+  const r = await bookApi.convertToShared(currentBookId.value)
+  if (r.book) {
+    showManage.value = false
+    await loadBooks()
+  }
+}
+
 // 软删除账本
 async function handleBookDelete() {
   await bookApi.softDelete(currentBookId.value)
@@ -266,6 +275,7 @@ onMounted(async () => {
       @add-by-name="handleMemberAddByName"
       @remove="handleMemberRemove"
       @delete="handleBookDelete"
+      @convert="handleBookConvert"
     />
 
     <BookTrash

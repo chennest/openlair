@@ -19,6 +19,7 @@ const emit = defineEmits<{
   (e: 'addByName', name: string): void
   (e: 'remove', userId: number): void
   (e: 'delete'): void
+  (e: 'convert'): void
 }>()
 
 const mode = ref<'list' | 'add'>('list')
@@ -149,6 +150,14 @@ function initials(name: string) {
       <div class="foot-left">
         <button v-if="book.type === 'shared' && mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
         <button v-if="book.type === 'shared' && mode === 'add'" class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
+        <button
+          v-if="isOwner && book.type === 'personal' && mode === 'list'"
+          class="btn-ghost"
+          :title="'转为共享账本后可添加成员（不可再转回个人）'"
+          @click="emit('convert')"
+        >
+          转为共享账本
+        </button>
       </div>
       <button v-if="isOwner && mode === 'list'" class="btn-danger" @click="showDeleteConfirm = true">
         删除账本
