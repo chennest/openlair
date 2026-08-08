@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import v1_router
 from app.core.config import get_settings
@@ -35,6 +36,14 @@ def create_app(
     model_config_path: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Lair Service", version="0.1.0")
+    settings = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     register_envelope_handlers(app)
 
     engine = create_database_engine(database_url or DEFAULT_DATABASE_URL)

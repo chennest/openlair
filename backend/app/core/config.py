@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="sqlite+pysqlite:///./data/lair.db", validation_alias="DATABASE_URL"
     )
+    # CORS 允许来源（逗号分隔；开发默认本地 Vite，测试/生产按需配置）
+    cors_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173", validation_alias="CORS_ORIGINS"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",
