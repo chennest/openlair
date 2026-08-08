@@ -74,6 +74,18 @@ async def restore_book(
     return ok_response(request.app.state.book_service.restore(book_id=book_id, user_id=user.id))
 
 
+@router.post("/{book_id}/convert")
+async def convert_book(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """个人账本 → 共享账本（单向，不可倒转）。"""
+    return ok_response(
+        request.app.state.book_service.convert_to_shared(book_id=book_id, user_id=user.id)
+    )
+
+
 @router.delete("/{book_id}/purge")
 async def purge_book(
     request: Request,

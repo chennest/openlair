@@ -95,6 +95,19 @@ class BookService:
         """回收站列表：只显示当前用户的回收站账本。"""
         return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_trash(user_id)]
 
+    def convert_to_shared(self, *, book_id: int, user_id: int) -> dict:
+        """个人账本 → 共享账本（单向）：仅 owner，个人账本才能转。"""
+        self._require_owner(book_id, user_id)
+        book = self._books.get(book_id)
+        if book is None:
+            raise ApiError(404, "账本不存在")
+        if book.type == "shared":
+            raise ApiError(400, "已是共享账本")
+        updated = self._books.update_type(book_id, "shared")
+        if updated is None:
+            raise ApiError(404, "账本不存在")
+        return {"book": book_dto(updated, self._members_dto(book_id))}
+
     def soft_delete(self, *, book_id: int, user_id: int) -> dict:
         """删除账本 → 移入回收站（软删除，数据保留）。"""
         self._require_owner(book_id, user_id)

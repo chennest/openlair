@@ -389,3 +389,31 @@ def test_books_list_isolated_per_user(tmp_path) -> None:
     assert my_book not in ids1
     # test4 不是 test1 账本的 owner，不能删除
     assert client.delete("/api/books/1", headers=h4).status_code == 403
+
+def test_book_convert_to_shared_one_way(tmp_path) -> None:
+    """个人账本 → 共享（单向）：转成功、已是共享拒绝、共享不可转回、非 owner 拒绝。"""
+    client = make_client(tmp_path)
+    token, _ = login(client)
+    headers = auth_headers(token)
+
+    # 新建个人账本
+    r = client.post("/api/books", json={"name": "私人账", "type": "personal"}, headers=headers)
+    book = r.json()["data"]["book"]
+    assert book["type"] == "personal"
+
+    # 转为共享
+    r = client.post(f"/api/books/{book['id']}/convert", headers=headers)
+    assert r.json()["data"]["book"]["type"] == "shared"
+
+    # 已是共享 → 400
+    r = client.post(f"/api/books/{book['id']}/convert", headers=headers)
+    assert r.status_code == 400
+
+    # 没有转回个人的接口：type 保持 shared
+    books = client.get("/api/books", headers=headers).json()["data"]
+    assert next(b for b in books if b["id"] == book["id"])["type"] == "shared"
+
+    # 非 owner 不能转换（test2 不是该账本成员/owner）
+    token2, _ = login(client, email="test2@openlair.dev")
+    h2 = auth_headers(token2)
+    assert client.post(f"/api/books/{book['id']}/convert", headers=h2).status_code == 403

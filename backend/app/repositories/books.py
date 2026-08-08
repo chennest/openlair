@@ -48,6 +48,17 @@ class BookRepository:
             session.refresh(book)
             return book
 
+    def update_type(self, book_id: int, type: str) -> Book | None:
+        """修改账本类型（仅 owner 调用方已校验权限）。"""
+        with self._session_factory() as session:
+            book = session.get(Book, book_id)
+            if book is None:
+                return None
+            book.type = type
+            session.commit()
+            session.refresh(book)
+            return book
+
     def members_of(self, book_id: int) -> list[BookMember]:
         with self._session_factory() as session:
             return list(
