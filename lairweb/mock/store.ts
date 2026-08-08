@@ -53,6 +53,8 @@ export interface Book {
   name: string
   type: 'personal' | 'shared'
   createdAt: string
+  /** 软删除：非空 = 在回收站（删除时间） */
+  deletedAt?: string
 }
 
 /** book_members 表：账本成员关系 */

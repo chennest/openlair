@@ -12,6 +12,7 @@ import {
 import BookSwitcher from './BookSwitcher.vue'
 import BookManage from './BookManage.vue'
 import BookCreate from './BookCreate.vue'
+import BookTrash from './BookTrash.vue'
 import LedgerSummary from './LedgerSummary.vue'
 import LedgerBudget from './LedgerBudget.vue'
 import LedgerTrend from './LedgerTrend.vue'
@@ -32,6 +33,8 @@ const currentBookId = ref(1)
 const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
 const showManage = ref(false)
 const showCreate = ref(false)
+const showTrash = ref(false)
+const trashBooks = ref<Book[]>([])
 
 // 成员管理：可添加候选（非当前成员的用户）
 const manageCandidates = computed(() => {
@@ -133,6 +136,46 @@ async function handleMemberRemove(userId: number) {
   if (r.book) await loadBooks()
 }
 
+// 软删除账本
+async function handleBookDelete() {
+  await bookApi.softDelete(currentBookId.value)
+  showManage.value = false
+  await loadBooks()
+  // 如果当前账本被删，切换到剩余第一个账本
+  const active = books.value.filter((b) => !b.deletedAt)
+  if (active.length === 0) return
+  if (!active.find((b) => b.id === currentBookId.value)) {
+    currentBookId.value = active[0].id
+    await load()
+  }
+}
+
+// 回收站
+async function loadTrash() {
+  try {
+    trashBooks.value = await bookApi.trash()
+  } catch {
+    trashBooks.value = []
+  }
+}
+
+async function handleRestore(bookId: number) {
+  await bookApi.restore(bookId)
+  await loadTrash()
+  await loadBooks()
+}
+
+async function handlePurge(bookId: number) {
+  await bookApi.purge(bookId)
+  await loadTrash()
+  await loadBooks()
+}
+
+async function openTrash() {
+  await loadTrash()
+  showTrash.value = true
+}
+
 onMounted(async () => {
   try {
     categories.value = await ledgerApi.categories()
@@ -156,6 +199,7 @@ onMounted(async () => {
         @switch="switchBook"
         @create="showCreate = true"
         @manage="showManage = true"
+        @trash="openTrash"
       />
     </div>
 
@@ -202,9 +246,18 @@ onMounted(async () => {
       @add="handleMemberAdd"
       @add-by-name="handleMemberAddByName"
       @remove="handleMemberRemove"
+      @delete="handleBookDelete"
     />
 
     <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
+
+    <BookTrash
+      :open="showTrash"
+      :books="trashBooks"
+      @close="showTrash = false"
+      @restore="handleRestore"
+      @purge="handlePurge"
+    />
   </div>
 </template>
 

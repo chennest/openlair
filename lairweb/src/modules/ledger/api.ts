@@ -44,6 +44,8 @@ export interface Book {
   name: string
   type: 'personal' | 'shared'
   members: BookMember[]
+  /** 软删除标记（非空 = 在回收站） */
+  deletedAt?: string
 }
 
 export interface CategoryStat {
@@ -145,4 +147,12 @@ export const bookApi = {
     post<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members`, input),
   removeMember: (bookId: number, userId: number) =>
     del<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members/${userId}`),
+  /** 回收站列表（软删除的账本） */
+  trash: () => get<Book[]>('/api/books/trash'),
+  /** 删除账本 → 移入回收站（软删除） */
+  softDelete: (bookId: number) => del<{ ok: boolean }>(`/api/books/${bookId}`),
+  /** 从回收站恢复 */
+  restore: (bookId: number) => post<{ ok: boolean }>(`/api/books/${bookId}/restore`, {}),
+  /** 彻底删除（级联清流水/预算/成员） */
+  purge: (bookId: number) => del<{ ok: boolean }>(`/api/books/${bookId}/purge`),
 }

@@ -12,6 +12,7 @@ const emit = defineEmits<{
   (e: 'switch', bookId: number): void
   (e: 'create'): void
   (e: 'manage', book: Book): void
+  (e: 'trash'): void
 }>()
 
 const open = ref(false)
@@ -63,6 +64,16 @@ function pick(bookId: number) {
           <button class="act" @click="open = false; emit('create')">＋ 新建账本</button>
           <button v-if="current && current.type === 'shared'" class="act" @click="open = false; emit('manage', current)">
             管理成员
+          </button>
+          <button class="act act-trash" @click="open = false; emit('trash')">
+            <svg class="act-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+            回收站
           </button>
         </div>
       </div>
@@ -206,6 +217,22 @@ function pick(bookId: number) {
 }
 .act:hover {
   background: rgba(0, 113, 227, 0.06);
+}
+.act-trash {
+  color: var(--text-3);
+}
+.act-trash:hover {
+  color: var(--heat);
+  background: var(--heat-bg);
+}
+.act-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-right: 4px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
 }
 .pop-enter-active,
 .pop-leave-active {

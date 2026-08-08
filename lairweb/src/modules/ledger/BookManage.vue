@@ -1,8 +1,9 @@
 <script setup lang="ts">
-// 共享账本成员管理：成员列表（角色/移除）+ 添加成员（选已有用户或输入新名字）
-import { ref, watch } from 'vue'
+// 共享账本成员管理：成员列表（角色/移除）+ 添加成员（选已有用户或输入新名字）+ 软删除
+import { computed, onUnmounted, ref, watch } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
 import Tag from '../../components/Tag.vue'
+import { getUser } from '../../api/request'
 import type { Book } from './api'
 
 const props = defineProps<{
@@ -17,10 +18,55 @@ const emit = defineEmits<{
   (e: 'add', userId: number): void
   (e: 'addByName', name: string): void
   (e: 'remove', userId: number): void
+  (e: 'delete'): void
 }>()
 
 const mode = ref<'list' | 'add'>('list')
 const newName = ref('')
+
+// 删除确认
+const showDeleteConfirm = ref(false)
+const deleteCountdown = ref(6)
+const deleteNameInput = ref('')
+let deleteTimer: ReturnType<typeof setInterval> | null = null
+
+// 当前用户是否为 owner
+const currentUserId = computed(() => {
+  const u = getUser() as { id?: number } | null
+  return u?.id ?? null
+})
+const isOwner = computed(() => {
+  if (!currentUserId.value || !props.book) return false
+  return props.book.members.find((m) => m.userId === currentUserId.value)?.role === 'owner'
+})
+
+function startCountdown() {
+  deleteCountdown.value = 6
+  if (deleteTimer) clearInterval(deleteTimer)
+  deleteTimer = setInterval(() => {
+    if (deleteCountdown.value > 0) deleteCountdown.value--
+    else if (deleteTimer) clearInterval(deleteTimer)
+  }, 1000)
+}
+
+function clearCountdown() {
+  if (deleteTimer) {
+    clearInterval(deleteTimer)
+    deleteTimer = null
+  }
+}
+
+onUnmounted(clearCountdown)
+
+function isDeleteConfirmReady() {
+  return deleteCountdown.value === 0 && deleteNameInput.value.trim() === props.book?.name
+}
+
+function confirmDelete() {
+  if (!isDeleteConfirmReady()) return
+  emit('delete')
+  showDeleteConfirm.value = false
+}
 
 watch(
   () => props.open,
@@ -31,6 +77,18 @@ watch(
     }
   },
 )
+
+// 打开/关闭删除确认弹窗时重置
+watch(showDeleteConfirm, (v) => {
+  if (v) {
+    deleteNameInput.value = ''
+    startCountdown()
+  } else {
+    deleteNameInput.value = ''
+    clearCountdown()
+    deleteCountdown.value = 6
+  }
+})
 
 function addByName() {
   const n = newName.value.trim()
@@ -88,8 +146,43 @@ function initials(name: string) {
     </div>
 
     <div class="foot">
-      <button v-if="mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
-      <button v-else class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
+      <div class="foot-left">
+        <button v-if="mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
+        <button v-else class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
+      </div>
+      <button v-if="isOwner && mode === 'list'" class="btn-danger" @click="showDeleteConfirm = true">
+        删除账本
+      </button>
+    </div>
+  </BaseModal>
+
+  <!-- 删除确认弹窗 -->
+  <BaseModal v-if="showDeleteConfirm && book" title="删除账本" @close="showDeleteConfirm = false">
+    <div class="delete-warn">
+      <p class="warn-title">确定要删除「{{ book.name }}」吗？</p>
+      <p class="warn-desc">
+        账本及其所有流水、预算、成员将被移入回收站。可在回收站中恢复或彻底删除。
+      </p>
+    </div>
+
+    <label class="label">输入账本名称以确认</label>
+    <input
+      v-model="deleteNameInput"
+      class="input"
+      :placeholder="`请输入「${book.name}」`"
+      maxlength="20"
+      @keyup.enter="confirmDelete()"
+    />
+
+    <div class="foot">
+      <button class="btn-ghost" @click="showDeleteConfirm = false">取消</button>
+      <button
+        class="btn-primary-danger"
+        :disabled="!isDeleteConfirmReady()"
+        @click="confirmDelete()"
+      >
+        {{ deleteCountdown > 0 ? `${deleteCountdown}s 后可确认` : '确认删除' }}
+      </button>
     </div>
   </BaseModal>
 </template>
@@ -220,8 +313,13 @@ function initials(name: string) {
 }
 .foot {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 20px;
+}
+.foot-left {
+  display: flex;
+  gap: 10px;
 }
 .btn-ghost {
   display: inline-flex;
@@ -239,5 +337,68 @@ function initials(name: string) {
 }
 .btn-ghost:hover {
   background: var(--hover);
+}
+/* 删除按钮（危险操作） */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: #fff;
+  background: var(--heat);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.btn-danger:hover {
+  opacity: 0.88;
+}
+/* 删除确认弹窗 */
+.delete-warn {
+  margin-bottom: 16px;
+}
+.warn-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.warn-desc {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+.label {
+  display: block;
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.btn-primary-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: #fff;
+  background: var(--heat);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+.btn-primary-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary-danger:not(:disabled):hover {
+  opacity: 0.88;
 }
 </style>

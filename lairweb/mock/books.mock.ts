@@ -26,12 +26,12 @@ function toDTO(b: Book): BookDTO {
 }
 
 export default {
-  // 账本列表（全部账本；单用户场景不分权限）
+  // 账本列表（未删除账本；单用户场景不分权限）
   list: defineMock({
     url: '/api/books',
     method: 'GET',
     response: respond(
-      guard(() => ok(store.books.map(toDTO))),
+      guard(() => ok(store.books.filter((b) => !b.deletedAt).map(toDTO))),
     ),
   }),
 
@@ -108,4 +108,71 @@ export default {
       }),
     ),
   }),
+
+  // ---------- 回收站（软删除） ----------
+
+  // 回收站列表：软删除的账本
+  trash: defineMock({
+    url: '/api/books/trash',
+    method: 'GET',
+    response: respond(
+      guard(() => ok(store.books.filter((b) => b.deletedAt).map(toDTO))),
+    ),
+  }),
+
+  // 删除账本 → 移入回收站（软删除，owner 校验）
+  softDelete: defineMock({
+    url: '/api/books/:id',
+    method: 'DELETE',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        b.deletedAt = new Date().toISOString()
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+
+  // 从回收站恢复（owner 校验）
+  restore: defineMock({
+    url: '/api/books/:id/restore',
+    method: 'POST',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        delete b.deletedAt
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+
+  // 彻底删除：级联清流水/预算/成员后物理删除（owner 校验）
+  purge: defineMock({
+    url: '/api/books/:id/purge',
+    method: 'DELETE',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        store.books = store.books.filter((x) => x.id !== bookId)
+        store.bookMembers = store.bookMembers.filter((x) => x.bookId !== bookId)
+        store.transactions = store.transactions.filter((x) => x.bookId !== bookId)
+        store.budgets = store.budgets.filter((x) => x.bookId !== bookId)
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+}
+
+/** 是否账本创建者（owner） */
+function isOwner(bookId: number, userId: number): boolean {
+  return store.bookMembers.some((m) => m.bookId === bookId && m.userId === userId && m.role === 'owner')
 }
