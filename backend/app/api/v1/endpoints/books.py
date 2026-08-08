@@ -11,8 +11,8 @@ router = APIRouter(prefix="/books", tags=["books"])
 
 
 @router.get("")
-async def list_books(request: Request, _user: User = Depends(get_current_user)) -> dict:
-    return ok_response(request.app.state.book_service.list())
+async def list_books(request: Request, user: User = Depends(get_current_user)) -> dict:
+    return ok_response(request.app.state.book_service.list(user.id))
 
 
 @router.post("")
@@ -52,8 +52,8 @@ async def remove_member(
 
 
 @router.get("/trash")
-async def list_trash(request: Request, _user: User = Depends(get_current_user)) -> dict:
-    return ok_response(request.app.state.book_service.trash())
+async def list_trash(request: Request, user: User = Depends(get_current_user)) -> dict:
+    return ok_response(request.app.state.book_service.trash(user.id))
 
 
 @router.delete("/{book_id}")

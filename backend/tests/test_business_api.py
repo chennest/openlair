@@ -362,3 +362,30 @@ def test_ledger_create_requires_existing_book(tmp_path) -> None:
         "/api/ledger", json={"type": "支出", "categoryId": 1, "amount": 10, "bookId": 2}, headers=headers
     )
     assert r.status_code == 404
+
+def test_books_list_isolated_per_user(tmp_path) -> None:
+    """多用户隔离：只返回当前用户是成员的账本。"""
+    client = make_client(tmp_path)
+    token1, _ = login(client)
+    h1 = auth_headers(token1)
+
+    # test1（seed 账本 1/2 的成员）
+    ids1 = [b["id"] for b in client.get("/api/books", headers=h1).json()["data"]]
+    assert sorted(ids1) == [1, 2]
+
+    # test4（新注册，非任何账本成员）→ 空列表
+    r = client.post("/api/auth/register", json={"name": "t4", "email": "t4@test.dev", "password": "test123456"})
+    token4 = r.json()["data"]["token"]
+    h4 = auth_headers(token4)
+    assert client.get("/api/books", headers=h4).json()["data"] == []
+
+    # test4 建账本后只能看到自己的
+    r = client.post("/api/books", json={"name": "我的私人账本", "type": "personal"}, headers=h4)
+    my_book = r.json()["data"]["book"]["id"]
+    ids4 = [b["id"] for b in client.get("/api/books", headers=h4).json()["data"]]
+    assert ids4 == [my_book]
+    # test1 看不到 test4 的账本
+    ids1 = [b["id"] for b in client.get("/api/books", headers=h1).json()["data"]]
+    assert my_book not in ids1
+    # test4 不是 test1 账本的 owner，不能删除
+    assert client.delete("/api/books/1", headers=h4).status_code == 403

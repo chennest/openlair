@@ -40,8 +40,9 @@ class BookService:
             )
         return result
 
-    def list(self) -> list[dict]:
-        return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_all()]
+    def list(self, user_id: int | None = None) -> list[dict]:
+        """当前用户的账本列表（只返回我是成员的账本，多用户隔离）。"""
+        return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_all(user_id)]
 
     def create(self, *, user_id: int, name: str, type: str) -> dict:
         book = self._books.create(name=name or "共享账本", type=type if type == "shared" else "personal")
@@ -90,9 +91,9 @@ class BookService:
             raise ApiError(403, "只有账本创建者可以执行此操作")
         return None
 
-    def trash(self) -> list[dict]:
-        """回收站列表：软删除的账本（含原成员信息）。"""
-        return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_trash()]
+    def trash(self, user_id: int | None = None) -> list[dict]:
+        """回收站列表：只显示当前用户的回收站账本。"""
+        return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_trash(user_id)]
 
     def soft_delete(self, *, book_id: int, user_id: int) -> dict:
         """删除账本 → 移入回收站（软删除，数据保留）。"""

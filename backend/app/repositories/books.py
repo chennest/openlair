@@ -12,21 +12,29 @@ class BookRepository:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
-    def list_all(self) -> list[Book]:
+    def list_all(self, user_id: int | None = None) -> list[Book]:
+        """账本列表：可选按成员过滤（多用户隔离），排除已删除。"""
         with self._session_factory() as session:
-            return list(
-                session.scalars(
-                    select(Book).where(Book.deleted_at.is_(None)).order_by(Book.id)
+            stmt = select(Book).where(Book.deleted_at.is_(None))
+            if user_id is not None:
+                stmt = (
+                    stmt.join(BookMember, BookMember.book_id == Book.id)
+                    .where(BookMember.user_id == user_id)
+                    .distinct()
                 )
-            )
+            return list(session.scalars(stmt.order_by(Book.id)))
 
-    def list_trash(self) -> list[Book]:
+    def list_trash(self, user_id: int | None = None) -> list[Book]:
+        """回收站列表：可选按成员过滤，排除已恢复。"""
         with self._session_factory() as session:
-            return list(
-                session.scalars(
-                    select(Book).where(Book.deleted_at.is_not(None)).order_by(Book.deleted_at.desc())
+            stmt = select(Book).where(Book.deleted_at.is_not(None))
+            if user_id is not None:
+                stmt = (
+                    stmt.join(BookMember, BookMember.book_id == Book.id)
+                    .where(BookMember.user_id == user_id)
+                    .distinct()
                 )
-            )
+            return list(session.scalars(stmt.order_by(Book.deleted_at.desc())))
 
     def get(self, book_id: int) -> Book | None:
         with self._session_factory() as session:
