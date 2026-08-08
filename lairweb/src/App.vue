@@ -126,7 +126,7 @@ function goTo(index: number) {
   <div v-else-if="!isMobile" class="workspace">
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">穴</span>
+        <span class="brand-mark">L</span>
         <div class="brand-text">
           <strong>OpenLair</strong>
           <span>个人工作台</span>
@@ -174,7 +174,7 @@ function goTo(index: number) {
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
     <header class="m-header" ref="mHeaderEl">
-      <span class="m-brand">穴</span>
+        <span class="m-brand">L</span>
       <strong>{{ pageTitle }}</strong>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
       <button

@@ -78,7 +78,7 @@ async function submit() {
 
     <div class="auth-card">
       <div class="brand">
-        <span class="brand-mark">穴</span>
+        <span class="brand-mark">L</span>
         <h1>OpenLair</h1>
         <p>个人 AI 生活工作台</p>
       </div>
