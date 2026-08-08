@@ -15,6 +15,8 @@ class Book(Base):
     name: Mapped[str] = mapped_column(String(60))
     type: Mapped[str] = mapped_column(String(16))  # personal | shared
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    # 软删除：NULL = 正常；非 NULL = 在回收站（删除时间）
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
 
 
 class BookMember(Base):

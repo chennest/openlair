@@ -1,7 +1,11 @@
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import delete, select
 
 from app.db.session import SessionFactory
 from app.models.book import Book, BookMember
+from app.models.budget import Budget
+from app.models.transaction import Transaction
 
 
 class BookRepository:
@@ -10,7 +14,19 @@ class BookRepository:
 
     def list_all(self) -> list[Book]:
         with self._session_factory() as session:
-            return list(session.scalars(select(Book).order_by(Book.id)))
+            return list(
+                session.scalars(
+                    select(Book).where(Book.deleted_at.is_(None)).order_by(Book.id)
+                )
+            )
+
+    def list_trash(self) -> list[Book]:
+        with self._session_factory() as session:
+            return list(
+                session.scalars(
+                    select(Book).where(Book.deleted_at.is_not(None)).order_by(Book.deleted_at.desc())
+                )
+            )
 
     def get(self, book_id: int) -> Book | None:
         with self._session_factory() as session:
@@ -52,3 +68,32 @@ class BookRepository:
             if member is not None:
                 session.delete(member)
                 session.commit()
+
+    # ---------- 回收站（软删除） ----------
+
+    def soft_delete(self, book_id: int) -> None:
+        """软删除：置 deleted_at，账本进回收站（流水/预算/成员保留）。"""
+        with self._session_factory() as session:
+            book = session.get(Book, book_id)
+            if book is not None:
+                book.deleted_at = datetime.now(UTC)
+                session.commit()
+
+    def restore(self, book_id: int) -> None:
+        """恢复：清 deleted_at，账本连同原数据回到正常列表。"""
+        with self._session_factory() as session:
+            book = session.get(Book, book_id)
+            if book is not None:
+                book.deleted_at = None
+                session.commit()
+
+    def purge(self, book_id: int) -> None:
+        """彻底删除：级联清流水/预算/成员后物理删除账本。"""
+        with self._session_factory() as session:
+            session.execute(delete(Transaction).where(Transaction.book_id == book_id))
+            session.execute(delete(Budget).where(Budget.book_id == book_id))
+            session.execute(delete(BookMember).where(BookMember.book_id == book_id))
+            book = session.get(Book, book_id)
+            if book is not None:
+                session.delete(book)
+            session.commit()

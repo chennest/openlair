@@ -46,3 +46,38 @@ async def remove_member(
     _user: User = Depends(get_current_user),
 ) -> dict:
     return ok_response(request.app.state.book_service.remove_member(book_id=book_id, user_id=user_id))
+
+
+# ---------- 回收站（软删除） ----------
+
+
+@router.get("/trash")
+async def list_trash(request: Request, _user: User = Depends(get_current_user)) -> dict:
+    return ok_response(request.app.state.book_service.trash())
+
+
+@router.delete("/{book_id}")
+async def soft_delete_book(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.book_service.soft_delete(book_id=book_id, user_id=user.id))
+
+
+@router.post("/{book_id}/restore")
+async def restore_book(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.book_service.restore(book_id=book_id, user_id=user.id))
+
+
+@router.delete("/{book_id}/purge")
+async def purge_book(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.book_service.purge(book_id=book_id, user_id=user.id))

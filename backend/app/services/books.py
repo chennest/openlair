@@ -78,3 +78,36 @@ class BookService:
             raise ApiError(400, "不能移除账本创建者")
         self._books.remove_member(book_id=book_id, user_id=user_id)
         return {"book": book_dto(book, self._members_dto(book_id))}
+
+    # ---------- 回收站（软删除） ----------
+
+    def _require_owner(self, book_id: int, user_id: int) -> None:
+        book = self._books.get(book_id)
+        if book is None:
+            raise ApiError(404, "账本不存在")
+        member = self._books.member(book_id, user_id)
+        if member is None or member.role != "owner":
+            raise ApiError(403, "只有账本创建者可以执行此操作")
+        return None
+
+    def trash(self) -> list[dict]:
+        """回收站列表：软删除的账本（含原成员信息）。"""
+        return [book_dto(b, self._members_dto(b.id)) for b in self._books.list_trash()]
+
+    def soft_delete(self, *, book_id: int, user_id: int) -> dict:
+        """删除账本 → 移入回收站（软删除，数据保留）。"""
+        self._require_owner(book_id, user_id)
+        self._books.soft_delete(book_id)
+        return {"ok": True}
+
+    def restore(self, *, book_id: int, user_id: int) -> dict:
+        """从回收站恢复账本。"""
+        self._require_owner(book_id, user_id)
+        self._books.restore(book_id)
+        return {"ok": True}
+
+    def purge(self, *, book_id: int, user_id: int) -> dict:
+        """彻底删除：级联清流水/预算/成员后物理删除账本。"""
+        self._require_owner(book_id, user_id)
+        self._books.purge(book_id)
+        return {"ok": True}

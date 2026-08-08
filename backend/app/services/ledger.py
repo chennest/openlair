@@ -1,6 +1,6 @@
 """记账服务：分类 / 流水列表（筛选+分页+摘要+统计）/ 趋势 / 预算 / 增删改。"""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.core.envelope import ApiError
 from app.models.transaction import Transaction
@@ -185,7 +185,7 @@ class LedgerService:
             book_id=book_id or DEFAULT_BOOK_ID,
             user_id=user_id,
             amount=amount or 0,
-            date=date or date.today(),
+            date=date or datetime.now().date(),
             note=note or "",
         )
         names = {c.id: c.name for c in self._ledger.categories()}

@@ -291,3 +291,51 @@ def test_overview_aggregates(tmp_path) -> None:
     assert data["monthExpense"]["budget"] > 0
     assert len(data["todos"]) <= 4
     assert len(data["upcoming"]) <= 3
+
+def test_books_trash_restore_purge(tmp_path) -> None:
+    """回收站流程：软删 → 列表消失 → trash 可见 → 恢复 → 彻底删除级联清数据。"""
+    client = make_client(tmp_path)
+    token, _ = login(client)
+    headers = auth_headers(token)
+
+    # 建一个账本并加成员/流水
+    r = client.post("/api/books", json={"name": "待删除账本", "type": "shared"}, headers=headers)
+    book_id = r.json()["data"]["book"]["id"]
+    client.post(f"/api/books/{book_id}/members", json={"userId": 2}, headers=headers)
+    r = client.post("/api/ledger", json={"type": "支出", "categoryId": 1, "amount": 100, "bookId": book_id}, headers=headers)
+    assert r.status_code == 200
+
+    # 软删：owner 成功，列表消失
+    r = client.delete(f"/api/books/{book_id}", headers=headers)
+    assert r.json()["data"]["ok"] is True
+    ids = [b["id"] for b in client.get("/api/books", headers=headers).json()["data"]]
+    assert book_id not in ids
+
+    # 回收站可见（含成员信息）
+    trash = client.get("/api/books/trash", headers=headers).json()["data"]
+    assert any(b["id"] == book_id for b in trash)
+    deleted = next(b for b in trash if b["id"] == book_id)
+    assert len(deleted["members"]) == 2  # owner + 成员仍在
+
+    # 非 owner 不能操作（用 test2 登录）
+    token2, _ = login(client, email="test2@openlair.dev")
+    headers2 = auth_headers(token2)
+    assert client.delete(f"/api/books/{book_id}", headers=headers2).status_code == 403
+    assert client.post(f"/api/books/{book_id}/restore", headers=headers2).status_code == 403
+    assert client.delete(f"/api/books/{book_id}/purge", headers=headers2).status_code == 403
+
+    # 恢复：回到正常列表
+    r = client.post(f"/api/books/{book_id}/restore", headers=headers)
+    assert r.json()["data"]["ok"] is True
+    ids = [b["id"] for b in client.get("/api/books", headers=headers).json()["data"]]
+    assert book_id in ids
+    assert all(b["id"] != book_id for b in client.get("/api/books/trash", headers=headers).json()["data"])
+
+    # 再软删 → 彻底删除：级联清流水/成员
+    client.delete(f"/api/books/{book_id}", headers=headers)
+    r = client.delete(f"/api/books/{book_id}/purge", headers=headers)
+    assert r.json()["data"]["ok"] is True
+    assert all(b["id"] != book_id for b in client.get("/api/books/trash", headers=headers).json()["data"])
+    # 原流水已随账本级联删除
+    r = client.get(f"/api/ledger?bookId={book_id}&pageSize=1", headers=headers)
+    assert r.json()["data"]["total"] == 0
