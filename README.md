@@ -17,7 +17,7 @@
 
 ```text
 lair/
-├── lairservice/    # FastAPI backend, the core agent brain
+├── backend/        # FastAPI backend（源码在 app/ 包，参照官方 full-stack-fastapi-template 结构）
 ├── lairapp/        # Flutter client for iOS, Android, macOS, and Windows
 ├── lairweb/        # Vue + TypeScript web admin console
 └── docs/           # Project documentation
@@ -47,10 +47,9 @@ Backend architecture details are documented in [`docs/backend-architecture.md`](
 
 ## Current implementation status
 
-- `lairservice/` contains the current core work: a FastAPI + LangGraph agent harness runtime.
-- The backend harness covers the `learn-claude-code` style `s01` through `s14`, plus `s19` MCP plugin-style external tool routing.
-- `lairweb/` contains the first Vue + TypeScript web console and can call the backend assistant endpoint through the Vite dev proxy.
-- Product modules are still planned; the current backend focus is the agent harness, model gateway, permission boundary, memory/context tools, background tasks, cron tools, and MCP-style tool routing.
+- `backend/` contains the FastAPI backend: unified `{code, message, data}` envelope API, JWT auth, and ledger/books/todo/calendar/notes/habits business modules over SQLAlchemy repositories + services, with Alembic migrations.
+- `lairweb/` contains the Vue + TypeScript web console; in dev it runs against the in-memory mock layer (`lairweb/mock/`) that mirrors the backend API contract exactly.
+- Product modules are being built out module by module; the API contract between `lairweb/mock/` and the real backend on port 8001 is identical, so switching the Vite proxy target connects the console to the real backend.
 
 ## Development notes
 

@@ -17,7 +17,7 @@
 
 ```text
 lair/
-├── lairservice/    # FastAPI 服务端，核心 Agent 大脑
+├── backend/        # FastAPI 服务端（源码在 app/ 包，参照官方 full-stack-fastapi-template 结构）
 ├── lairapp/        # Flutter 客户端（iOS/Android/macOS/Windows）
 ├── lairweb/        # Vue + TypeScript Web 管理后台
 └── docs/           # 项目文档
@@ -47,10 +47,8 @@ lair/
 
 ## 当前实现状态
 
-- `lairservice/` 是当前核心实现：FastAPI + LangGraph Agent harness runtime。
-- 后端 harness 已覆盖 `learn-claude-code` 风格的 `s01` 到 `s14`，以及 `s19` MCP 插件式外部工具路由。
-- `lairweb/` 已有第一版 Vue + TypeScript Web 控制台，可以通过 Vite dev proxy 调用后端助手入口。
-- 产品模块仍处于规划阶段；当前后端重点是 Agent harness、模型网关、权限边界、记忆/上下文工具、后台任务、cron 工具和 MCP 风格工具路由。
+- `backend/` 包含 FastAPI 后端：统一 `{code, message, data}` 信封 API、JWT 认证，以及基于 SQLAlchemy repositories + services 的记账/账本/待办/日历/笔记/习惯业务模块，配 Alembic 迁移。
+- `lairweb/` 已有 Vue + TypeScript Web 控制台；开发环境跑在内存 mock 层（`lairweb/mock/`）上，mock 与 8001 端口真实后端的 API 契约完全一致，切换 Vite proxy 目标即可连上真实后端。
 
 ## 开发说明
 

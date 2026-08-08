@@ -2,20 +2,20 @@
 
 ## Current state
 
-- `lairservice/` contains the FastAPI backend: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services.
+- `backend/` contains the FastAPI backend: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services. Source lives in `backend/app/` (flat layout, package name `app`), mirroring the official full-stack-fastapi-template structure.
 - `lairweb/` contains the Vue + TypeScript web admin console. In dev it runs against the in-memory mock layer (`lairweb/mock/`); the real backend on port 8001 serves the identical API contract, so switching means pointing the Vite proxy at it.
 - There are no CI workflows, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
 - `README.md` and `docs/backend-architecture.md` are the verified project sources of truth at the moment.
 
 ## Verified commands
 
-Run these from `lairservice/` (Python environment is managed by `uv`; `uv sync` auto-downloads CPython 3.14.5 into `.venv` and writes `uv.lock`):
+Run these from `backend/` (Python environment is managed by `uv`; `uv sync` auto-downloads CPython 3.14.5 into `.venv` and writes `uv.lock`):
 
 - Create/recreate the local venv and install all deps: `uv sync`（dev 依赖：`uv sync --extra dev`）
-- Run backend tests (business API suite uses an isolated SQLite file per test; the real-model integration tests additionally need valid `~/.openlair/openlair.json` + `~/.openlair/.env` credentials): `uv run pytest`
-- Start the local backend dev server (port 8001): `uv run uvicorn lairservice.main:app --host 127.0.0.1 --port 8001`
-- Database migrations (Alembic, from `lairservice/`): generate `uv run alembic revision --autogenerate -m "..."`, apply `uv run alembic upgrade head`, revert one step `uv run alembic downgrade -1`. `create_all` on startup still bootstraps fresh SQLite; migrations own schema evolution from there.
-- Settings (`core/config.py`, pydantic-settings) are read from (priority order): process env → `lairservice/.env` → defaults. Keys: `OPENLAIR_JWT_SECRET`, `DATABASE_URL`. Template: `lairservice/.env.example`.
+- Run backend tests (business API suite uses an isolated SQLite file per test): `uv run pytest`
+- Start the local backend dev server (port 8001): `uv run uvicorn app.main:app --host 127.0.0.1 --port 8001`
+- Database migrations (Alembic, from `backend/`): generate `uv run alembic revision --autogenerate -m "..."`, apply `uv run alembic upgrade head`, revert one step `uv run alembic downgrade -1`. `create_all` on startup still bootstraps fresh SQLite; migrations own schema evolution from there.
+- Settings (`app/core/config.py`, pydantic-settings) are read from (priority order): process env → `backend/.env` → defaults. Keys: `OPENLAIR_JWT_SECRET`, `DATABASE_URL`. Template: `backend/.env.example`.
 
 Run these from `lairweb/`:
 
@@ -26,12 +26,12 @@ Run these from `lairweb/`:
 
 Environment notes:
 
-- Python is managed by `uv` (auto-installed CPython 3.14.5; lockfile `lairservice/uv.lock`).
-- `.venv/`, `lairservice/.env`, `data/` are local-only and ignored by `.gitignore`.
+- Python is managed by `uv` (auto-installed CPython 3.14.5; lockfile `backend/uv.lock`).
+- `.venv/`, `backend/.env`, `data/` are local-only and ignored by `.gitignore`.
 
 ## Planned boundaries
 
-- `lairservice/`: Python/FastAPI backend, described as the core brain.
+- `backend/`: Python/FastAPI backend, described as the core brain.
 - `lairapp/`: Flutter client for iOS, Android, macOS, and Windows.
 - `lairweb/`: Vue + TypeScript web admin UI backed by Vite. Browser API base is configured with `VITE_API_BASE_URL` from `.env`/`.env.local`; keep it empty for local same-origin proxying. Vite dev proxy reads `LAIRWEB_API_PROXY_TARGET`, then `VITE_API_BASE_URL`, then defaults to `http://127.0.0.1:8000`.
 - `docs/`: Project documentation.
@@ -65,6 +65,6 @@ Environment notes:
 - After adding any build, lint, typecheck, test, codegen, migration, or dev-server command, update this file with the verified command and its working directory.
 - Treat SQLite (replaceable via `DATABASE_URL`: MySQL/PostgreSQL) and SQLAlchemy as the planned stack; the business API contract is `{ code, message, data }` + Bearer JWT, identical between `lairweb/mock/` and the real backend.
 - Backend layering: `api/routes` (thin HTTP) → `services` (business logic + DTO) → `repositories` (SQLAlchemy persistence) → `models` (ORM). Keep services callable without HTTP and repositories the only data access path.
-- JWT secret and database URL are read from process env → `lairservice/.env` → defaults; template is `lairservice/.env.example`.
+- JWT secret and database URL are read from process env → `backend/.env` → defaults; template is `backend/.env.example`.
 - Use SQLAlchemy repositories for persistence instead of direct `sqlite3` calls, so SQLite remains replaceable by another SQL database later.
 - Commit discipline: after each complete feature is implemented and verified, create a git commit so work is recoverable. A complete feature may span multiple files; commit by complete feature boundary, not by individual file.

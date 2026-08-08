@@ -2,7 +2,7 @@
 
 ## Decision
 
-- Use Python/FastAPI for `lairservice/` as the core backend.
+- Use Python/FastAPI for `backend/` as the core backend.
 - Use LangGraph as the MVP orchestration layer for assistant flows.
 - Use a multi-provider, multi-model gateway instead of binding the backend to one LLM vendor or model.
 - Use SQLite for the initial single-user data store.
@@ -37,7 +37,7 @@ client apps
   -> SQLite repositories
 ```
 
-The first implementation lives in `lairservice/` and uses an `AssistantRuntime` abstraction backed by a LangGraph runtime implementation. Keep this abstraction even while LangGraph is the only runtime implementation, so Lair owns the runtime boundary and can evolve it later.
+The first implementation lives in `backend/` and uses an `AssistantRuntime` abstraction backed by a LangGraph runtime implementation. Keep this abstraction even while LangGraph is the only runtime implementation, so Lair owns the runtime boundary and can evolve it later.
 
 ### Core layers
 
@@ -78,7 +78,7 @@ Implemented harness mechanisms:
 - `s14` Cron Scheduler: `schedule_cron`, `list_crons`, and `cancel_cron` manage five-field cron prompts with durable `.scheduled_tasks.json` persistence.
 - `s19` MCP Plugin: `connect_mcp` connects mock MCP servers, dynamically exposes prefixed tools such as `mcp__docs__search`, and routes those calls through the normal tool registry.
 
-This is implemented as a FastAPI + LangGraph service runtime rather than a CLI script. The loop is owned by `LangGraphAssistantRuntime`; tool definitions and handlers live under `lairservice.agent`; model access stays behind `ModelGateway`.
+This is implemented as a FastAPI + LangGraph service runtime rather than a CLI script. The loop is owned by `LangGraphAssistantRuntime`; tool definitions and handlers live under `app.agent`; model access stays behind `ModelGateway`.
 
 The first business slice is Notes quick capture:
 
