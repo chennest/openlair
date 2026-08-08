@@ -31,6 +31,11 @@ const deleteCountdown = ref(6)
 const deleteNameInput = ref('')
 let deleteTimer: ReturnType<typeof setInterval> | null = null
 
+// 转为共享确认（3 秒倒计时，提示不可转回）
+const showConvertConfirm = ref(false)
+const convertCountdown = ref(3)
+let convertTimer: ReturnType<typeof setInterval> | null = null
+
 // 当前用户是否为 owner
 const currentUserId = computed(() => {
   const u = getUser() as { id?: number } | null
@@ -56,8 +61,6 @@ function clearCountdown() {
     deleteTimer = null
   }
 }
-
-onUnmounted(clearCountdown)
 
 function isDeleteConfirmReady() {
   return deleteCountdown.value === 0 && deleteNameInput.value.trim() === props.book?.name
@@ -89,6 +92,42 @@ watch(showDeleteConfirm, (v) => {
     clearCountdown()
     deleteCountdown.value = 6
   }
+})
+
+// 转为共享确认：3 秒倒计时
+function startConvertCountdown() {
+  convertCountdown.value = 3
+  if (convertTimer) clearInterval(convertTimer)
+  convertTimer = setInterval(() => {
+    if (convertCountdown.value > 0) convertCountdown.value--
+    else if (convertTimer) clearInterval(convertTimer)
+  }, 1000)
+}
+
+function clearConvertCountdown() {
+  if (convertTimer) {
+    clearInterval(convertTimer)
+    convertTimer = null
+  }
+}
+
+function confirmConvert() {
+  if (convertCountdown.value > 0) return
+  emit('convert')
+  showConvertConfirm.value = false
+}
+
+watch(showConvertConfirm, (v) => {
+  if (v) startConvertCountdown()
+  else {
+    clearConvertCountdown()
+    convertCountdown.value = 3
+  }
+})
+
+onUnmounted(() => {
+  clearCountdown()
+  clearConvertCountdown()
 })
 
 function addByName() {
@@ -154,7 +193,7 @@ function initials(name: string) {
           v-if="isOwner && book.type === 'personal' && mode === 'list'"
           class="btn-ghost"
           :title="'转为共享账本后可添加成员（不可再转回个人）'"
-          @click="emit('convert')"
+          @click="showConvertConfirm = true"
         >
           转为共享账本
         </button>
@@ -191,6 +230,22 @@ function initials(name: string) {
         @click="confirmDelete()"
       >
         {{ deleteCountdown > 0 ? `${deleteCountdown}s 后可确认` : '确认删除' }}
+      </button>
+    </div>
+  </BaseModal>
+
+  <!-- 转为共享确认弹窗（3 秒倒计时，提示不可转回） -->
+  <BaseModal v-if="showConvertConfirm && book" title="转为共享账本" @close="showConvertConfirm = false">
+    <div class="convert-warn">
+      <p class="warn-title">确定将「{{ book.name }}」转为共享账本吗？</p>
+      <p class="warn-desc">
+        转为共享账本后<strong>不可再转回个人账本</strong>，且其他成员可以查看并记账。请确认后继续。
+      </p>
+    </div>
+    <div class="foot">
+      <button class="btn-ghost" @click="showConvertConfirm = false">取消</button>
+      <button class="btn-primary" :disabled="convertCountdown > 0" @click="confirmConvert()">
+        {{ convertCountdown > 0 ? `${convertCountdown}s 后可确认` : '确认转为共享' }}
       </button>
     </div>
   </BaseModal>
@@ -411,3 +466,32 @@ function initials(name: string) {
   opacity: 0.88;
 }
 </style>
+
+.convert-warn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary:not(:disabled):hover {
+  opacity: 0.88;
+}
