@@ -14,6 +14,10 @@ spec:
       labels:
         app: openlair-backend
     spec:
+      # 从私有 Harbor 拉镜像需要凭据（chennest 项目非公开）
+      # secret 由 kubectl create secret docker-registry 手动建，不入库（密码不进 git）
+      imagePullSecrets:
+        - name: harbor-registry-secret
       containers:
         - name: backend
           # 镜像 tag 由 overlay/CI 覆盖（images 或 set image）
