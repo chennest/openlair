@@ -141,8 +141,8 @@ deploy-test:
     - kubectl config use-context chennest/openlair:k8s-test
   script:
     - cd k8s/overlays/test
-    # 注入本次构建的镜像 tag（test-<pipeline序号>）
-    - sed -i "s|newTag: .*|newTag: test-${CI_PIPELINE_IID}|" kustomization.yaml
+    # 注入本次构建的镜像 tag（test-<pipeline序号>）——单引号防 YAML 解析冒号
+    - 'sed -i "s|newTag: .*|newTag: test-${CI_PIPELINE_IID}|" kustomization.yaml'
     # 部署
     - kubectl apply -k .
     - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
