@@ -12,6 +12,7 @@ stages:
   - test
   - build
   - package
+  - deploy
 
 variables:
   # 默认 job 镜像（k8s executor 的 build 容器，走 Harbor 加速）
@@ -37,7 +38,10 @@ backend-test:
     reports:
       junit: backend/test-results.xml
     expire_in: 1 week
-
+  rules:
+    # 只在 test 分支推送或打 Git tag 时构建镜像
+    - if: '$CI_COMMIT_BRANCH == "test"'
+    - if: '$CI_COMMIT_TAG'
 # ============================================================
 # Stage 2: lairweb 构建（pnpm + Vite typecheck & build）
 # ============================================================
@@ -56,7 +60,10 @@ web-build:
     paths:
       - lairweb/dist/
     expire_in: 1 week
-
+  rules:
+    # 只在 test 分支推送或打 Git tag 时构建镜像
+    - if: '$CI_COMMIT_BRANCH == "test"'
+    - if: '$CI_COMMIT_TAG'
 # ============================================================
 # Stage 3: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
 # 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-backend:<tag>
@@ -114,3 +121,29 @@ web-package:
     STORAGE_DRIVER: vfs
     BUILDAH_ISOLATION: chroot
     IMAGE_NAME: "$HARBOR_HOST/$HARBOR_PROJECT/openlair-web"
+
+# ============================================================
+# Stage 4: 部署 test 环境（K8s，通过 agent k8s-test 隧道）
+# 触发：test 分支推送
+# 部署：kubectl apply -k overlays/test + 镜像 tag 注入
+# ============================================================
+deploy-test:
+  stage: deploy
+  tags: [k8s]
+  image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
+  environment:
+    name: test
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "test"'
+  before_script:
+    # GitLab 自动注入 kubeconfig（server=KAS），切到 test 集群的 agent context
+    - kubectl config get-contexts
+    - kubectl config use-context chennest/openlair:k8s-test
+  script:
+    - cd k8s/overlays/test
+    # 注入本次构建的镜像 tag（test-<pipeline序号>）
+    - sed -i "s|newTag: .*|newTag: test-${CI_PIPELINE_IID}|" kustomization.yaml
+    # 部署
+    - kubectl apply -k .
+    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
+    - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
