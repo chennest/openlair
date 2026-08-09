@@ -80,6 +80,11 @@ def create_app(
     app.state.user_repository = user_repo
     app.state.token_repository = token_repo
 
+    # 健康检查（K8s 探针用，不依赖业务服务）
+    @app.get("/health", tags=["system"])
+    async def health() -> dict:
+        return {"status": "ok"}
+
     app.include_router(v1_router)
     return app
 
