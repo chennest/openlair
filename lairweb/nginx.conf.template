@@ -1,0 +1,34 @@
+# lairweb nginx 配置模板
+# 托管前端静态 + SPA 回退 + /api 反代后端
+# 运行时环境变量: BACKEND_URL（后端服务地址，如 http://openlair-backend:8000）
+# 由 nginx 官方镜像 entrypoint 自动 envsubst 渲染（/etc/nginx/templates/）
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # 后端 API 反代（BACKEND_URL 运行时注入）
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        client_max_body_size 20m;
+    }
+
+    # SPA history 路由回退
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 静态资源缓存（Vite 产物带 hash，可长缓存）
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}

@@ -1,0 +1,110 @@
+# openlair CI/CD — GitLab Runner (k8s executor, tag: k8s)
+# 技术栈：backend = uv + FastAPI + pytest；lairweb = Vue3 + Vite + pnpm
+# 镜像走 Harbor（harbor.lcc007.top/chennest/...）
+
+# 需在 GitLab 项目 Settings → CI/CD → Variables 配置：
+#   HARBOR_HOST=https://harbor.lcc007.top
+#   HARBOR_USERNAME=admin
+#   HARBOR_PASSWORD=xxxxx
+#   HARBOR_PROJECT=chennest
+
+stages:
+  - test
+  - build
+  - package
+
+variables:
+  # 默认 job 镜像（k8s executor 的 build 容器，走 Harbor 加速）
+  IMAGE_PYTHON: "harbor.lcc007.top/docker.io/library/python:3.14-slim"
+  IMAGE_NODE: "harbor.lcc007.top/docker.io/library/node:22"
+
+# ============================================================
+# Stage 1: backend 测试（uv + pytest）
+# ============================================================
+backend-test:
+  stage: test
+  tags: [k8s]
+  image: ${IMAGE_PYTHON}
+  before_script:
+    - pip install --no-cache-dir uv
+  script:
+    - cd backend
+    - uv sync --extra dev
+    - uv run pytest -v
+  artifacts:
+    when: always
+    reports:
+      junit: backend/test-results.xml
+    expire_in: 1 week
+
+# ============================================================
+# Stage 2: lairweb 构建（pnpm + Vite typecheck & build）
+# ============================================================
+web-build:
+  stage: build
+  tags: [k8s]
+  image: ${IMAGE_NODE}
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+  script:
+    - cd lairweb
+    - pnpm install --frozen-lockfile
+    - pnpm run build
+  artifacts:
+    paths:
+      - lairweb/dist/
+    expire_in: 1 week
+
+# ============================================================
+# Stage 3: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
+# 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-backend:<tag>
+# tag 策略（test 环境）：
+#   master → latest（test 环境固定拉 latest）
+#   dev    → dev-latest
+#   其他   → <分支名>-<短hash>
+# buildah 优势：不需要特权模式/DinD，K8s job Pod 内直接构建
+# ============================================================
+backend-package:
+  stage: package
+  tags: [k8s]
+  image: harbor.lcc007.top/quay.io/buildah/stable:latest
+  script:
+    # 登录 Harbor
+    - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
+    # test 环境 tag 策略
+    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then TAG="latest"; elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then TAG="dev-latest"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"; fi
+    # 构建（buildah bud = build）
+    - buildah bud -t "$IMAGE_NAME:${TAG}" -t "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}" backend/
+    # 推送（buildah push 自动推所有 tag？不，需逐个推）
+    - buildah push "$IMAGE_NAME:${TAG}"
+    - buildah push "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}"
+    # 清理
+    - buildah logout $HARBOR_HOST
+  variables:
+    # buildah 存储位置：容器内临时目录（避免权限问题）
+    STORAGE_DRIVER: vfs
+    BUILDAH_ISOLATION: chroot
+    IMAGE_NAME: "$HARBOR_HOST/$HARBOR_PROJECT/openlair-backend"
+
+# ============================================================
+# Stage 3: lairweb 镜像构建 + 推送 Harbor（buildah，多阶段构建）
+# 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-web:<tag>
+# ============================================================
+web-package:
+  stage: package
+  tags: [k8s]
+  image: harbor.lcc007.top/quay.io/buildah/stable:latest
+  script:
+    - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
+    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then TAG="latest"; elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then TAG="dev-latest"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"; fi
+    # 多阶段构建（Dockerfile 在 lairweb/ 下）
+    - buildah bud -t "$IMAGE_NAME:${TAG}" -t "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}" lairweb/
+    - buildah push "$IMAGE_NAME:${TAG}"
+    - buildah push "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}"
+    - buildah logout $HARBOR_HOST
+  variables:
+    STORAGE_DRIVER: vfs
+    BUILDAH_ISOLATION: chroot
+    IMAGE_NAME: "$HARBOR_HOST/$HARBOR_PROJECT/openlair-web"
+
