@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { setToken, setUser, getUser } from './api/request'
 import { authApi, type AuthUser } from './modules/auth/api'
@@ -62,10 +62,13 @@ onMounted(() => {
   mq = window.matchMedia('(max-width: 860px)')
   isMobile.value = mq.matches
   mq.addEventListener('change', mqHandler)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   mq?.removeEventListener('change', mqHandler)
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKeydown)
 })
 
 // ---------- 手机端：左右滑动切换 Tab ----------
@@ -115,6 +118,53 @@ function goTo(index: number) {
   // 先滚回顶部再切换：避免旧页面滚动位置残留导致新页面被强制 clamp 跳动
   window.scrollTo(0, 0)
   router.push(navItems[index].path)
+}
+
+// ---------- 手机端顶栏头像菜单（popover） ----------
+const showMenu = ref(false)
+const menuRef = ref<HTMLElement | null>(null)
+
+function toggleMenu() {
+  showMenu.value = !showMenu.value
+}
+
+function closeMenu() {
+  showMenu.value = false
+}
+
+function goProfile() {
+  closeMenu()
+  router.push('/profile')
+}
+
+// 菜单外点击关闭
+function onDocClick(e: MouseEvent) {
+  if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
+    closeMenu()
+  }
+}
+
+watch(showMenu, (val) => {
+  if (val) {
+    void nextTick(() => document.addEventListener('click', onDocClick))
+  } else {
+    document.removeEventListener('click', onDocClick)
+  }
+})
+
+// 路由变化关闭菜单
+watch(
+  () => route.path,
+  () => {
+    closeMenu()
+  },
+)
+
+// Escape 关闭
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showMenu.value) {
+    closeMenu()
+  }
 }
 </script>
 
@@ -181,9 +231,28 @@ function goTo(index: number) {
         v-if="user"
         class="m-avatar"
         :style="{ background: user.avatarColor }"
-        :title="`${user.name} · 退出登录`"
-        @click="logout"
+        @click.stop="toggleMenu"
       >{{ user.name.slice(0, 1) }}</button>
+      <Transition name="menu-pop">
+        <div v-if="user && showMenu" class="m-menu" ref="menuRef" @click.stop>
+          <button class="m-menu-item" @click="goProfile">
+            <svg class="m-menu-icon" v-bind="iconProps" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <span>个人信息</span>
+          </button>
+          <div class="m-menu-divider"></div>
+          <button class="m-menu-item is-heat" @click="logout">
+            <svg class="m-menu-icon" v-bind="iconProps" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span>退出登录</span>
+          </button>
+        </div>
+      </Transition>
     </header>
 
     <main class="m-content" @scroll="onMScroll">
@@ -261,5 +330,106 @@ function goTo(index: number) {
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* ---------- 手机端头像菜单（popover / 玻璃；motion.md §5 materialize） ---------- */
+.m-menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 8px;
+  z-index: 50;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+  background: rgba(245, 245, 247, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: var(--sh-overlay);
+}
+
+.menu-pop-enter-active {
+  transition: opacity 0.35s var(--ease-spring), transform 0.35s var(--ease-spring),
+              backdrop-filter 0.35s var(--ease-spring), -webkit-backdrop-filter 0.35s var(--ease-spring);
+}
+
+.menu-pop-leave-active {
+  transition: opacity 0.25s var(--ease-spring), transform 0.25s var(--ease-spring),
+              backdrop-filter 0.25s var(--ease-spring), -webkit-backdrop-filter 0.25s var(--ease-spring);
+}
+
+.menu-pop-enter-from,
+.menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  backdrop-filter: saturate(180%) blur(0px);
+  -webkit-backdrop-filter: saturate(180%) blur(0px);
+}
+
+.m-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-thumb);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.m-menu-item:hover {
+  background: var(--hover);
+}
+
+.m-menu-item.is-heat {
+  color: var(--heat);
+}
+
+.m-menu-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  opacity: 0.8;
+}
+
+.m-menu-divider {
+  height: 1px;
+  margin: 3px 8px;
+  background: var(--hairline);
+}
+
+/* 减少动效 / 透明度 / 对比度（motion.md §8） */
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop-enter-active,
+  .menu-pop-leave-active {
+    transition: opacity 200ms ease;
+  }
+  .menu-pop-enter-from,
+  .menu-pop-leave-to {
+    transform: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .m-menu {
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .m-menu {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+  }
 }
 </style>
