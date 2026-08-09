@@ -3,9 +3,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: openlair
-  annotations:
-    kubernetes.io/ingress.class: apisix    # APISIX 接管
+  # APISIX 接管（ingressClassName 字段为准，kubernetes.io/ingress.class 注解已废弃）
 spec:
+  ingressClassName: apisix
+  tls:
+    - hosts:
+        - placeholder.lcc007.top         # 由 overlay 替换为实际域名
+      secretName: lcc007-top-tls        # cert-manager 签发的通配符证书 *.lcc007.top
   rules:
     - host: placeholder.lcc007.top         # 由 overlay 替换为实际域名
       http:
