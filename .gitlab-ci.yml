@@ -113,8 +113,8 @@ web-package:
   tags: [k8s]
   image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/buildah/buildah:latest
   script:
-    # ⚠️ buildah login 选项必须在前（旧版不支持 registry 在前的顺序，报 too many arguments）
-    - echo "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
+    # ⚠️ printf 不带换行（echo 会加 \n，Harbor 拒绝带换行密码 → invalid username/password）
+    - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
     - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
     # 多阶段构建（Dockerfile 在 lairweb/ 下）
     - buildah bud -t "$IMAGE_NAME:${TAG}" lairweb/
