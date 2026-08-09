@@ -67,7 +67,7 @@ web-build:
 backend-package:
   stage: package
   tags: [k8s]
-  image: harbor.lcc007.top/quay.io/buildah/stable:latest
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/buildah/buildah:latest
   script:
     # 登录 Harbor
     - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
@@ -79,6 +79,10 @@ backend-package:
     - buildah push "$IMAGE_NAME:${TAG}"
     # 清理
     - buildah logout $HARBOR_HOST
+  rules:
+    # 只在 test 分支推送或打 Git tag 时构建镜像
+    - if: '$CI_COMMIT_BRANCH == "test"'
+    - if: '$CI_COMMIT_TAG'
   variables:
     # buildah 存储位置：容器内临时目录（避免权限问题）
     STORAGE_DRIVER: vfs
@@ -93,7 +97,7 @@ backend-package:
 web-package:
   stage: package
   tags: [k8s]
-  image: harbor.lcc007.top/quay.io/buildah/stable:latest
+  image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/buildah/buildah:latest
   script:
     - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
     - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
@@ -101,8 +105,11 @@ web-package:
     - buildah bud -t "$IMAGE_NAME:${TAG}" lairweb/
     - buildah push "$IMAGE_NAME:${TAG}"
     - buildah logout $HARBOR_HOST
+  rules:
+    # 只在 test 分支推送或打 Git tag 时构建镜像
+    - if: '$CI_COMMIT_BRANCH == "test"'
+    - if: '$CI_COMMIT_TAG'
   variables:
     STORAGE_DRIVER: vfs
     BUILDAH_ISOLATION: chroot
     IMAGE_NAME: "$HARBOR_HOST/$HARBOR_PROJECT/openlair-web"
-
