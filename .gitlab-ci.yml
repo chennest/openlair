@@ -75,7 +75,7 @@ web-build:
 backend-package:
   stage: package
   tags: [k8s]
-  image: quay.io/buildah/stable:v1.37
+  image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
   script:
     # 登录 Harbor
     # ⚠️ buildah login 选项必须在前（旧版不支持 registry 在前的顺序，报 too many arguments）
@@ -107,7 +107,7 @@ backend-package:
 web-package:
   stage: package
   tags: [k8s]
-  image: quay.io/buildah/stable:v1.37
+  image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
   script:
     # ⚠️ printf 不带换行（echo 会加 \n，Harbor 拒绝带换行密码 → invalid username/password）
     - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
