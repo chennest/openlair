@@ -1,0 +1,7 @@
+# GitLab Agent k8s-test 配置 — CI/CD Tunnel + GitOps
+ci_access:
+  projects:
+    - id: chennest/openlair
+
+gitops:
+  manifest_projects: []

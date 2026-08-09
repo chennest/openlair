@@ -1,0 +1,51 @@
+# openlair web — Deployment + Service（base 模板）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openlair-web
+  labels:
+    app: openlair-web
+spec:
+  selector:
+    matchLabels:
+      app: openlair-web
+  template:
+    metadata:
+      labels:
+        app: openlair-web
+    spec:
+      containers:
+        - name: web
+          image: harbor.lcc007.top/chennest/openlair-web
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            # 后端地址（nginx 模板 envsubst 渲染；同 namespace 直接解析 Service 名）
+            - name: BACKEND_URL
+              value: "http://openlair-backend:8001"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+# Service：集群内访问 openlair-web:80
+apiVersion: v1
+kind: Service
+metadata:
+  name: openlair-web
+spec:
+  selector:
+    app: openlair-web
+  ports:
+    - port: 80
+      targetPort: 80

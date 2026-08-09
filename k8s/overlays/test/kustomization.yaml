@@ -1,0 +1,38 @@
+# test 环境 overlay — 域名 + 环境标签 + 镜像 tag
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# 环境标签（官方推荐 labels 字段，只加 label 不动 selector）
+labels:
+  - pairs:
+      app.kubernetes.io/environment: test
+      app.kubernetes.io/managed-by: kustomize
+
+# 镜像 tag（test 环境 latest；CI 可用 kustomize edit set image 覆盖）
+images:
+  - name: harbor.lcc007.top/chennest/openlair-backend
+    newTag: latest
+  - name: harbor.lcc007.top/chennest/openlair-web
+    newTag: latest
+
+# 副本数（官方 replicas 字段，不用 patch）
+replicas:
+  - name: openlair-backend
+    count: 1
+  - name: openlair-web
+    count: 1
+
+# 域名覆盖：JSON6902 精确替换 host（避开 strategic merge 列表合并坑 #5713）
+patches:
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: openlair
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: lair-test.lcc007.top

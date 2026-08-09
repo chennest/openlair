@@ -1,0 +1,19 @@
+# openlair Ingress — base 模板（域名由 overlay 覆盖）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openlair
+  annotations:
+    kubernetes.io/ingress.class: apisix    # APISIX 接管
+spec:
+  rules:
+    - host: placeholder.lcc007.top         # 由 overlay 替换为实际域名
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openlair-web
+                port:
+                  number: 80

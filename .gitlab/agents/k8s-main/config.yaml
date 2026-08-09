@@ -1,4 +1,0 @@
-# GitLab Agent k8s-main 配置 — 启用 CI/CD Tunnel
-# 文档: https://docs.gitlab.com/ee/user/clusters/agent/ci_cd_workflow.html
-gitops:
-  manifest_projects: []

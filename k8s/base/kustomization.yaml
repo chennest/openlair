@@ -1,0 +1,19 @@
+# base kustomization — openlair 公共资源
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 统一注入 namespace（官方推荐：资源文件不写死，此处统一管理）
+namespace: openlair
+
+resources:
+  - namespace.yaml
+  - backend.yaml
+  - web.yaml
+  - ingress.yaml
+
+# 公共镜像 tag（overlay 可覆盖）
+images:
+  - name: harbor.lcc007.top/chennest/openlair-backend
+    newTag: latest
+  - name: harbor.lcc007.top/chennest/openlair-web
+    newTag: latest
