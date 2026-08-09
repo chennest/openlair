@@ -59,10 +59,9 @@ web-build:
 # ============================================================
 # Stage 3: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
 # 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-backend:<tag>
-# tag 策略（test 环境）：
-#   master → latest（test 环境固定拉 latest）
-#   dev    → dev-latest
-#   其他   → <分支名>-<短hash>
+# tag 策略：
+#   Git tag（v1.2.3）→ 镜像 tag = v1.2.3（生产发版）
+#   分支推送      → 镜像 tag = <分支名>-<pipeline序号>（如 test-12、dev-5）
 # buildah 优势：不需要特权模式/DinD，K8s job Pod 内直接构建
 # ============================================================
 backend-package:
@@ -72,13 +71,12 @@ backend-package:
   script:
     # 登录 Harbor
     - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
-    # test 环境 tag 策略
-    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then TAG="latest"; elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then TAG="dev-latest"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"; fi
+    # tag 策略：Git tag 优先，否则分支名-pipeline序号
+    - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
     # 构建（buildah bud = build）
-    - buildah bud -t "$IMAGE_NAME:${TAG}" -t "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}" backend/
-    # 推送（buildah push 自动推所有 tag？不，需逐个推）
+    - buildah bud -t "$IMAGE_NAME:${TAG}" backend/
+    # 推送
     - buildah push "$IMAGE_NAME:${TAG}"
-    - buildah push "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}"
     # 清理
     - buildah logout $HARBOR_HOST
   variables:
@@ -90,6 +88,7 @@ backend-package:
 # ============================================================
 # Stage 3: lairweb 镜像构建 + 推送 Harbor（buildah，多阶段构建）
 # 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-web:<tag>
+# tag 策略与 backend 一致：Git tag → 版本号；分支 → 分支名-序号
 # ============================================================
 web-package:
   stage: package
@@ -97,11 +96,10 @@ web-package:
   image: harbor.lcc007.top/quay.io/buildah/stable:latest
   script:
     - echo "$HARBOR_PASSWORD" | buildah login $HARBOR_HOST -u "$HARBOR_USERNAME" --password-stdin
-    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then TAG="latest"; elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then TAG="dev-latest"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"; fi
+    - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
     # 多阶段构建（Dockerfile 在 lairweb/ 下）
-    - buildah bud -t "$IMAGE_NAME:${TAG}" -t "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}" lairweb/
+    - buildah bud -t "$IMAGE_NAME:${TAG}" lairweb/
     - buildah push "$IMAGE_NAME:${TAG}"
-    - buildah push "$IMAGE_NAME:${CI_COMMIT_SHORT_SHA}"
     - buildah logout $HARBOR_HOST
   variables:
     STORAGE_DRIVER: vfs
