@@ -27,6 +27,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+# ── uv 镜像源（国内加速）──
+[tool.uv]
+# 清华 PyPI 镜像作为默认源（替代 pypi.org，国内快）
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

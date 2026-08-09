@@ -26,7 +26,8 @@ backend-test:
   tags: [k8s]
   image: ${IMAGE_PYTHON}
   before_script:
-    - pip install --no-cache-dir uv
+    # 从清华源安装 uv（PyPI 官方源国内慢）
+    - pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
   script:
     - cd backend
     - uv sync --extra dev
