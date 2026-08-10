@@ -39,6 +39,7 @@ const navItems = [
   { path: '/todo', label: '待办', icon: ['m9 11 3 3L22 4', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'] },
   { path: '/notes', label: '笔记', icon: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'] },
   { path: '/habits', label: '习惯', icon: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'] },
+  { path: '/assistant', label: 'AI 助手', icon: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], mobile: false },
 ]
 
 // Lucide 线性图标：24 网格、单笔画 1.75、currentColor（icons.md）
@@ -71,9 +72,12 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
 })
 
+// ---------- 手机端导航过滤（mobile: false 项不显示在底部 tabbar） ----------
+const mobileNavItems = computed(() => navItems.filter((n) => n.mobile !== false))
+
 // ---------- 手机端：左右滑动切换 Tab ----------
-const currentIndex = computed(() => {
-  const idx = navItems.findIndex((n) => n.path === route.path)
+const mobileIndex = computed(() => {
+  const idx = mobileNavItems.value.findIndex((n) => n.path === route.path)
   return idx === -1 ? 0 : idx
 })
 
@@ -104,20 +108,24 @@ function onTouchEnd(e: TouchEvent) {
   const dy = t.clientY - touchStartY
   // 水平主导且超过阈值（48px）才触发，避免与纵向滚动冲突
   if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.2) return
-  const target = dx < 0 ? currentIndex.value + 1 : currentIndex.value - 1
-  if (target < 0 || target >= navItems.length) return
+  const items = mobileNavItems.value
+  const curIdx = mobileIndex.value
+  const target = dx < 0 ? curIdx + 1 : curIdx - 1
+  if (target < 0 || target >= items.length) return
   swipeDirection.value = dx < 0 ? 'forward' : 'back'
   // 先滚回顶部再切换：避免旧页面滚动位置残留导致新页面被强制 clamp 跳动
   window.scrollTo(0, 0)
-  router.push(navItems[target].path)
+  router.push(items[target].path)
 }
 
-function goTo(index: number) {
-  if (index === currentIndex.value) return
-  swipeDirection.value = index > currentIndex.value ? 'forward' : 'back'
+function goTo(idx: number) {
+  const items = mobileNavItems.value
+  const curIdx = mobileIndex.value
+  if (idx === curIdx) return
+  swipeDirection.value = idx > curIdx ? 'forward' : 'back'
   // 先滚回顶部再切换：避免旧页面滚动位置残留导致新页面被强制 clamp 跳动
   window.scrollTo(0, 0)
-  router.push(navItems[index].path)
+  router.push(items[idx].path)
 }
 
 // ---------- 手机端顶栏头像菜单（popover） ----------
@@ -261,9 +269,9 @@ function onKeydown(e: KeyboardEvent) {
       </Transition>
     </main>
 
-    <nav class="m-tabbar" aria-label="底部导航">
+    <nav class="m-tabbar" aria-label="底部导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <button
-        v-for="(item, index) in navItems"
+        v-for="(item, index) in mobileNavItems"
         :key="item.path"
         class="m-tab"
         :class="{ 'is-active': route.path === item.path }"

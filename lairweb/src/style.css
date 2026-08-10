@@ -563,7 +563,6 @@ h1 {
   z-index: 40;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--hairline);
   background: rgba(245, 245, 247, 0.82);
