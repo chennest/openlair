@@ -118,14 +118,14 @@ async function sendMessage() {
   const userMsg: UIMessage = { id: `user-${Date.now()}`, role: 'user', content: text }
   messages.value.push(userMsg)
 
-  // 创建 assistant 占位消息
-  const aiMsg: UIMessage = {
+  // 创建 assistant 占位消息（push 后取代理引用：直接改局部对象不会触发 Vue 响应式）
+  messages.value.push({
     id: `ai-${Date.now()}`,
     role: 'assistant',
     content: '',
     streaming: true,
-  }
-  messages.value.push(aiMsg)
+  })
+  const aiMsg = messages.value[messages.value.length - 1]!
   await nextTick(() => scrollToBottom())
 
   const controller = new AbortController()

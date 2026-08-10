@@ -51,21 +51,28 @@ async def _stream_filtered(streamed, raw_out: list[str]):
     完整文本同时收集进 raw_out（JSON 提取用）；转发文本剔除 JSON 段（用户可见）。
     """
     buf = ""
+    cut = False
     async for text in streamed.stream_text(delta=True):
         if not text:
             continue
         raw_out.append(text)
+        if cut:
+            continue  # 已到 JSON 段：不转发，但继续迭代以收集完整 raw（提取 JSON 用）
         probe = buf + text
         idx = probe.find(_MARKER)
         if idx != -1:
             if probe[:idx]:
                 yield probe[:idx]
-            return
-        safe = len(text) - (len(_MARKER) - 1)
-        if safe > 0:
-            yield text[:safe]
-        buf = (buf + text)[-(len(_MARKER) - 1) :]
-    if buf:
+            cut = True
+            continue
+        # 转发 probe 中除尾部 (len(_MARKER)-1) 字符外的全部（尾部保留用于跨 chunk marker 检测）
+        safe_len = len(probe) - (len(_MARKER) - 1)
+        if safe_len > 0:
+            yield probe[:safe_len]
+            buf = probe[safe_len:]
+        else:
+            buf = probe
+    if buf and not cut:
         yield buf
 
 

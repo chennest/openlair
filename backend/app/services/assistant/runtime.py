@@ -22,7 +22,7 @@ from app.services.assistant.events import (
     ErrorEvent,
     MessageDeltaEvent,
 )
-from app.services.assistant.loop.base import LoopEngine, LoopMessage
+from app.services.assistant.loop.base import LoopEngine
 from app.services.assistant.safety import PendingPlan, SafetyManager
 from app.services.assistant.tools.ledger import (
     LedgerPlan,
@@ -50,9 +50,6 @@ def _build_system_prompt(*, books_text: str, categories_text: str) -> str:
 3. 金额提取纯数字；「花了/支出」为支出，「收到/收入」为收入；日期用「今天/昨天/YYYY-MM-DD」，
    今天是{today}，未来日期不采用。
 4. 回复简洁中文，复述计划后请用户确认。"""
-
-
-_HISTORY_LIMIT = 20
 
 
 def _plan_summary(args: dict) -> str:
@@ -144,18 +141,8 @@ class AssistantRuntime:
 
         with self._sf() as s:
             sess = self._require_session(s, user_id, session_id)
-            # 先查历史（不含本条新消息），再插入 —— 否则 history+prompt 会重复
-            history = [
-                LoopMessage(role=m.role, content=m.content)
-                for m in (
-                    s.query(AssistantMessage)
-                    .filter_by(session_id=session_id)
-                    .order_by(AssistantMessage.id.desc())
-                    .limit(_HISTORY_LIMIT)
-                    .all()
-                )
-            ][::-1]
-            if not history:
+            # 首条消息作为会话标题
+            if s.query(AssistantMessage).filter_by(session_id=session_id).count() == 0:
                 sess.title = text[:20]
             s.add(AssistantMessage(session_id=session_id, role="user", content=text))
             s.commit()
@@ -178,7 +165,7 @@ class AssistantRuntime:
                     books_text=books_text, categories_text=categories_text
                 ),
                 tools=[],
-                history=history,
+                history=[],  # 一期单轮：LLM 只看当前消息（多轮历史会干扰 deepseek JSON 输出）
                 prompt=text,
                 output_schema=LedgerPlan,
             ):
