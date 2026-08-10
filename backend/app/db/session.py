@@ -15,7 +15,9 @@ def create_database_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite"):
         _ensure_sqlite_parent_exists(database_url)
         return create_engine(database_url, connect_args={"check_same_thread": False})
-    return create_engine(database_url)
+    # pool_pre_ping：MySQL/PostgreSQL 空闲断连（wait_timeout/网络波动）时自动重连，
+    # 避免首次查询报 Lost connection
+    return create_engine(database_url, pool_pre_ping=True)
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
