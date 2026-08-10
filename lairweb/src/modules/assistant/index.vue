@@ -452,10 +452,10 @@ watch(currentSessionId, () => {
    assistant page — Apple Liquid Glass 两栏布局
    ════════════════════════════════════════════════════════════ */
 
-/* ── 页面容器 ── */
+/* ── 页面容器：桌面端作为 .content flex 子项填满剩余空间，移动端自适应 ── */
 .assistant-page {
-  height: calc(100vh - 64px);
-  height: calc(100dvh - 64px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 

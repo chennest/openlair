@@ -220,7 +220,7 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </aside>
 
-    <main class="content">
+    <main class="content" :class="{ 'is-assistant': route.path === '/assistant' }">
       <header class="content-header">
         <h1>{{ pageTitle }}</h1>
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
@@ -439,5 +439,18 @@ function onKeydown(e: KeyboardEvent) {
     background: #fff;
     border: 1px solid rgba(0, 0, 0, 0.35);
   }
+}
+
+/* ════════════════════════════════════════════
+   /assistant 页面：约束 .content 至视口，消除浏览器级纵向滚动
+   ════════════════════════════════════════════ */
+.content.is-assistant {
+  height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 保留水平 padding；底部 padding 归零 —— assistant 输入区自带底部间距 */
+  padding-bottom: 0;
 }
 </style>
