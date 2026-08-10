@@ -886,7 +886,8 @@ watch(currentSessionId, () => {
   gap: 10px;
   padding: 8px 8px 8px 18px;
   border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
+  /* Apple：输入容器用 card 级圆角矩形（r-pill 大胶囊 + spread 光晕会渲染出矩形撕裂感） */
+  border-radius: var(--r-card);
   background: var(--surface);
   box-shadow: var(--sh-card);
   transition: border-color 200ms ease, box-shadow 200ms ease;
@@ -894,7 +895,7 @@ watch(currentSessionId, () => {
 
 .input-row:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
 }
 
 .input-field {
@@ -910,6 +911,12 @@ watch(currentSessionId, () => {
   resize: none;
   outline: none;
   font-family: inherit;
+}
+
+/* 覆盖全局 textarea:focus 的 4px 直角光晕（style.css 焦点环）：
+   聚焦反馈由容器 .input-row:focus-within 提供（贴合圆角，无矩形撕裂感） */
+.input-field:focus {
+  box-shadow: none;
 }
 
 .input-field::placeholder {
