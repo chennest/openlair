@@ -1,4 +1,4 @@
-import { get, post, getToken } from '../../api/request'
+import { get, post, del, getToken } from '../../api/request'
 
 // ---------- 类型 ----------
 
@@ -43,18 +43,21 @@ export const assistantApi = {
   /** 确认/取消记账计划 */
   confirm: (planId: string, approved: boolean) =>
     post<ConfirmResult>('/api/assistant/confirm', { planId, approved }),
+
+  /** 删除会话（含消息） */
+  deleteSession: (id: number) => del<{ ok: boolean }>(`/api/assistant/sessions/${id}`),
 }
 
 /**
  * 流式聊天 —— 原生 fetch + ReadableStream，逐行解析 SSE
- * @param sessionId 会话 id
+ * @param sessionId 会话 id（null 表示新对话草稿，后端自动创建）
  * @param message 用户消息文本
  * @param onEvent 每收到一个 JSON 事件回调
  * @param onError 非 200 或网络错误回调
  * @param signal 用于取消请求
  */
 export async function streamChat(
-  sessionId: number,
+  sessionId: number | null,
   message: string,
   onEvent: (evt: ChatEvent) => void,
   onError: (msg: string) => void,

@@ -59,3 +59,13 @@ class SafetyManager:
             if plan.user_id == user_id and plan.session_id == session_id and plan.plan_id not in exclude:
                 return plan
         return None
+
+    def clear_for_session(self, user_id: int, session_id: int) -> None:
+        """删除该用户该会话的全部待确认计划（用于会话删除时清理内存）。"""
+        to_remove = [
+            pid
+            for pid, plan in list(self._plans.items())
+            if plan.user_id == user_id and plan.session_id == session_id
+        ]
+        for pid in to_remove:
+            del self._plans[pid]

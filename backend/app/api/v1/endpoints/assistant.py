@@ -38,6 +38,14 @@ async def get_messages(
     return ok_response(_runtime(request).get_messages(user_id=user.id, session_id=session_id))
 
 
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    request: Request, session_id: int, user: User = Depends(get_current_user)
+) -> dict:
+    _runtime(request).delete_session(user_id=user.id, session_id=session_id)
+    return ok_response({"ok": True}, "已删除")
+
+
 @router.post("/chat")
 async def chat(
     request: Request, payload: AssistantChatInput, user: User = Depends(get_current_user)

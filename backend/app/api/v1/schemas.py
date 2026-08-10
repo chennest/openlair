@@ -141,7 +141,7 @@ class UpdateHabitInput(BaseModel):
 # ---------- assistant（AI 助手） ----------
 
 class AssistantChatInput(BaseModel):
-    sessionId: int
+    sessionId: int | None = None  # null=自动创建新会话
     message: str = Field(min_length=1, max_length=2000)
 
 

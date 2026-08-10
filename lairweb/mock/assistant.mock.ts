@@ -43,9 +43,12 @@ export default {
     url: '/api/assistant/sessions',
     method: 'GET',
     response: respond(
-      guard((_req) => ok(store.assistantSessions.slice().sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ))),
+      guard((_req) => ok(
+        store.assistantSessions
+          .filter((s) => store.assistantMessages.some((m) => m.sessionId === s.id))
+          .slice()
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+      )),
     ),
   }),
 
@@ -63,7 +66,23 @@ export default {
           updatedAt: t,
         }
         store.assistantSessions.push(s)
-        return ok({ id: s.id, title: s.title })
+        return ok({ id: s.id, title: s.title, updatedAt: s.updatedAt })
+      }),
+    ),
+  }),
+
+  // 删除会话
+  deleteSession: defineMock({
+    url: '/api/assistant/sessions/:id',
+    method: 'DELETE',
+    response: respond(
+      guard((req) => {
+        const sid = Number(req.params?.id)
+        const idx = store.assistantSessions.findIndex((s) => s.id === sid)
+        if (idx === -1) return err(404, '会话不存在')
+        store.assistantSessions.splice(idx, 1)
+        store.assistantMessages = store.assistantMessages.filter((m) => m.sessionId !== sid)
+        return ok({ ok: true })
       }),
     ),
   }),
@@ -151,18 +170,32 @@ export default {
         return
       }
 
-      const { sessionId, message } = (req.body ?? {}) as { sessionId?: number; message?: string }
-      if (!sessionId || !message) {
+      const { sessionId, message } = (req.body ?? {}) as { sessionId?: number | null; message?: string }
+      if (!message) {
         res.statusCode = 400
         res.setHeader('Content-Type', 'application/json; charset=utf-8')
-        res.end(JSON.stringify({ code: 400, message: '缺少 sessionId 或 message', data: null }))
+        res.end(JSON.stringify({ code: 400, message: '缺少 message', data: null }))
         return
+      }
+
+      // 未指定会话时自动创建新会话
+      let sid = sessionId
+      if (!sid) {
+        const t = nowISO()
+        const s: AssistantSession = {
+          id: nextId(store.assistantSessions),
+          title: '新对话',
+          createdAt: t,
+          updatedAt: t,
+        }
+        store.assistantSessions.push(s)
+        sid = s.id
       }
 
       // 存储用户消息
       const userMsg: AssistantMessage = {
         id: nextId(store.assistantMessages),
-        sessionId,
+        sessionId: sid,
         role: 'user',
         content: message,
         createdAt: nowISO(),
@@ -170,9 +203,9 @@ export default {
       store.assistantMessages.push(userMsg)
 
       // 更新会话标题（用截取的预览文本）
-      const session = store.assistantSessions.find((s) => s.id === sessionId)
+      const session = store.assistantSessions.find((s) => s.id === sid)
       if (session) {
-        session.title = message.slice(0, 12)
+        session.title = message.slice(0, 20)
         session.updatedAt = nowISO()
       }
 
@@ -184,7 +217,7 @@ export default {
       )
       const categoryId = cat?.id ?? 1
       const typeLabel = type === '收入' ? '收入' : '支出'
-      const planId = `plan_${sessionId}_${amount}_${categoryId}_${type === '收入' ? 'income' : 'expense'}`
+      const planId = `plan_${sid}_${amount}_${categoryId}_${type === '收入' ? 'income' : 'expense'}`
 
       // SSE 响应头
       res.statusCode = 200
@@ -224,12 +257,12 @@ export default {
           )
           // 再等一下发送 done
           setTimeout(() => {
-            res.write(`data: ${JSON.stringify({ type: 'done', sessionId })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'done', sessionId: sid })}\n\n`)
 
             // 把 AI 的消息内容和待确认状态存起来
             const aiMsg: AssistantMessage = {
               id: nextId(store.assistantMessages),
-              sessionId,
+              sessionId: sid,
               role: 'assistant',
               content: fullContent + `\n[待确认] ${typeLabel} ${amount.toFixed(2)} 元 · ${category}`,
               meta: { confirmPlanId: planId, summary: `${typeLabel} ${amount.toFixed(2)} 元 · 分类 ${category}` },

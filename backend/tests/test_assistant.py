@@ -57,7 +57,9 @@ def ah(token: str) -> dict:
 def new_session(client: TestClient, token: str) -> dict:
     r = client.post("/api/assistant/sessions", headers=ah(token))
     assert r.status_code == 200 and r.json()["code"] == 200
-    return r.json()["data"]
+    data = r.json()["data"]
+    assert "updatedAt" in data
+    return data
 
 
 # ---------- 会话 CRUD ----------
@@ -70,7 +72,15 @@ def test_sessions_crud_and_isolation(tmp_path, monkeypatch) -> None:
     sess = new_session(client, t1)
     assert sess["id"] > 0
 
-    # 列表只含自己的会话
+    # 空会话不出现（尚未发消息）—— 列表为空
+    assert client.get("/api/assistant/sessions", headers=ah(t1)).json()["data"] == []
+    assert client.get("/api/assistant/sessions", headers=ah(t2)).json()["data"] == []
+
+    # 发一条消息 → 列表出现
+    r = client.post(
+        "/api/assistant/chat", headers=ah(t1), json={"sessionId": sess["id"], "message": "hi"}
+    )
+    assert r.status_code == 200
     assert [s["id"] for s in client.get("/api/assistant/sessions", headers=ah(t1)).json()["data"]] == [sess["id"]]
     assert client.get("/api/assistant/sessions", headers=ah(t2)).json()["data"] == []
 
@@ -187,3 +197,64 @@ def test_confirm_unknown_plan_404(tmp_path, monkeypatch) -> None:
     token, _ = login(client)
     r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": "nope", "approved": True})
     assert r.status_code == 404
+
+
+# ---------- 草稿态：sessionId=None 自动创建 ----------
+
+def test_chat_with_null_session_auto_creates(tmp_path, monkeypatch) -> None:
+    """sessionId=None 时自动创建会话并发首条消息。"""
+    client = make_client(tmp_path, monkeypatch)  # 无 LLM key
+    token, _ = login(client)
+
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token), json={"sessionId": None, "message": "记一笔午饭"}
+    )
+    assert r.status_code == 200
+    assert "LLM_API_KEY" in r.text
+
+    items = client.get("/api/assistant/sessions", headers=ah(token)).json()["data"]
+    assert len(items) == 1
+    assert items[0]["title"] == "记一笔午饭"
+    assert "updatedAt" in items[0]
+
+    msgs = client.get(
+        f"/api/assistant/sessions/{items[0]['id']}/messages", headers=ah(token)
+    ).json()["data"]
+    assert [m["role"] for m in msgs] == ["user"]
+
+
+# ---------- 删除会话 ----------
+
+def test_delete_session_removes_session_and_messages(tmp_path, monkeypatch) -> None:
+    """删除会话清空消息且他人操作该会话返回 404。"""
+    client = make_client(tmp_path, monkeypatch)
+    t1, _ = login(client)
+    t2, _ = login(client, "test2@openlair.dev")
+
+    # t1 创建会话并发一条消息
+    sess = new_session(client, t1)
+    r = client.post(
+        "/api/assistant/chat", headers=ah(t1), json={"sessionId": sess["id"], "message": "hello"}
+    )
+    assert r.status_code == 200
+
+    # t1 删除自己的会话
+    r = client.delete(f"/api/assistant/sessions/{sess['id']}", headers=ah(t1))
+    assert r.status_code == 200 and r.json()["code"] == 200
+
+    # 列表不含该会话
+    assert client.get("/api/assistant/sessions", headers=ah(t1)).json()["data"] == []
+
+    # 消息返回 404
+    r = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(t1))
+    assert r.status_code == 404
+
+    # t2 DELETE 同一会话 → 404
+    r = client.delete(f"/api/assistant/sessions/{sess['id']}", headers=ah(t2))
+    assert r.status_code == 404
+
+    # t1 用已删除 id 聊天 → 404
+    r = client.post(
+        "/api/assistant/chat", headers=ah(t1), json={"sessionId": sess["id"], "message": "again"}
+    )
+    assert r.status_code == 200 and "会话不存在" in r.text

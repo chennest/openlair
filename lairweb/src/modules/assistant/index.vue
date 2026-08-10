@@ -33,6 +33,8 @@ const error = ref('')
 const msgContainer = ref<HTMLElement | null>(null)
 const aborter = ref<AbortController | null>(null)
 const drawerOpen = ref(false)
+const inputEl = ref<HTMLElement | null>(null)
+const delConfirmId = ref<number | null>(null)
 
 // 是否为空态（无会话或无消息）
 const isWelcome = computed(() => !currentSessionId.value || messages.value.length === 0)
@@ -81,6 +83,7 @@ async function loadSessions() {
 
 async function selectSession(id: number) {
   if (id === currentSessionId.value) return
+  aborter.value?.abort()
   currentSessionId.value = id
   messages.value = []
   closeDrawer()
@@ -88,16 +91,14 @@ async function selectSession(id: number) {
   scrollToBottom()
 }
 
-async function createSession() {
-  try {
-    const s = await assistantApi.createSession()
-    sessions.value.unshift(s)
-    currentSessionId.value = s.id
-    messages.value = []
-    closeDrawer()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '创建会话失败'
-  }
+/** 进入本地草稿态（不调 API，首条消息发送时后端原子创建） */
+function newDraft() {
+  aborter.value?.abort()
+  currentSessionId.value = null
+  messages.value = []
+  inputText.value = ''
+  closeDrawer()
+  void nextTick(() => inputEl.value?.focus())
 }
 
 async function loadMessages() {
@@ -116,21 +117,11 @@ async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || sending.value) return
 
-  // 确保有会话
-  if (!currentSessionId.value) {
-    try {
-      const s = await assistantApi.createSession()
-      sessions.value.unshift(s)
-      currentSessionId.value = s.id
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : '创建会话失败'
-      return
-    }
-  }
-
-  inputText.value = ''
   sending.value = true
   error.value = ''
+  const wasDraft = currentSessionId.value === null
+
+  inputText.value = ''
 
   // 追加用户消息
   const userMsg: UIMessage = { id: `user-${Date.now()}`, role: 'user', content: text }
@@ -169,6 +160,13 @@ async function sendMessage() {
         case 'done':
           streamDone = true
           aiMsg.streaming = false
+          if (wasDraft) {
+            const created = evt.sessionId
+            if (!sessions.value.some((s) => s.id === created)) {
+              sessions.value.unshift({ id: created, title: text.slice(0, 20), updatedAt: new Date().toISOString() })
+            }
+            if (currentSessionId.value === null) currentSessionId.value = created
+          }
           refreshSessionsSilent()
           break
         case 'error':
@@ -219,6 +217,29 @@ async function refreshSessionsSilent() {
     sessions.value = await assistantApi.sessions()
   } catch {
     // 静默失败
+  }
+}
+
+/** 删除会话（两段式确认） */
+async function onDeleteSession(s: AssistantSession) {
+  if (delConfirmId.value !== s.id) {
+    delConfirmId.value = s.id
+    window.setTimeout(() => {
+      if (delConfirmId.value === s.id) delConfirmId.value = null
+    }, 3000)
+    return
+  }
+  delConfirmId.value = null
+  try {
+    await assistantApi.deleteSession(s.id)
+    sessions.value = sessions.value.filter((x) => x.id !== s.id)
+    if (currentSessionId.value === s.id) {
+      aborter.value?.abort()
+      currentSessionId.value = null
+      messages.value = []
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '删除会话失败'
   }
 }
 
@@ -274,7 +295,12 @@ watch(currentSessionId, () => {
       <aside class="session-sidebar" :class="{ 'is-open': drawerOpen }">
         <div class="sidebar-inner">
           <!-- 新对话按钮 -->
-          <button class="new-session-btn" @click="createSession" title="新建会话">
+          <button
+            class="new-session-btn"
+            :class="{ 'is-active': !loading && currentSessionId === null }"
+            @click="newDraft"
+            title="新对话"
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                  class="new-session-icon">
@@ -294,6 +320,29 @@ watch(currentSessionId, () => {
             >
               <span class="session-title">{{ sessionLabel(s) }}</span>
               <span class="session-time">{{ formatTime(s.updatedAt) }}</span>
+              <span
+                class="session-del"
+                role="button"
+                tabindex="0"
+                :class="{ 'is-confirm': delConfirmId === s.id }"
+                @click.stop="onDeleteSession(s)"
+                @keydown.enter.stop="onDeleteSession(s)"
+                aria-label="删除会话"
+              >
+                <svg
+                  v-if="delConfirmId !== s.id"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="session-del-icon"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+                <span v-else class="session-del-confirm">确认？</span>
+              </span>
             </button>
 
             <!-- 空会话提示 -->
@@ -421,6 +470,7 @@ watch(currentSessionId, () => {
         <div class="input-bar">
           <div class="input-row">
             <textarea
+              ref="inputEl"
               v-model="inputText"
               class="input-field"
               placeholder="用一句话记账，比如：昨天午饭花了 68"
@@ -512,6 +562,11 @@ watch(currentSessionId, () => {
   opacity: 0.88;
 }
 
+.new-session-btn.is-active {
+  background: #005bbf;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), 0 2px 8px rgba(0, 113, 227, 0.25);
+}
+
 .new-session-icon {
   width: 18px;
   height: 18px;
@@ -592,6 +647,57 @@ watch(currentSessionId, () => {
 .session-item.is-active .session-time {
   color: var(--accent);
   opacity: 0.7;
+}
+
+/* ── 会话删除按钮 ── */
+.session-del {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  border-radius: var(--r-thumb);
+  color: var(--text-4);
+  opacity: 0.65;
+  cursor: pointer;
+  transition: opacity 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+/* 触屏（无 hover）常显删除按钮；仅悬停设备默认隐藏、hover 会话项时显示 */
+@media (hover: hover) {
+  .session-del {
+    opacity: 0;
+  }
+
+  .session-item:hover .session-del {
+    opacity: 0.65;
+  }
+}
+
+.session-del:hover {
+  opacity: 1 !important;
+  color: var(--text-2);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.session-del-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.session-del.is-confirm {
+  opacity: 1 !important;
+  color: var(--heat);
+  background: rgba(255, 107, 0, 0.08);
+}
+
+.session-del-confirm {
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .session-empty {

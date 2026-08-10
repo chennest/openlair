@@ -10,6 +10,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from app.core.envelope import ApiError
@@ -91,15 +92,17 @@ class AssistantRuntime:
 
     def create_session(self, *, user_id: int) -> dict:
         with self._sf() as s:
-            sess = AssistantSession(user_id=user_id, title="新会话")
+            sess = AssistantSession(user_id=user_id, title="新对话")
             s.add(sess)
             s.commit()
-            return {"id": sess.id, "title": sess.title}
+            return {"id": sess.id, "title": sess.title, "updatedAt": iso_z(sess.created_at)}
 
     def list_sessions(self, *, user_id: int) -> list[dict]:
         with self._sf() as s:
+            has_msgs = exists().where(AssistantMessage.session_id == AssistantSession.id)
             rows = (
                 s.query(AssistantSession)
+                .filter(has_msgs)
                 .filter_by(user_id=user_id)
                 .order_by(AssistantSession.updated_at.desc())
                 .all()
@@ -128,19 +131,35 @@ class AssistantRuntime:
                 for r in rows
             ]
 
+    def delete_session(self, *, user_id: int, session_id: int) -> None:
+        """删除会话及其全部消息，清理内存中的待确认计划。"""
+        with self._sf() as s:
+            self._require_session(s, user_id, session_id)
+            s.query(AssistantMessage).filter_by(session_id=session_id).delete()
+            s.query(AssistantSession).filter_by(id=session_id).delete()
+            s.commit()
+        self._safety.clear_for_session(user_id, session_id)
+
     # ---------- 对话 ----------
 
     async def chat(
-        self, *, user_id: int, session_id: int, message: str
+        self, *, user_id: int, session_id: int | None, message: str
     ) -> AsyncIterator[AssistantEvent]:
-        """流式执行一轮对话。事件经 SSE 转发给前端。"""
+        """流式执行一轮对话。事件经 SSE 转发给前端。
+        session_id=None 时自动创建新会话（草稿态）。"""
         text = (message or "").strip()
         if not text:
             yield ErrorEvent(message="消息不能为空")
             return
 
         with self._sf() as s:
-            sess = self._require_session(s, user_id, session_id)
+            if session_id is None:
+                sess = AssistantSession(user_id=user_id, title="新对话")
+                s.add(sess)
+                s.flush()
+                session_id = sess.id
+            else:
+                sess = self._require_session(s, user_id, session_id)
             # 首条消息作为会话标题
             if s.query(AssistantMessage).filter_by(session_id=session_id).count() == 0:
                 sess.title = text[:20]
