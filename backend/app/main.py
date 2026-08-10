@@ -16,6 +16,9 @@ from app.repositories.todo import TodoRepository
 from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
 from app.seed import seed
+from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
+from app.services.assistant.runtime import AssistantRuntime
+from app.services.assistant.safety import SafetyManager
 from app.services.auth import AuthService
 from app.services.books import BookService
 from app.services.ledger import LedgerService
@@ -74,6 +77,20 @@ def create_app(
     app.state.habit_service = HabitService(habit_repo)
     app.state.overview_service = OverviewService(
         ledger=ledger_repo, todo=todo_repo, events=event_repo, habits=habit_repo
+    )
+
+    # ---------- AI 助手 runtime（loop 之上的抽象封装） ----------
+    app.state.assistant_runtime = AssistantRuntime(
+        session_factory=session_factory,
+        books=app.state.book_service,
+        ledger=app.state.ledger_service,
+        safety=SafetyManager(),
+        engine=PydanticAIEngine(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+        ),
+        llm_api_key=settings.llm_api_key,
     )
 
     # ---------- 鉴权依赖所需仓储 ----------
