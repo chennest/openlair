@@ -17,8 +17,8 @@ from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
 from app.seed import seed
 from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
+from app.services.assistant.plans import PlanService
 from app.services.assistant.runtime import AssistantRuntime
-from app.services.assistant.safety import SafetyManager
 from app.services.auth import AuthService
 from app.services.books import BookService
 from app.services.ledger import LedgerService
@@ -84,7 +84,11 @@ def create_app(
         session_factory=session_factory,
         books=app.state.book_service,
         ledger=app.state.ledger_service,
-        safety=SafetyManager(),
+        plans=PlanService(
+            session_factory=session_factory,
+            ledger=app.state.ledger_service,
+            books=app.state.book_service,
+        ),
         engine=PydanticAIEngine(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,

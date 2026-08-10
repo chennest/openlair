@@ -4,9 +4,9 @@ import {
   assistantApi,
   streamChat,
   type AssistantSession,
-  type AssistantMessage,
   type ChatEvent,
 } from './api'
+import { ApiError } from '../../api/request'
 
 // ---------- UI 消息（扩展后端消息 + 前端流式/确认状态） ----------
 interface UIMessage {
@@ -19,6 +19,8 @@ interface UIMessage {
   streaming?: boolean
   /** 待确认计划 */
   pendingPlan?: { planId: string; summary: string }
+  /** 确认卡片执行结果（确认/取消后原地替换按钮，不再追加重复消息） */
+  confirmResult?: { state: 'executed' | 'cancelled' | 'failed'; message: string }
 }
 
 // ---------- 状态 ----------
@@ -104,8 +106,33 @@ function newDraft() {
 async function loadMessages() {
   if (!currentSessionId.value) return
   try {
-    const msgs = await assistantApi.messages(currentSessionId.value)
-    messages.value = msgs.map((m: AssistantMessage) => ({ ...m }))
+    const raw = await assistantApi.messages(currentSessionId.value)
+    // 收集所有 tool_result 消息，按 planId 索引（合并进确认卡，不单独渲染）
+    const results = new Map<string, { kind: string; content: string }>()
+    for (const m of raw) {
+      const meta = (m.meta ?? {}) as Record<string, unknown>
+      if (m.type === 'tool_result' && typeof meta.planId === 'string') {
+        results.set(meta.planId, { kind: String(meta.kind ?? 'executed'), content: m.content })
+      }
+    }
+    messages.value = raw
+      .filter((m) => m.type !== 'tool_result') // 结果合并进 confirm_request 消息，跳过独立渲染
+      .map((m) => {
+        const meta = (m.meta ?? {}) as Record<string, unknown>
+        const um: UIMessage = { ...m }
+        if (m.type === 'confirm_request' && typeof meta.planId === 'string') {
+          const done = results.get(meta.planId)
+          if (done) {
+            um.confirmResult = {
+              state: done.kind === 'executed' ? 'executed' : done.kind === 'cancelled' ? 'cancelled' : 'failed',
+              message: done.content,
+            }
+          } else {
+            um.pendingPlan = { planId: meta.planId, summary: typeof meta.summary === 'string' ? meta.summary : '' }
+          }
+        }
+        return um
+      })
     await nextTick(() => scrollToBottom())
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载消息失败'
@@ -200,12 +227,23 @@ async function handleConfirm(planId: string, approved: boolean) {
   confirming.value = planId
   try {
     const result = await assistantApi.confirm(planId, approved)
-    // 把确认结果作为新的 assistant 消息追加
-    messages.value.push({ id: `confirm-${Date.now()}`, role: 'assistant', content: result.message })
-    await nextTick(() => scrollToBottom())
+    const target = messages.value.find((m) => m.pendingPlan?.planId === planId)
+    if (target) {
+      const state = !approved ? 'cancelled' : result.ok ? 'executed' : 'failed'
+      target.pendingPlan = undefined
+      target.confirmResult = { state, message: result.message }
+    }
     refreshSessionsSilent()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '操作失败'
+    if (e instanceof ApiError && e.status === 404) {
+      const target = messages.value.find((m) => m.pendingPlan?.planId === planId)
+      if (target) {
+        target.pendingPlan = undefined
+        target.confirmResult = { state: 'failed', message: '计划已过期，请重新说一遍' }
+      }
+    } else {
+      error.value = e instanceof Error ? e.message : '操作失败'
+    }
   } finally {
     confirming.value = null
   }
@@ -454,6 +492,16 @@ watch(currentSessionId, () => {
                         {{ confirming === m.pendingPlan.planId ? '处理中…' : '确认' }}
                       </button>
                     </div>
+                  </div>
+
+                  <!-- 执行结果卡片 -->
+                  <div v-else-if="m.confirmResult" class="confirm-result" :class="'is-' + m.confirmResult.state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="confirm-result-icon">
+                      <path v-if="m.confirmResult.state === 'executed'" d="M20 6 9 17l-5-5" />
+                      <path v-else-if="m.confirmResult.state === 'cancelled'" d="M9 9l6 6M15 9l-6 6" />
+                      <path v-else d="M12 9v4M12 17h.01" />
+                    </svg>
+                    <span class="confirm-result-text">{{ m.confirmResult.message }}</span>
                   </div>
                 </div>
               </div>
@@ -976,6 +1024,49 @@ watch(currentSessionId, () => {
 .confirm-btn.is-outline:hover:not(:disabled) {
   color: var(--text);
   border-color: rgba(0,0,0,0.18);
+}
+
+/* ── 确认结果卡片（确认/取消后原地显示） ── */
+.confirm-result {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-thumb);
+  background: var(--surface);
+  box-shadow: var(--sh-card);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.confirm-result-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.confirm-result-text {
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.confirm-result.is-executed .confirm-result-icon,
+.confirm-result.is-executed .confirm-result-text {
+  color: var(--live);
+}
+
+.confirm-result.is-cancelled .confirm-result-icon,
+.confirm-result.is-cancelled .confirm-result-text {
+  color: var(--text-3);
+}
+
+.confirm-result.is-failed .confirm-result-icon,
+.confirm-result.is-failed .confirm-result-text {
+  color: var(--heat);
 }
 
 /* ═══ 底部输入区 ═══ */

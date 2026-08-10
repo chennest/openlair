@@ -1,7 +1,7 @@
 """AI 助手 runtime 抽象层：会话管理 + 对话执行 + 安全确认。
 
 - 只依赖 LoopEngine 协议（loop/base.py），不 import 具体框架；
-- confirm 级工具被调用时 → 生成 PendingPlan（内存态）→ 事件流带 confirm_request →
+- confirm 级工具被调用时 → 生成计划落库（AssistantPlan）→ 事件流带 confirm_request →
   用户确认后由 runtime 用「已确认的参数」直接落库（参数不再经过 LLM，防幻觉偏差）；
 - 工具只调 services，分层不变。
 """
@@ -24,11 +24,10 @@ from app.services.assistant.events import (
     MessageDeltaEvent,
 )
 from app.services.assistant.loop.base import LoopEngine
-from app.services.assistant.safety import PendingPlan, SafetyManager
+from app.services.assistant.plans import PlanService
 from app.services.assistant.tools.ledger import (
     LedgerPlan,
     build_ledger_tools,
-    execute_create_plan,
     session_ctx,
     user_ctx,
 )
@@ -76,14 +75,14 @@ class AssistantRuntime:
         session_factory,
         books: BookService,
         ledger: LedgerService,
-        safety: SafetyManager,
+        plans: PlanService,
         engine: LoopEngine,
         llm_api_key: str,
     ) -> None:
         self._sf = session_factory
         self._books = books
         self._ledger = ledger
-        self._safety = safety
+        self._plans = plans
         self._engine = engine
         self._llm_ready = bool(llm_api_key)
         self._tools = build_ledger_tools(books=books, ledger=ledger)
@@ -124,6 +123,7 @@ class AssistantRuntime:
                 {
                     "id": r.id,
                     "role": r.role,
+                    "type": r.type,
                     "content": r.content,
                     "meta": r.meta,
                     "createdAt": iso_z(r.created_at),
@@ -132,13 +132,13 @@ class AssistantRuntime:
             ]
 
     def delete_session(self, *, user_id: int, session_id: int) -> None:
-        """删除会话及其全部消息，清理内存中的待确认计划。"""
+        """删除会话及其全部消息，清理 DB 中的待确认计划。"""
         with self._sf() as s:
             self._require_session(s, user_id, session_id)
             s.query(AssistantMessage).filter_by(session_id=session_id).delete()
             s.query(AssistantSession).filter_by(id=session_id).delete()
             s.commit()
-        self._safety.clear_for_session(user_id, session_id)
+        self._plans.clear_for_session(user_id=user_id, session_id=session_id)
 
     # ---------- 对话 ----------
 
@@ -163,7 +163,7 @@ class AssistantRuntime:
             # 首条消息作为会话标题
             if s.query(AssistantMessage).filter_by(session_id=session_id).count() == 0:
                 sess.title = text[:20]
-            s.add(AssistantMessage(session_id=session_id, role="user", content=text))
+            s.add(AssistantMessage(session_id=session_id, role="user", content=text, type="text"))
             s.commit()
 
         if not self._llm_ready:
@@ -198,49 +198,65 @@ class AssistantRuntime:
             session_ctx.reset(s_token)
 
         assistant_text = "".join(chunks).strip() or "（无回复）"
+
+        # 结构化输出为记账计划 → 先生成 plan 落库，再写 AI 消息带 meta（同一事务）
+        plan_id: str | None = None
+        plan_summary: str | None = None
+        if plan_output and plan_output.get("action") == "record":
+            args = {k: plan_output.get(k) for k in ("type", "amount", "category", "date", "book", "note")}
+            plan_summary = _plan_summary(plan_output)
+            plan_dict = self._plans.create(
+                user_id=user_id,
+                session_id=session_id,
+                tool="LedgerPlan",
+                args=args,
+                summary=plan_summary,
+            )
+            plan_id = plan_dict["plan_id"]
+
+        # 写 AI 消息（带 type 与 meta）
         with self._sf() as s:
-            msg = AssistantMessage(session_id=session_id, role="assistant", content=assistant_text)
+            meta: dict | None = None
+            msg_type = "text"
+            if plan_id:
+                meta = {"planId": plan_id, "tool": "LedgerPlan", "summary": plan_summary}
+                msg_type = "confirm_request"
+            msg = AssistantMessage(
+                session_id=session_id,
+                role="assistant",
+                type=msg_type,
+                content=assistant_text,
+                meta=meta,
+            )
             s.add(msg)
             sess = s.get(AssistantSession, session_id)
             if sess is not None:
                 sess.updated_at = datetime.now(UTC)
             s.commit()
 
-        # 结构化输出为记账计划 → 生成待确认计划（用户确认后落库）
-        if plan_output and plan_output.get("action") == "record":
-            plan_id = uuid.uuid4().hex[:10]
-            self._safety.add(
-                PendingPlan(
-                    plan_id=plan_id,
-                    user_id=user_id,
-                    session_id=session_id,
-                    tool="LedgerPlan",
-                    args={k: plan_output.get(k) for k in ("type", "amount", "category", "date", "book", "note")},
-                    summary=_plan_summary(plan_output),
-                )
-            )
-            yield ConfirmRequestEvent(planId=plan_id, tool="LedgerPlan", summary=_plan_summary(plan_output))
+        if plan_id:
+            yield ConfirmRequestEvent(planId=plan_id, tool="LedgerPlan", summary=plan_summary or "")
         yield DoneEvent(sessionId=session_id)
 
     # ---------- 安全确认 ----------
 
     def confirm(self, *, user_id: int, plan_id: str, approved: bool) -> dict:
         """用户对待确认计划表态：approved=True 用已确认参数落库，False 取消。"""
-        plan = self._safety.pop(plan_id, user_id)
-        if plan is None:
-            raise ApiError(404, "计划不存在或已过期，请重新说一遍")
-        if not approved:
-            self._append(plan.session_id, "已取消本次操作")
-            return {"ok": True, "message": "已取消"}
-        try:
-            text = execute_create_plan(
-                ledger=self._ledger, books=self._books, args=plan.args, user_id=user_id
-            )
-        except ApiError as e:
-            self._append(plan.session_id, f"记账失败：{e.message}")
-            return {"ok": False, "message": f"记账失败：{e.message}"}
-        self._append(plan.session_id, text, meta={"kind": "executed"})
-        return {"ok": True, "message": text}
+        result = self._plans.confirm(user_id=user_id, plan_id=plan_id, approved=approved)
+        # 追加工具执行结果消息
+        self._append(
+            session_id=result["session_id"],
+            role="assistant",
+            type="tool_result",
+            content=result["message"],
+            meta={
+                "planId": plan_id,
+                "kind": result["kind"],
+                "summary": result.get("summary", ""),
+                "result": result["message"],
+            },
+        )
+        return {"ok": result["ok"], "message": result["message"]}
 
     # ---------- 内部 ----------
 
@@ -250,7 +266,18 @@ class AssistantRuntime:
             raise ApiError(404, "会话不存在")
         return sess
 
-    def _append(self, session_id: int, content: str, *, meta: dict | None = None) -> None:
+    def _append(
+        self, session_id: int, content: str, *, role: str = "assistant",
+        type: str = "text", meta: dict | None = None
+    ) -> None:
         with self._sf() as s:
-            s.add(AssistantMessage(session_id=session_id, role="assistant", content=content, meta=meta))
+            s.add(
+                AssistantMessage(
+                    session_id=session_id,
+                    role=role,
+                    type=type,
+                    content=content,
+                    meta=meta,
+                )
+            )
             s.commit()

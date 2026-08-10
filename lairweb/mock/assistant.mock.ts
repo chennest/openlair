@@ -100,6 +100,7 @@ export default {
         return ok(msgs.map((m) => ({
           id: m.id,
           role: m.role,
+          type: m.type,
           content: m.content,
           meta: m.meta,
           createdAt: m.createdAt,
@@ -141,11 +142,33 @@ export default {
             createdAt: t,
             updatedAt: t,
           })
-          return ok({
-            ok: true,
-            message: `已记账：${type} ${amount.toFixed(2)} 元 · ${catName}`,
+          const executedContent = `已记账：${type} ${amount.toFixed(2)} 元 · ${catName}`
+          const sid = Number(parts[1]) || 0
+          store.assistantMessages.push({
+            id: nextId(store.assistantMessages),
+            sessionId: sid,
+            role: 'assistant',
+            type: 'tool_result',
+            content: executedContent,
+            meta: {
+              planId: String(planId),
+              kind: 'executed',
+              summary: `${type} ${amount.toFixed(2)} 元 · 分类 ${catName}`,
+            },
+            createdAt: nowISO(),
           })
+          return ok({ ok: true, message: executedContent })
         }
+        const sid = Number(parts[1]) || 0
+        store.assistantMessages.push({
+          id: nextId(store.assistantMessages),
+          sessionId: sid,
+          role: 'assistant',
+          type: 'tool_result',
+          content: '已取消本次记账',
+          meta: { planId: String(planId), kind: 'cancelled', summary: '已取消本次记账' },
+          createdAt: nowISO(),
+        })
         return ok({ ok: true, message: '已取消本次记账' })
       }),
     ),
@@ -264,8 +287,9 @@ export default {
               id: nextId(store.assistantMessages),
               sessionId: sid,
               role: 'assistant',
+              type: 'confirm_request',
               content: fullContent + `\n[待确认] ${typeLabel} ${amount.toFixed(2)} 元 · ${category}`,
-              meta: { confirmPlanId: planId, summary: `${typeLabel} ${amount.toFixed(2)} 元 · 分类 ${category}` },
+              meta: { planId, tool: 'LedgerPlan', summary: `${typeLabel} ${amount.toFixed(2)} 元 · 分类 ${category}` },
               createdAt: nowISO(),
             }
             store.assistantMessages.push(aiMsg)

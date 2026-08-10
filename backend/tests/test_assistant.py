@@ -6,6 +6,7 @@ import re
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.models.assistant import AssistantPlan
 from app.services.assistant.loop.base import LoopEvent
 
 
@@ -182,7 +183,7 @@ def test_confirm_plan_belongs_to_user(tmp_path, monkeypatch) -> None:
     )
     plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
 
-    # 别的用户确认 → 404（计划不属于他，pop 校验失败）
+    # 别的用户确认 → 404（计划不属于他，get 校验失败）
     r = client.post("/api/assistant/confirm", headers=ah(t2), json={"planId": plan_id, "approved": True})
     assert r.status_code == 404
 
@@ -197,6 +198,169 @@ def test_confirm_unknown_plan_404(tmp_path, monkeypatch) -> None:
     token, _ = login(client)
     r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": "nope", "approved": True})
     assert r.status_code == 404
+
+
+# ---------- plan 持久化：状态机 + 消息类型 + 隔离 ----------
+
+def _db_plan(client: TestClient, plan_id: str) -> dict | None:
+    """从 DB 直接查一条计划记录。"""
+    runtime = client.app.state.assistant_runtime
+    with runtime._sf() as s:
+        plan = s.query(AssistantPlan).filter_by(plan_id=plan_id).first()
+        if plan is None:
+            return None
+        return {
+            "plan_id": plan.plan_id,
+            "status": plan.status,
+            "result": plan.result,
+            "executed_at": plan.executed_at,
+            "user_id": plan.user_id,
+            "session_id": plan.session_id,
+        }
+
+
+def test_plan_lifecycle_persisted(tmp_path, monkeypatch) -> None:
+    """chat 生成 plan → 落库 status=pending → confirm 后 status=executed → 再 confirm 404。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._engine = FakeLoopEngine(
+        [
+            ("plan", '{"action": "record", "type": "支出", "amount": 55.0, "category": "餐饮", "book": "AI测试账本"}'),
+            ("text", "好的，将记一笔支出 55 元，请确认"),
+        ]
+    )
+    token, _ = login(client)
+    client.post("/api/books", headers=ah(token), json={"name": "AI测试账本", "type": "personal"})
+    sess = new_session(client, token)
+
+    # chat：生成 plan
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "午饭55"}
+    )
+    assert r.status_code == 200
+    plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
+
+    # DB 有记录，status=pending
+    plan = _db_plan(client, plan_id)
+    assert plan is not None
+    assert plan["status"] == "pending"
+    assert plan["executed_at"] is None
+
+    # confirm → executed
+    r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": plan_id, "approved": True})
+    assert r.json()["code"] == 200
+
+    plan = _db_plan(client, plan_id)
+    assert plan["status"] == "executed"
+    assert plan["result"] is not None
+    assert "已记账" in plan["result"].get("message", "")
+    assert plan["executed_at"] is not None
+
+    # 重复确认 → 404（幂等防重复）
+    r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": plan_id, "approved": True})
+    assert r.status_code == 404
+
+
+def test_message_type_and_meta(tmp_path, monkeypatch) -> None:
+    """chat AI 消息 type=confirm_request + meta.planId；confirm 后 tool_result 消息 type=tool_result + meta。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._engine = FakeLoopEngine(
+        [
+            ("plan", '{"action": "record", "type": "支出", "amount": 42.0, "category": "餐饮", "book": "AI测试账本"}'),
+            ("text", "确认记账：42 元餐饮"),
+        ]
+    )
+    token, _ = login(client)
+    client.post("/api/books", headers=ah(token), json={"name": "AI测试账本", "type": "personal"})
+    sess = new_session(client, token)
+
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "午餐42"}
+    )
+    assert r.status_code == 200
+    plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
+
+    msgs = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(token)).json()["data"]
+    # 用户消息 type=text
+    assert msgs[0]["type"] == "text"
+    # AI 消息 type=confirm_request 且 meta.planId 正确
+    ai_msg = msgs[-1]
+    assert ai_msg["type"] == "confirm_request"
+    assert ai_msg["meta"]["planId"] == plan_id
+    assert ai_msg["meta"]["tool"] == "LedgerPlan"
+
+    # confirm
+    client.post("/api/assistant/confirm", headers=ah(token), json={"planId": plan_id, "approved": True})
+
+    msgs = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(token)).json()["data"]
+    tool_msg = msgs[-1]
+    assert tool_msg["type"] == "tool_result"
+    assert tool_msg["meta"]["kind"] == "executed"
+    assert tool_msg["meta"]["planId"] == plan_id
+    assert tool_msg["role"] == "assistant"
+
+    # get_messages 返回含 type 字段
+    for m in msgs:
+        assert "type" in m
+
+
+def test_cancel_plan_status(tmp_path, monkeypatch) -> None:
+    """approved=False → 计划 status='cancelled'，追加 tool_result 消息。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._engine = FakeLoopEngine(
+        [("plan", '{"action": "record", "type": "支出", "amount": 10.0, "book": "AI测试账本"}')]
+    )
+    token, _ = login(client)
+    client.post("/api/books", headers=ah(token), json={"name": "AI测试账本", "type": "personal"})
+    sess = new_session(client, token)
+
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "10块"}
+    )
+    plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
+
+    r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": plan_id, "approved": False})
+    assert r.json()["code"] == 200
+
+    # DB 状态
+    plan = _db_plan(client, plan_id)
+    assert plan["status"] == "cancelled"
+    assert plan["executed_at"] is not None
+
+    # 消息 type=tool_result, kind=cancelled
+    msgs = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(token)).json()["data"]
+    tool_msg = msgs[-1]
+    assert tool_msg["type"] == "tool_result"
+    assert tool_msg["meta"]["kind"] == "cancelled"
+    assert "已取消" in tool_msg["content"]
+
+
+def test_plan_isolation(tmp_path, monkeypatch) -> None:
+    """t2 确认 t1 的 plan_id → 404（越权隔离）。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._engine = FakeLoopEngine(
+        [("plan", '{"action": "record", "type": "支出", "amount": 5.0, "book": "AI测试账本"}')]
+    )
+    t1, _ = login(client)
+    t2, _ = login(client, "test2@openlair.dev")
+    client.post("/api/books", headers=ah(t1), json={"name": "AI测试账本", "type": "personal"})
+    sess = new_session(client, t1)
+
+    r = client.post(
+        "/api/assistant/chat", headers=ah(t1), json={"sessionId": sess["id"], "message": "5块"}
+    )
+    plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
+
+    # t2 确认 t1 的计划 → 404
+    r = client.post("/api/assistant/confirm", headers=ah(t2), json={"planId": plan_id, "approved": True})
+    assert r.status_code == 404
+
+    # t1 仍可确认
+    r = client.post("/api/assistant/confirm", headers=ah(t1), json={"planId": plan_id, "approved": True})
+    assert r.json()["code"] == 200
 
 
 # ---------- 草稿态：sessionId=None 自动创建 ----------

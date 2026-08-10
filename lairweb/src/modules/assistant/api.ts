@@ -12,6 +12,7 @@ export interface AssistantMessage {
   id: number
   role: 'user' | 'assistant'
   content: string
+  type?: 'text' | 'confirm_request' | 'tool_result'
   meta?: Record<string, unknown>
   createdAt: string
 }

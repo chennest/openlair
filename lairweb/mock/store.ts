@@ -144,6 +144,7 @@ export interface AssistantMessage {
   id: number
   sessionId: number
   role: 'user' | 'assistant'
+  type?: 'text' | 'confirm_request' | 'tool_result'
   content: string
   meta?: Record<string, unknown>
   createdAt: string
