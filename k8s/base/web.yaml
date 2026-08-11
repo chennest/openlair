@@ -14,6 +14,9 @@ spec:
       labels:
         app: openlair-web
     spec:
+      # 从私有 Harbor 拉镜像需要凭据（chennest 项目非公开）
+      imagePullSecrets:
+        - name: harbor-registry-secret
       containers:
         - name: web
           image: harbor.lcc007.top/chennest/openlair-web

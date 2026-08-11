@@ -27,6 +27,31 @@ class Settings(BaseSettings):
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173", validation_alias="CORS_ORIGINS"
     )
+    # AI 助手 LLM：OpenAI 兼容多 provider（DeepSeek/Qwen/OpenAI 均可，走 LLM_PROVIDER 区分）
+    llm_provider: str = Field(default="openai", validation_alias="LLM_PROVIDER")
+    llm_base_url: str = Field(
+        default="https://api.deepseek.com/v1", validation_alias="LLM_BASE_URL"
+    )
+    llm_api_key: str = Field(default="", validation_alias="LLM_API_KEY")
+    llm_model: str = Field(default="deepseek-v4-flash", validation_alias="LLM_MODEL")
+    # 语音转写：引擎切换 + 双实现
+    # engine: dashscope（默认）| openai-compatible（自建 whisper / 兼容网关）
+    transcribe_engine: str = Field(
+        default="dashscope", validation_alias="TRANSCRIBE_ENGINE"
+    )
+    # DashScope 参数（engine=dashscope 时使用）
+    transcribe_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/api/v1", validation_alias="TRANSCRIBE_BASE_URL"
+    )
+    transcribe_api_key: str = Field(default="", validation_alias="TRANSCRIBE_API_KEY")
+    transcribe_model: str = Field(default="qwen3-asr-flash", validation_alias="TRANSCRIBE_MODEL")
+    # OpenAI 兼容参数（engine=openai-compatible 时使用）
+    transcribe_openai_base_url: str = Field(
+        default="", validation_alias="TRANSCRIBE_OPENAI_BASE_URL"
+    )
+    transcribe_openai_api_key: str = Field(
+        default="", validation_alias="TRANSCRIBE_OPENAI_API_KEY"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",

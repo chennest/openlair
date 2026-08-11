@@ -131,6 +131,25 @@ export interface Habit {
   updatedAt: string
 }
 
+/** AI 助手会话 */
+export interface AssistantSession {
+  id: number
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** AI 助手消息 */
+export interface AssistantMessage {
+  id: number
+  sessionId: number
+  role: 'user' | 'assistant'
+  type?: 'text' | 'confirm_request' | 'tool_result'
+  content: string
+  meta?: Record<string, unknown>
+  createdAt: string
+}
+
 // ---------- 常量 ----------
 export const QUADRANTS = ['重要紧急', '重要不紧急', '紧急不重要', '不重要不紧急']
 export const MONTH = () => {
@@ -157,6 +176,8 @@ export interface StoreShape {
   events: CalendarEvent[]
   notes: Note[]
   habits: Habit[]
+  assistantSessions: AssistantSession[]
+  assistantMessages: AssistantMessage[]
 }
 
 const g = globalThis as unknown as { __openlair_mock__?: SharedRuntime }
@@ -394,6 +415,8 @@ function seed(): StoreShape {
         updatedAt: c,
       }
     }),
+    assistantSessions: [],
+    assistantMessages: [],
   }
 }
 

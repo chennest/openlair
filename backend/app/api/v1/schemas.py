@@ -136,3 +136,15 @@ class UpdateHabitInput(BaseModel):
     streak: int | None = None
     done: bool | None = None
     week: list[bool] | None = None
+
+
+# ---------- assistant（AI 助手） ----------
+
+class AssistantChatInput(BaseModel):
+    sessionId: int | None = None  # null=自动创建新会话
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class AssistantConfirmInput(BaseModel):
+    planId: str = Field(min_length=1)
+    approved: bool

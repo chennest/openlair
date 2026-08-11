@@ -13,6 +13,8 @@ const router = createRouter({
     { path: '/todo', name: 'todo', component: () => import('../modules/todo/index.vue'), meta: { title: '待办' } },
     { path: '/notes', name: 'notes', component: () => import('../modules/notes/index.vue'), meta: { title: '笔记' } },
     { path: '/habits', name: 'habits', component: () => import('../modules/habits/index.vue'), meta: { title: '习惯' } },
+    { path: '/assistant', name: 'assistant', component: () => import('../modules/assistant/index.vue'), meta: { title: 'AI 助手' } },
+    { path: '/profile', name: 'profile', component: () => import('../modules/profile/index.vue'), meta: { title: '个人信息' } },
   ],
 })
 
