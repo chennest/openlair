@@ -3,11 +3,18 @@
 import json
 import re
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.core.envelope import ApiError
 from app.main import create_app
 from app.models.assistant import AssistantPlan
 from app.services.assistant.loop.base import LoopEvent
+from app.services.assistant.transcribe import (
+    DashScopeTranscriber,
+    OpenAICompatTranscriber,
+    create_transcriber,
+)
 
 
 class FakeLoopEngine:
@@ -422,3 +429,226 @@ def test_delete_session_removes_session_and_messages(tmp_path, monkeypatch) -> N
         "/api/assistant/chat", headers=ah(t1), json={"sessionId": sess["id"], "message": "again"}
     )
     assert r.status_code == 200 and "会话不存在" in r.text
+
+
+# ---------- 语音转写 ----------
+
+
+class FakeHttpxResponse:
+    """伪造的 httpx Response。"""
+    def __init__(self, status_code: int, json_data: dict) -> None:
+        self.status_code = status_code
+        self._json = json_data
+
+    def json(self) -> dict:
+        return self._json
+
+
+class FakeAsyncClient:
+    """伪造的 httpx.AsyncClient，post 返回 FakeHttpxResponse。"""
+    def __init__(self, resp: FakeHttpxResponse) -> None:
+        self._resp = resp
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args) -> None:
+        pass
+
+    async def post(self, url: str, **kwargs) -> FakeHttpxResponse:
+        return self._resp
+
+
+def _make_transcribe_client(tmp_path, monkeypatch, *, api_key: str = "sk-fake-key"):
+    monkeypatch.setenv("TRANSCRIBE_API_KEY", api_key)
+    client = make_client(tmp_path, monkeypatch)
+    return client
+
+
+def test_transcribe_standard_response(tmp_path, monkeypatch) -> None:
+    """标准多模态响应结构 → 返回 text。"""
+    client = _make_transcribe_client(tmp_path, monkeypatch)
+    token, _ = login(client)
+
+    fake = FakeHttpxResponse(200, {
+        "output": {"choices": [{"message": {"content": [{"text": "你好世界"}]}}]}
+    })
+
+    async def fake_post(url, **kwargs):
+        return fake
+
+    monkeypatch.setattr("httpx.AsyncClient", lambda **kw: FakeAsyncClient(fake))
+
+    # 发送一个最小的 WAV 头（44 bytes）
+    data = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+    r = client.post(
+        "/api/assistant/transcribe",
+        headers=ah(token),
+        files={"file": ("test.wav", data, "audio/wav")},
+    )
+    assert r.status_code == 200
+    assert r.json()["code"] == 200
+    assert r.json()["data"]["text"] == "你好世界"
+
+
+def test_transcribe_asr_specialized_response(tmp_path, monkeypatch) -> None:
+    """ASR 特化响应结构 → 解析成功。"""
+    client = _make_transcribe_client(tmp_path, monkeypatch)
+    token, _ = login(client)
+
+    fake = FakeHttpxResponse(200, {
+        "output": {"output": {"sentence": {"text": "测试文本"}}, "text": "测试文本"}
+    })
+
+    monkeypatch.setattr("httpx.AsyncClient", lambda **kw: FakeAsyncClient(fake))
+
+    data = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+    r = client.post(
+        "/api/assistant/transcribe",
+        headers=ah(token),
+        files={"file": ("test.wav", data, "audio/wav")},
+    )
+    assert r.status_code == 200
+    assert r.json()["code"] == 200
+    assert r.json()["data"]["text"] == "测试文本"
+
+
+def test_transcribe_oversized_file(tmp_path, monkeypatch) -> None:
+    """超过 10MB → 400。"""
+    client = _make_transcribe_client(tmp_path, monkeypatch)
+    token, _ = login(client)
+
+    # 发送 11MB 的假数据
+    big_data = b"X" * (11 * 1024 * 1024)
+    r = client.post(
+        "/api/assistant/transcribe",
+        headers=ah(token),
+        files={"file": ("big.wav", big_data, "audio/wav")},
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == 400
+    assert "10MB" in r.json()["message"]
+
+
+def test_transcribe_no_api_key(tmp_path, monkeypatch) -> None:
+    """TRANSCRIBE_API_KEY 为空 → 503。"""
+    monkeypatch.setenv("TRANSCRIBE_API_KEY", "")
+    client = make_client(tmp_path, monkeypatch)
+    token, _ = login(client)
+
+    data = b"RIFF$\x00\x00\x00WAVEfmt "
+    r = client.post(
+        "/api/assistant/transcribe",
+        headers=ah(token),
+        files={"file": ("test.wav", data, "audio/wav")},
+    )
+    assert r.status_code == 503
+    assert r.json()["code"] == 503
+    assert "TRANSCRIBE_API_KEY" in r.json()["message"]
+
+
+def test_transcribe_requires_auth(tmp_path, monkeypatch) -> None:
+    """未登录访问 /transcribe → 401。"""
+    client = _make_transcribe_client(tmp_path, monkeypatch)
+    data = b"RIFF$\x00\x00\x00WAVEfmt "
+    r = client.post(
+        "/api/assistant/transcribe",
+        files={"file": ("test.wav", data, "audio/wav")},
+    )
+    assert r.status_code == 401
+
+
+# ---------- 可插拔转写引擎测试 ----------
+
+
+class CapturingFakeAsyncClient:
+    """伪造的 httpx.AsyncClient，记录 post 参数供断言。"""
+
+    def __init__(self, resp: FakeHttpxResponse) -> None:
+        self._resp = resp
+        self.last_url: str | None = None
+        self.last_kwargs: dict | None = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args) -> None:
+        pass
+
+    async def post(self, url: str, **kwargs) -> FakeHttpxResponse:
+        self.last_url = url
+        self.last_kwargs = kwargs
+        return self._resp
+
+
+def test_transcribe_openai_compat_engine(monkeypatch) -> None:
+    """OpenAICompatTranscriber 直接调用 → 返回 text；验证 URL 与 multipart。"""
+    fake = FakeHttpxResponse(200, {"text": "你好"})
+
+    def fake_client_factory(**kw):
+        nonlocal _captured
+        _captured = CapturingFakeAsyncClient(fake)
+        return _captured
+
+    _captured: CapturingFakeAsyncClient | None = None
+    monkeypatch.setattr("httpx.AsyncClient", fake_client_factory)
+
+    transcriber = OpenAICompatTranscriber(
+        base_url="http://whisper-svc:8000/v1",
+        api_key="sk-test-key",
+        model="whisper-1",
+    )
+
+    import asyncio
+
+    text = asyncio.run(
+        transcriber.transcribe_audio(audio_bytes=b"fake-audio-data", filename="test.wav")
+    )
+    assert text == "你好"
+    assert _captured is not None
+    assert _captured.last_url is not None
+    assert _captured.last_url.endswith("/audio/transcriptions")
+    assert _captured.last_kwargs is not None
+    assert "files" in _captured.last_kwargs
+    assert _captured.last_kwargs["files"]["file"][0] == "test.wav"
+
+
+def test_create_transcriber_engine_switch() -> None:
+    """create_transcriber 根据 engine 返回对应实例；openai-compatible 无 base_url → 503。"""
+    # dashscope → DashScopeTranscriber
+    ds = create_transcriber(
+        engine="dashscope",
+        dashscope_base_url="https://dashscope.aliyuncs.com/api/v1",
+        dashscope_api_key="sk-fake",
+        dashscope_model="qwen3-asr-flash",
+        openai_base_url="",
+        openai_api_key="",
+        openai_model="",
+    )
+    assert isinstance(ds, DashScopeTranscriber)
+
+    # openai-compatible → OpenAICompatTranscriber
+    oai = create_transcriber(
+        engine="openai-compatible",
+        dashscope_base_url="",
+        dashscope_api_key="",
+        dashscope_model="",
+        openai_base_url="http://whisper-svc:8000/v1",
+        openai_api_key="sk-test",
+        openai_model="whisper-1",
+    )
+    assert isinstance(oai, OpenAICompatTranscriber)
+
+    # openai-compatible 无 base_url → 503
+    with pytest.raises(ApiError) as exc:
+        create_transcriber(
+            engine="openai-compatible",
+            dashscope_base_url="",
+            dashscope_api_key="",
+            dashscope_model="",
+            openai_base_url="",
+            openai_api_key="sk-test",
+            openai_model="whisper-1",
+        )
+    assert exc.value.status == 503
+    assert "TRANSCRIBE_OPENAI_BASE_URL" in exc.value.message

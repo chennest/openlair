@@ -6,7 +6,7 @@ import {
   type AssistantSession,
   type ChatEvent,
 } from './api'
-import { ApiError } from '../../api/request'
+import { ApiError, getToken } from '../../api/request'
 
 // ---------- UI 消息（扩展后端消息 + 前端流式/确认状态） ----------
 interface UIMessage {
@@ -38,6 +38,20 @@ const drawerOpen = ref(false)
 const inputEl = ref<HTMLElement | null>(null)
 const delConfirmId = ref<number | null>(null)
 
+// ---------- 语音输入状态 ----------
+const isRecording = ref(false)
+const transcribing = ref(false)
+const mediaRecorder = ref<MediaRecorder | null>(null)
+const mediaStream = ref<MediaStream | null>(null)
+const recordChunks = ref<Blob[]>([])
+let recordTimer: number | undefined
+
+/** 探测浏览器支持的录音格式（iOS Safari 仅 mp4/AAC，Android/桌面 Chrome 优先 webm;opus） */
+const AUDIO_MIME =
+  (['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/wav'] as const).find((m) =>
+    MediaRecorder.isTypeSupported(m),
+  ) ?? ''
+
 // 是否为空态（无会话或无消息）
 const isWelcome = computed(() => !currentSessionId.value || messages.value.length === 0)
 
@@ -48,6 +62,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   aborter.value?.abort()
+  // 停止录音并释放麦克风
+  mediaRecorder.value?.stop()
+  mediaStream.value?.getTracks().forEach((t) => t.stop())
+  window.clearTimeout(recordTimer)
   // 清理 body 滚动锁（以防卸载时 drawer 开着）
   document.body.style.overflow = ''
 })
@@ -255,6 +273,74 @@ async function refreshSessionsSilent() {
     sessions.value = await assistantApi.sessions()
   } catch {
     // 静默失败
+  }
+}
+
+// ---------- 语音输入：录音 → 上传 → 填入输入框 ----------
+function toggleRecording() {
+  if (isRecording.value) {
+    mediaRecorder.value?.stop()
+    // onstop 里自动调用 uploadRecording
+    window.clearTimeout(recordTimer)
+    mediaStream.value?.getTracks().forEach((t) => t.stop())
+    return
+  }
+
+  // 开始录音
+  error.value = ''
+  void (async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStream.value = stream
+      recordChunks.value = []
+      const rec = new MediaRecorder(stream, AUDIO_MIME ? { mimeType: AUDIO_MIME } : undefined)
+      mediaRecorder.value = rec
+      rec.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) recordChunks.value.push(e.data)
+      }
+      rec.onstop = () => {
+        void uploadRecording()
+      }
+      rec.start()
+      isRecording.value = true
+      // 60s 上限自动停止
+      recordTimer = window.setTimeout(() => {
+        if (isRecording.value) toggleRecording()
+      }, 60_000)
+    } catch (e: unknown) {
+      error.value =
+        e instanceof DOMException && e.name === 'NotAllowedError'
+          ? '麦克风权限被拒绝，请在浏览器设置中允许'
+          : '无法访问麦克风'
+    }
+  })()
+}
+
+async function uploadRecording() {
+  isRecording.value = false
+  window.clearTimeout(recordTimer)
+  if (recordChunks.value.length === 0) return
+  const type = AUDIO_MIME || 'audio/webm'
+  const blob = new Blob(recordChunks.value, { type })
+  const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : type.includes('wav') ? 'wav' : 'webm'
+  recordChunks.value = []
+  transcribing.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', blob, `voice.${ext}`)
+    const res = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken() ?? ''}` },
+      body: fd,
+    })
+    const env = (await res.json()) as { code: number; message: string; data?: { text?: string } }
+    if (env.code !== 200) throw new Error(env.message || '转写失败')
+    const text = (env.data?.text ?? '').trim()
+    if (text) inputText.value = text // 填入输入框，不自动发送
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '语音识别失败'
+  } finally {
+    transcribing.value = false
   }
 }
 
@@ -526,6 +612,21 @@ watch(currentSessionId, () => {
               rows="1"
               @keydown="onKeydown"
             ></textarea>
+            <button
+              class="mic-btn"
+              :class="{ 'is-recording': isRecording }"
+              :disabled="transcribing || sending"
+              @click="toggleRecording"
+              :title="isRecording ? '停止录音' : '语音输入'"
+              aria-label="语音输入"
+            >
+              <svg v-if="!isRecording" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mic-icon">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+              <span v-else class="mic-rec-dot"></span>
+            </button>
             <button
               class="send-btn"
               :disabled="!inputText.trim() || sending"
@@ -1148,6 +1249,59 @@ watch(currentSessionId, () => {
   height: 18px;
 }
 
+/* ── 麦克风按钮 ── */
+.mic-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.mic-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.mic-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mic-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* 录音中：红色脉冲 */
+.mic-btn.is-recording {
+  color: var(--heat);
+  background: transparent;
+}
+
+.mic-btn.is-recording:hover:not(:disabled) {
+  background: rgba(255, 107, 0, 0.08);
+}
+
+.mic-rec-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--heat);
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .5; transform: scale(.8); }
+}
+
 /* ═══ 消息入场动效（轻量淡入） ═══ */
 .msg-enter-active {
   transition: opacity 280ms var(--ease-out-quart), transform 280ms var(--ease-out-quart);
@@ -1224,6 +1378,7 @@ watch(currentSessionId, () => {
   .session-sidebar { transition: opacity 200ms ease; }
   .session-sidebar:not(.is-open) { opacity: 0; }
   .session-item::before { transition: none; }
+  .mic-rec-dot { animation: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

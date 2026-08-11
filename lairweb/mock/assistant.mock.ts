@@ -302,4 +302,13 @@ export default {
       setTimeout(sendNext, 200)
     },
   }),
+
+  // 语音转写（mock：不真识别，返回示例文本）
+  transcribe: defineMock({
+    url: '/api/transcribe',
+    method: 'POST',
+    response: respond(
+      guard(() => ok({ text: '这是语音识别的示例转写文本，请编辑后发送' })),
+    ),
+  }),
 }

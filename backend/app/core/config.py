@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     )
     llm_api_key: str = Field(default="", validation_alias="LLM_API_KEY")
     llm_model: str = Field(default="deepseek-v4-flash", validation_alias="LLM_MODEL")
+    # 语音转写：引擎切换 + 双实现
+    # engine: dashscope（默认）| openai-compatible（自建 whisper / 兼容网关）
+    transcribe_engine: str = Field(
+        default="dashscope", validation_alias="TRANSCRIBE_ENGINE"
+    )
+    # DashScope 参数（engine=dashscope 时使用）
+    transcribe_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/api/v1", validation_alias="TRANSCRIBE_BASE_URL"
+    )
+    transcribe_api_key: str = Field(default="", validation_alias="TRANSCRIBE_API_KEY")
+    transcribe_model: str = Field(default="qwen3-asr-flash", validation_alias="TRANSCRIBE_MODEL")
+    # OpenAI 兼容参数（engine=openai-compatible 时使用）
+    transcribe_openai_base_url: str = Field(
+        default="", validation_alias="TRANSCRIBE_OPENAI_BASE_URL"
+    )
+    transcribe_openai_api_key: str = Field(
+        default="", validation_alias="TRANSCRIBE_OPENAI_API_KEY"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",

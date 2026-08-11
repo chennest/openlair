@@ -19,6 +19,7 @@ from app.seed import seed
 from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
 from app.services.assistant.plans import PlanService
 from app.services.assistant.runtime import AssistantRuntime
+from app.services.assistant.transcribe import create_transcriber
 from app.services.auth import AuthService
 from app.services.books import BookService
 from app.services.ledger import LedgerService
@@ -95,6 +96,17 @@ def create_app(
             model=settings.llm_model,
         ),
         llm_api_key=settings.llm_api_key,
+    )
+
+    # ---------- 语音转写服务 ----------
+    app.state.transcribe_service = create_transcriber(
+        engine=settings.transcribe_engine,
+        dashscope_base_url=settings.transcribe_base_url,
+        dashscope_api_key=settings.transcribe_api_key,
+        dashscope_model=settings.transcribe_model,
+        openai_base_url=settings.transcribe_openai_base_url,
+        openai_api_key=settings.transcribe_openai_api_key,
+        openai_model=settings.transcribe_model,
     )
 
     # ---------- 鉴权依赖所需仓储 ----------
