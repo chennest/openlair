@@ -1,51 +1,83 @@
 # AGENTS.md
 
-## Current state
+## 开工前必读（强制）
 
-- `backend/` contains the FastAPI backend: unified `{code, message, data}` envelope, JWT auth (register/login/logout/me), ledger/books/todo/calendar/notes/habits/overview modules over SQLAlchemy repositories + services. Source lives in `backend/app/` (flat layout, package name `app`), mirroring the official full-stack-fastapi-template structure.
-- `lairweb/` contains the Vue + TypeScript web admin console. In dev it runs against the in-memory mock layer (`lairweb/mock/`); the real backend on port 8001 serves the identical API contract, so switching means pointing the Vite proxy at it.
-- There are no CI workflows, formatter configs, lint configs, or codegen configs yet. Do not invent commands beyond those listed here.
-- `README.md` and `docs/backend-architecture.md` are the verified project sources of truth at the moment.
+任何开发、调试、排错前，先确认环境配置，避免“改代码没效果 / 数据不对 / 连不上”的坑。
 
-## Verified commands
+### 1. 先看前后端环境配置文件（不读就动手 = 违规）
 
-Run these from `backend/` (Python environment is managed by `uv`; `uv sync` auto-downloads CPython 3.14.5 into `.venv` and writes `uv.lock`):
+- **前端**：读 `lairweb/.env.example`，并确认本地 `lairweb/.env`（或 `.env.local`）是否存在、`VITE_USE_MOCK` 当前为何值——这决定前端到底连内存 mock 还是真实后端。
+- **后端**：确认 `backend/.env` 是否存在（缺失时从 `backend/.env.example` 复制创建）。`.env` 决定数据库连 SQLite 还是 MySQL、JWT 密钥等。当前本地 `backend/.env` 是从线上 k8s `configmap/openlair-env` 复制的**真实生产配置**（含真实密钥），已 gitignore，禁止提交、禁止外发。
+- 所有 `.env` / `.env.local` 均被 gitignore，**不会提交**；改配置不会出现在 git diff 里，别奇怪。
 
-- Create/recreate the local venv and install all deps: `uv sync`（dev 依赖：`uv sync --extra dev`）
-- Run backend tests (business API suite uses an isolated SQLite file per test): `uv run pytest`
-- Start the local backend dev server (port 8001): `uv run uvicorn app.main:app --host 127.0.0.1 --port 8001`
-- Database migrations (Alembic, from `backend/`): generate `uv run alembic revision --autogenerate -m "..."`, apply `uv run alembic upgrade head`, revert one step `uv run alembic downgrade -1`. `create_all` on startup still bootstraps fresh SQLite; migrations own schema evolution from there.
-- Settings (`app/core/config.py`, pydantic-settings) are read from (priority order): process env → `backend/.env` → defaults. Keys: `OPENLAIR_JWT_SECRET`, `DATABASE_URL`. Template: `backend/.env.example`.
+### 2. Mock 是什么（前端）
 
-Run these from `lairweb/`:
+`lairweb/mock/` 是前端的内存 mock 数据层（内存态 CRUD，重启恢复），API 契约与真实后端完全一致：
 
-- Install web dependencies: `npm install`
-- Start the Vue/Vite dev server: `npm run dev`
-- Build and typecheck the web app: `npm run build`
-- Preview the production build locally: `npm run preview`
+- `VITE_USE_MOCK=true`：Vite 挂载 `vite-plugin-mock-dev-server` 拦截 `/api` 返回假数据——**不启动后端也能开发前端**；改的是假数据，不产生真实业务数据。
+- `VITE_USE_MOCK=false`：`/api` 经 Vite dev proxy 转发到真实后端（默认 8001）——调试真实接口/数据时用。
 
-Environment notes:
+### 3. 三个前端环境变量
 
-- Python is managed by `uv` (auto-installed CPython 3.14.5; lockfile `backend/uv.lock`).
-- `.venv/`, `backend/.env`, `data/` are local-only and ignored by `.gitignore`.
+| 变量 | 作用 |
+|---|---|
+| `VITE_USE_MOCK` | mock 开关：`true`=走内存 mock（默认），`false`=走真实后端 |
+| `VITE_API_BASE_URL` | 浏览器侧后端地址：留空=同源（靠 Vite proxy 转发）；填绝对地址=浏览器直连（后端需开 CORS） |
+| `LAIRWEB_API_PROXY_TARGET` | Vite dev proxy 转发目标（仅 dev 生效），默认 `http://127.0.0.1:8001` |
 
-## Planned boundaries
+- proxy 回退链：`LAIRWEB_API_PROXY_TARGET` → `VITE_API_BASE_URL` → `http://127.0.0.1:8001`（见 `vite.config.ts`）。
 
-- `backend/`: Python/FastAPI backend, described as the core brain.
-- `lairapp/`: Flutter client for iOS, Android, macOS, and Windows.
-- `lairweb/`: Vue + TypeScript web admin UI backed by Vite. Browser API base is configured with `VITE_API_BASE_URL` from `.env`/`.env.local`; keep it empty for local same-origin proxying. Vite dev proxy reads `LAIRWEB_API_PROXY_TARGET`, then `VITE_API_BASE_URL`, then defaults to `http://127.0.0.1:8000`.
-- `docs/`: Project documentation.
+### 4. 常见坑
 
-## Product modules from README
+- 前端页面数据不对 → 先查 `.env` 的 `VITE_USE_MOCK`：改 mock 不生效 / 连不上后端，多半是开关与预期不符。
+- 后端连错库 → 先查 `backend/.env` 的 `DATABASE_URL`。
 
-- Vocabulary: SM-2 spaced repetition, multilingual recognition, conversational recitation.
-- Accounting: natural-language bookkeeping and category statistics.
-- Calendar: schedule management and reminders.
-- Notes: quick capture and summarization.
-- Habits: check-in tracking.
-- Proactive assistant: morning review, evening summary, and vocabulary reminders.
+## 当前状态
 
-## Workflow guidance for future agents
+- `backend/` 是 FastAPI 后端：统一 `{code, message, data}` 信封、JWT 认证（register/login/logout/me）、基于 SQLAlchemy 仓储层 + 服务层的 ledger/books/todo/calendar/notes/habits/overview 业务模块。源码在 `backend/app/`（扁平布局，包名 `app`），参照官方 full-stack-fastapi-template 结构。
+- `lairweb/` 是 Vue + TypeScript 管理台。开发模式下跑在内存 mock 层（`lairweb/mock/`）上；真实后端在 8001 端口提供完全一致的 API 契约，切换 Vite 代理目标即可连上真后端。
+- 目前没有 CI 工作流、格式化配置、lint 配置或代码生成配置。不要发明本文件之外的新命令。
+- 当前经过验证的权威来源是 `README.md` 和 `docs/backend-architecture.md`。
+
+## 已验证命令
+
+在 `backend/` 下执行（Python 环境由 `uv` 管理；`uv sync` 会自动下载 CPython 3.14.5 到 `.venv` 并写入 `uv.lock`）：
+
+- 创建/重建本地虚拟环境并安装全部依赖：`uv sync`（dev 依赖：`uv sync --extra dev`）
+- 运行后端测试（业务 API 测试套件每个用例使用独立的 SQLite 文件）：`uv run pytest`
+- 启动本地后端开发服务（端口 8001）：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001`
+- 数据库迁移（Alembic，在 `backend/` 下执行）：生成 `uv run alembic revision --autogenerate -m "..."`，应用 `uv run alembic upgrade head`，回退一步 `uv run alembic downgrade -1`。启动时的 `create_all` 仍会引导全新 SQLite；此后 schema 演进由迁移管理。
+- 配置（`app/core/config.py`，pydantic-settings）读取优先级：进程环境变量 → `backend/.env` → 默认值。键：`OPENLAIR_JWT_SECRET`、`DATABASE_URL`。模板：`backend/.env.example`。
+
+在 `lairweb/` 下执行（包管理统一用 pnpm）：
+
+- 安装 web 依赖：`pnpm install`（或 `pnpm i`）
+- 启动 Vue/Vite 开发服务：`pnpm run dev`
+- 构建并做类型检查：`pnpm run build`
+- 本地预览生产构建产物：`pnpm run preview`
+
+环境说明：
+
+- Python 由 `uv` 管理（自动安装 CPython 3.14.5；lockfile `backend/uv.lock`）。
+- `.venv/`、`backend/.env`、`data/` 仅本机所有，已被 `.gitignore` 忽略。
+
+## 计划边界
+
+- `backend/`：Python/FastAPI 后端，核心大脑。
+- `lairapp/`：Flutter 客户端，覆盖 iOS、Android、macOS、Windows。
+- `lairweb/`：Vue + TypeScript web 管理台（Vite 构建）。浏览器侧 API 地址由 `.env`/`.env.local` 中的 `VITE_API_BASE_URL` 配置；本地同源代理时留空。Vite dev proxy 读取 `LAIRWEB_API_PROXY_TARGET` → `VITE_API_BASE_URL` → 默认 `http://127.0.0.1:8001`（环境配置详见顶部「开工前必读」）。
+- `docs/`：项目文档。
+
+## README 中的产品模块
+
+- 词汇：SM-2 间隔重复、多语言识别、对话式背诵。
+- 记账：自然语言记账与分类统计。
+- 日历：日程管理与提醒。
+- 笔记：快速记录与摘要。
+- 习惯：打卡追踪。
+- 主动助手：晨间回顾、晚间总结、词汇提醒。
+
+## 对后续 AI 代理的工作指引
 
 ### 前端开发规范（强制读取）
 
@@ -61,10 +93,10 @@ Environment notes:
 
 ---
 
-- Before adding code, initialize the relevant module with its real manifest/config first, then document the exact commands here.
-- After adding any build, lint, typecheck, test, codegen, migration, or dev-server command, update this file with the verified command and its working directory.
-- Treat SQLite (replaceable via `DATABASE_URL`: MySQL/PostgreSQL) and SQLAlchemy as the planned stack; the business API contract is `{ code, message, data }` + Bearer JWT, identical between `lairweb/mock/` and the real backend.
-- Backend layering: `api/routes` (thin HTTP) → `services` (business logic + DTO) → `repositories` (SQLAlchemy persistence) → `models` (ORM). Keep services callable without HTTP and repositories the only data access path.
-- JWT secret and database URL are read from process env → `backend/.env` → defaults; template is `backend/.env.example`.
-- Use SQLAlchemy repositories for persistence instead of direct `sqlite3` calls, so SQLite remains replaceable by another SQL database later.
-- Commit discipline: after each complete feature is implemented and verified, create a git commit so work is recoverable. A complete feature may span multiple files; commit by complete feature boundary, not by individual file.
+- 写代码前，先用真实的 manifest/配置初始化相关模块，然后把确切的命令记录到本文件。
+- 新增任何构建、lint、类型检查、测试、代码生成、迁移或开发服务命令后，把已验证的命令及其工作目录更新到本文件。
+- 按计划技术栈使用 SQLite（可通过 `DATABASE_URL` 换成 MySQL/PostgreSQL）和 SQLAlchemy；业务 API 契约是 `{ code, message, data }` + Bearer JWT，`lairweb/mock/` 与真实后端完全一致。
+- 后端分层：`api/routes`（薄 HTTP）→ `services`（业务逻辑 + DTO）→ `repositories`（SQLAlchemy 持久化）→ `models`（ORM）。服务层保持不依赖 HTTP 可独立调用，仓储层是唯一的数据访问通道。
+- JWT 密钥和数据库地址读取优先级：进程环境变量 → `backend/.env` → 默认值；模板是 `backend/.env.example`。
+- 持久化统一走 SQLAlchemy 仓储层，不要直接用 `sqlite3` 调用，保证以后 SQLite 可平滑替换为其他 SQL 数据库。
+- 提交纪律：每个完整功能实现并验证后创建一个 git 提交，保证工作可回退。一个完整功能可能跨多个文件；按完整功能边界提交，而不是按单个文件提交。
