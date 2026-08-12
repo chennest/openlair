@@ -1,8 +1,9 @@
-"""待办 / 日程 / 笔记 / 习惯 的 CRUD 服务 + 总揽聚合。"""
+"""待办 / 日程 / 笔记 / 习惯 的 CRUD 服务 + 总览聚合。"""
 
 from datetime import date, timedelta
 
 from app.core.envelope import ApiError
+from app.repositories.books import BookRepository
 from app.repositories.events import EventRepository
 from app.repositories.habits import HabitRepository
 from app.repositories.ledger import LedgerRepository
@@ -169,7 +170,7 @@ class HabitService:
 
 
 class OverviewService:
-    """总揽页：从各模块聚合真实数据。"""
+    """总览页：从各模块聚合真实数据（按当前用户的主账本隔离）。"""
 
     def __init__(
         self,
@@ -178,31 +179,47 @@ class OverviewService:
         todo: TodoRepository,
         events: EventRepository,
         habits: HabitRepository,
+        books: BookRepository,
     ) -> None:
         self._ledger = ledger
         self._todo = todo
         self._events = events
         self._habits = habits
+        self._books = books
+
+    def _primary_book_id(self, user_id: int) -> int | None:
+        """当前用户的主账本：优先 personal，否则第一个账本；无账本返回 None。"""
+        books = self._books.list_all(user_id)
+        if not books:
+            return None
+        book = next((b for b in books if b.type == "personal"), books[0])
+        return book.id
 
     def get(self, *, user_id: int) -> dict:
         today = date.today()
         month_key = f"{today.year}-{today.month:02d}"
 
-        rows = self._ledger.query_transactions(book_id=1)
-        month_expense = sum(
-            (float(r.amount) for r in rows if r.type == "支出" and r.date.strftime("%Y-%m") == month_key), 0.0
-        )
-        prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-        prev_expense = sum(
-            (float(r.amount) for r in rows if r.type == "支出" and r.date.strftime("%Y-%m") == prev), 0.0
-        )
-        trend = round((month_expense - prev_expense) / prev_expense * 100, 1) if prev_expense else 0.0
-        budget = self._ledger.budget_for(1, month_key)
+        book_id = self._primary_book_id(user_id)
+        if book_id is None:
+            month_expense = 0.0
+            trend = 0.0
+            budget_amount = 0.0
+        else:
+            rows = self._ledger.query_transactions(book_id=book_id)
+            month_expense = sum(
+                (float(r.amount) for r in rows if r.type == "支出" and r.date.strftime("%Y-%m") == month_key), 0.0
+            )
+            prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+            prev_expense = sum(
+                (float(r.amount) for r in rows if r.type == "支出" and r.date.strftime("%Y-%m") == prev), 0.0
+            )
+            trend = round((month_expense - prev_expense) / prev_expense * 100, 1) if prev_expense else 0.0
+            budget_amount = float(self._ledger.budget_for(book_id, month_key).expense_limit)
 
         return {
             "monthExpense": {
                 "amount": round(month_expense, 2),
-                "budget": round(float(budget.expense_limit), 2),
+                "budget": round(budget_amount, 2),
                 "trend": trend,
             },
             "todos": [

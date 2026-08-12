@@ -77,7 +77,7 @@ def create_app(
     app.state.note_service = NoteService(note_repo)
     app.state.habit_service = HabitService(habit_repo)
     app.state.overview_service = OverviewService(
-        ledger=ledger_repo, todo=todo_repo, events=event_repo, habits=habit_repo
+        ledger=ledger_repo, todo=todo_repo, events=event_repo, habits=habit_repo, books=book_repo
     )
 
     # ---------- AI 助手 runtime（loop 之上的抽象封装） ----------
