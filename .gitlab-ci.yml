@@ -18,6 +18,8 @@ variables:
   # 默认 job 镜像（k8s executor 的 build 容器，走 Harbor 加速）
   IMAGE_PYTHON: "harbor.lcc007.top/docker.io/library/python:3.14-slim"
   IMAGE_NODE: "harbor.lcc007.top/docker.io/library/node:22"
+  # corepack 下载 pnpm 走国内镜像（npm 官方源走 Cloudflare，国内 CI 不稳定）
+  COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
 
 # ============================================================
 # Stage 1: backend 测试（uv + pytest）
@@ -51,7 +53,7 @@ web-build:
   image: ${IMAGE_NODE}
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack prepare pnpm@9.15.0 --activate
   script:
     - cd lairweb
     - pnpm install --frozen-lockfile
