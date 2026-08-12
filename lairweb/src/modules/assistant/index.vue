@@ -55,6 +55,14 @@ const AUDIO_MIME =
 // 是否为空态（无会话或无消息）
 const isWelcome = computed(() => !currentSessionId.value || messages.value.length === 0)
 
+// 欢迎态建议示例（emoji 为分类信号，informational）
+const examples = [
+  { emoji: '💰', text: '记一笔：午饭 68 元' },
+  { emoji: '🚕', text: '昨天打车花了 30 元' },
+  { emoji: '📊', text: '这个月餐饮花了多少' },
+  { emoji: '💼', text: '收到工资 8000 元' },
+]
+
 // ---------- 生命周期 ----------
 onMounted(async () => {
   await loadSessions()
@@ -238,6 +246,11 @@ async function sendMessage() {
     aiMsg.streaming = false
     aborter.value = null
   })
+}
+
+/** 停止生成：中止当前 SSE 流 */
+function stopGeneration() {
+  aborter.value?.abort()
 }
 
 // ---------- 确认卡片 ----------
@@ -433,6 +446,9 @@ watch(currentSessionId, () => {
             <span>新对话</span>
           </button>
 
+          <!-- 会话分组标题 -->
+          <div class="session-section-label">会话</div>
+
           <!-- 会话列表 -->
           <div class="session-list">
             <button
@@ -507,18 +523,23 @@ watch(currentSessionId, () => {
           <!-- 欢迎态 -->
           <div v-else-if="isWelcome" class="welcome">
             <div class="welcome-inner">
-              <h1 class="welcome-title">AI 助手</h1>
-              <p class="welcome-sub">
-                用一句话记账，让 AI 帮你识别分类与金额
-              </p>
+              <div class="welcome-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  <path d="M8 10h8M8 13h5" />
+                </svg>
+              </div>
+              <h1 class="welcome-title">你好，我来帮你记账</h1>
+              <p class="welcome-sub">用一句话记账、查账，AI 自动识别分类与金额</p>
               <div class="welcome-examples">
                 <button
-                  v-for="q in ['记一笔：午饭 68 元', '昨天打车花了 30', '收到工资 8000']"
-                  :key="q"
-                  class="example-btn"
-                  @click="onExample(q)"
+                  v-for="q in examples"
+                  :key="q.text"
+                  class="example-card"
+                  @click="onExample(q.text)"
                 >
-                  {{ q }}
+                  <span class="example-emoji" aria-hidden="true">{{ q.emoji }}</span>
+                  <span class="example-text">{{ q.text }}</span>
                 </button>
               </div>
             </div>
@@ -538,9 +559,9 @@ watch(currentSessionId, () => {
                   {{ m.content }}
                 </div>
 
-                <!-- AI 消息：左对齐白色面板 -->
-                <div v-else class="msg-bubble assistant">
-                  <span v-if="m.content" class="msg-text">{{ m.content }}</span>
+                <!-- AI 消息：无框正文（直接铺在阅读列上，不套卡片） -->
+                <div v-else class="msg-ai">
+                  <div v-if="m.content" class="msg-text">{{ m.content }}</div>
                   <span
                     v-if="m.streaming"
                     class="stream-cursor"
@@ -602,7 +623,8 @@ watch(currentSessionId, () => {
 
         <!-- 底部输入区 -->
         <div class="input-bar">
-          <div class="input-row">
+          <div class="composer">
+            <div class="input-row">
             <textarea
               ref="inputEl"
               v-model="inputText"
@@ -628,8 +650,9 @@ watch(currentSessionId, () => {
               <span v-else class="mic-rec-dot"></span>
             </button>
             <button
+              v-if="!sending"
               class="send-btn"
-              :disabled="!inputText.trim() || sending"
+              :disabled="!inputText.trim()"
               @click="sendMessage"
               aria-label="发送消息"
             >
@@ -639,6 +662,19 @@ watch(currentSessionId, () => {
                 <path d="M12 19V5M5 12l7-7 7 7" />
               </svg>
             </button>
+            <button
+              v-else
+              class="send-btn is-stop"
+              @click="stopGeneration"
+              aria-label="停止生成"
+              title="停止生成"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" class="stop-icon">
+                <rect x="6" y="6" width="12" height="12" rx="2.5" />
+              </svg>
+            </button>
+            </div>
+            <p class="composer-hint">Enter 发送 · Shift + Enter 换行</p>
           </div>
         </div>
       </div>
@@ -690,21 +726,30 @@ watch(currentSessionId, () => {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  margin: 0 4px 12px;
+  margin: 0 4px 10px;
   padding: 10px 16px;
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--accent);
+  background: var(--grad-cta);
   color: #fff;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.25);
-  transition: opacity 160ms ease, box-shadow 200ms var(--ease-out-quart);
+  box-shadow: 0 8px 20px rgba(0, 113, 227, 0.28);
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart), opacity 160ms ease;
 }
 
 .new-session-btn:hover {
-  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.32);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(0, 113, 227, 0.34);
+}
+
+.session-section-label {
+  padding: 8px 12px 6px;
+  color: var(--text-4);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .new-session-btn:active {
@@ -712,8 +757,8 @@ watch(currentSessionId, () => {
 }
 
 .new-session-btn.is-active {
-  background: #005bbf;
-  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), 0 2px 8px rgba(0, 113, 227, 0.25);
+  background: var(--grad-cta);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), 0 8px 20px rgba(0, 113, 227, 0.28);
 }
 
 .new-session-icon {
@@ -766,12 +811,12 @@ watch(currentSessionId, () => {
 }
 
 .session-item:hover {
-  background: var(--hover);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .session-item.is-active {
   color: var(--accent);
-  background: rgba(0, 113, 227, 0.08);
+  background: rgba(0, 113, 227, 0.07);
 }
 
 .session-item.is-active::before {
@@ -783,6 +828,7 @@ watch(currentSessionId, () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  transition: color 160ms ease;
 }
 
 .session-time {
@@ -894,7 +940,7 @@ watch(currentSessionId, () => {
   flex: 0 0 auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
   border-bottom: 1px solid var(--hairline);
   background: var(--surface);
 }
@@ -934,68 +980,107 @@ watch(currentSessionId, () => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px var(--pad-x) 16px;
+  padding: 24px var(--pad-x) 20px;
 }
 
 .msg-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 /* ═══ 欢迎态 ═══ */
 .welcome {
-  display: grid;
-  place-items: center;
-  min-height: 60%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
   text-align: center;
-  padding: 20px 0;
+  padding: 32px 0;
 }
 
 .welcome-inner {
-  max-width: 400px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.welcome-mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  color: #fff;
+  background: var(--grad-blue);
+  box-shadow: 0 14px 34px rgba(0, 113, 227, 0.28);
+}
+
+.welcome-mark svg {
+  width: 28px;
+  height: 28px;
 }
 
 .welcome-title {
   margin: 0 0 10px;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.12;
   color: var(--text);
 }
 
 .welcome-sub {
-  margin: 0 0 28px;
+  margin: 0 0 32px;
   color: var(--text-2);
-  font-size: 0.94rem;
+  font-size: 0.98rem;
   line-height: 1.6;
 }
 
 .welcome-examples {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-.example-btn {
-  display: block;
-  width: 100%;
-  padding: 13px 18px;
+.example-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 500;
   cursor: pointer;
   text-align: left;
+  font-family: inherit;
   box-shadow: var(--sh-card);
-  transition: box-shadow 200ms var(--ease-out-quart), border-color 200ms ease;
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart), border-color 160ms ease;
 }
 
-.example-btn:hover {
-  border-color: var(--accent);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 6px 18px rgba(0,0,0,0.06);
+.example-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 113, 227, 0.35);
+  box-shadow: var(--sh-lift);
+}
+
+.example-emoji {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.example-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ═══ 消息气泡 ═══ */
@@ -1026,14 +1111,11 @@ watch(currentSessionId, () => {
   font-weight: 500;
 }
 
-/* AI 气泡：白底灰字，左对齐，柔和阴影 */
-.msg-bubble.assistant {
-  padding: 14px 18px;
-  border-radius: var(--r-card);
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  box-shadow: var(--sh-card);
-  font-size: 0.92rem;
+/* AI 回复：无框正文 —— 直接铺在阅读列上，不套卡片（去 wrapper 感） */
+.msg-ai {
+  max-width: 100%;
+  font-size: 0.96rem;
+  line-height: 1.7;
   color: var(--text-body);
 }
 
@@ -1173,9 +1255,23 @@ watch(currentSessionId, () => {
 /* ═══ 底部输入区 ═══ */
 .input-bar {
   flex: 0 0 auto;
-  padding: 12px var(--pad-x) calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px var(--pad-x) calc(10px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--hairline);
   background: var(--bg);
+}
+
+.composer {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.composer-hint {
+  margin: 8px 0 0;
+  text-align: center;
+  color: var(--text-4);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .input-row {
@@ -1244,9 +1340,18 @@ watch(currentSessionId, () => {
   cursor: not-allowed;
 }
 
+.send-btn.is-stop {
+  background: var(--text);
+}
+
 .send-icon {
   width: 18px;
   height: 18px;
+}
+
+.stop-icon {
+  width: 14px;
+  height: 14px;
 }
 
 /* ── 麦克风按钮 ── */
@@ -1364,6 +1469,10 @@ watch(currentSessionId, () => {
 
   .msg-bubble {
     max-width: 90%;
+  }
+
+  .welcome-examples {
+    grid-template-columns: 1fr;
   }
 }
 

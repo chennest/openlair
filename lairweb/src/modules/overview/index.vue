@@ -1,11 +1,19 @@
 <script setup lang="ts">
-// 总揽模块页：本月支出 / 待办 / 日程 / 习惯 四卡聚合
-import { onMounted, ref } from 'vue'
+// 总览模块页：本月支出 / 待办 / 日程 / 习惯 四卡聚合
+import { computed, onMounted, ref } from 'vue'
 import { overviewApi, type OverviewData } from './api'
 
 const loading = ref(true)
 const error = ref('')
 const data = ref<OverviewData | null>(null)
+
+/** 预算使用率（0–100，用于进度条） */
+const budgetPercent = computed(() => {
+  const amount = Number(data.value?.monthExpense.amount ?? 0)
+  const budget = Number(data.value?.monthExpense.budget ?? 0)
+  if (!budget) return 0
+  return Math.min(100, Math.round((amount / budget) * 100))
+})
 
 onMounted(async () => {
   try {
@@ -19,14 +27,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="loading" class="placeholder"><div><p>正在加载总揽…</p></div></div>
+  <div v-if="loading" class="placeholder"><div><p>正在加载总览…</p></div></div>
   <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p><small>请确认 mock server 已启用</small></div></div>
 
   <section v-else class="card-grid" aria-label="今日概览">
     <article class="card">
       <div class="card-title"><span>本月支出</span><span class="more">查看明细 →</span></div>
       <div class="big-num">¥{{ Number(data?.monthExpense.amount).toFixed(2) }}<small>预算 ¥{{ Number(data?.monthExpense.budget).toFixed(0) }}</small></div>
-      <p class="hint">较上月同期 {{ Number(data?.monthExpense.trend) > 0 ? '↑' : '↓' }} {{ Math.abs(Number(data?.monthExpense.trend)) }}%，餐饮与交通是主要支出项。</p>
+      <div class="budget-track" role="progressbar" :aria-valuenow="budgetPercent" aria-valuemin="0" aria-valuemax="100" aria-label="预算使用率">
+        <div class="budget-fill" :style="{ width: budgetPercent + '%' }"></div>
+      </div>
+      <p class="hint">较上月同期 {{ Number(data?.monthExpense.trend) > 0 ? '↑' : '↓' }} {{ Math.abs(Number(data?.monthExpense.trend)) }}%</p>
     </article>
 
     <article class="card">
@@ -112,6 +123,19 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-3);
   letter-spacing: 0;
+}
+.budget-track {
+  margin: 14px 0 0;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+.budget-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--grad-blue);
+  transition: width 400ms var(--ease-out-quart);
 }
 .hint {
   margin: 6px 0 0;

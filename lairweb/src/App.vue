@@ -6,7 +6,7 @@ import { authApi, type AuthUser } from './modules/auth/api'
 
 const route = useRoute()
 const router = useRouter()
-const pageTitle = computed(() => (route.meta.title as string) || '总揽')
+const pageTitle = computed(() => (route.meta.title as string) || '总览')
 
 // ---------- 登录态：路由变化时从 localStorage 刷新（登录/登出后生效） ----------
 const user = ref<AuthUser | null>(getUser() as AuthUser | null)
@@ -32,8 +32,11 @@ async function logout() {
 /** /login 独立全屏页（无侧边导航与底栏） */
 const isAuthPage = computed(() => route.path === '/login')
 
+/** /assistant 纯聊天页（无 content-header / m-header，由页面自控顶栏） */
+const isAssistantPage = computed(() => route.path === '/assistant')
+
 const navItems: { path: string; label: string; icon: string[]; mobile?: boolean }[] = [
-  { path: '/', label: '总揽', icon: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'] },
+  { path: '/', label: '总览', icon: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'] },
   { path: '/ledger', label: '记账', icon: ['M21 12V7H5a2 2 0 0 1 0-4h14v4', 'M3 5v14a2 2 0 0 0 2 2h16v-5', 'M18 12a2 2 0 0 0 0 4h4v-4Z'] },
   { path: '/calendar', label: '日历', icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'] },
   { path: '/todo', label: '待办', icon: ['m9 11 3 3L22 4', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'] },
@@ -221,7 +224,7 @@ function onKeydown(e: KeyboardEvent) {
     </aside>
 
     <main class="content" :class="{ 'is-assistant': route.path === '/assistant' }">
-      <header class="content-header">
+      <header v-if="!isAssistantPage" class="content-header">
         <h1>{{ pageTitle }}</h1>
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
       </header>
@@ -231,7 +234,7 @@ function onKeydown(e: KeyboardEvent) {
 
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
-    <header class="m-header" ref="mHeaderEl">
+    <header v-if="!isAssistantPage" class="m-header" ref="mHeaderEl">
         <span class="m-brand">L</span>
       <strong>{{ pageTitle }}</strong>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
@@ -450,7 +453,7 @@ function onKeydown(e: KeyboardEvent) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 保留水平 padding；底部 padding 归零 —— assistant 输入区自带底部间距 */
-  padding-bottom: 0;
+  /* 纯聊天界面：去 header 后 padding 全归零，由 chat-layout 自控边距 */
+  padding: 0;
 }
 </style>
