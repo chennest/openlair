@@ -28,7 +28,7 @@ backend/
 │   ├── db/
 │   │   ├── base.py           # Base(DeclarativeBase)
 │   │   └── session.py        # engine / session_factory 工厂
-│   ├── models/               # 11 张 ORM 表，一表一文件
+│   ├── models/               # 14 张 ORM 表，一表一文件
 │   ├── repositories/         # SQLAlchemy 持久化（唯一数据访问路径）
 │   └── services/             # 业务逻辑 + DTO（auth / books / ledger / modules）
 ├── migrations/               # Alembic（versions/ 下每变更一个迁移文件）
@@ -74,7 +74,7 @@ HTTP 请求
 - **密钥来源**：`OPENLAIR_JWT_SECRET`（进程环境 → `backend/.env` → 开发默认值），HS256 要求 ≥ 32 字节；生产必须显式配置。
 - 鉴权依赖 `get_current_user`（api/v1/deps.py）执行：验签 → 过期检查 → 黑名单检查 → 用户存在性检查，任一失败统一 401。
 
-## 数据模型（11 张表，models/）
+## 数据模型（14 张表，models/）
 
 | 表 | 说明 |
 |---|---|
@@ -89,6 +89,9 @@ HTTP 请求
 | `notes` | 笔记：title、summary、tags（JSON） |
 | `habits` | 习惯打卡：name、streak、week（7 天布尔数组） |
 | `revoked_tokens` | JWT 登出黑名单：jti |
+| `assistant_sessions` | AI 助手会话（每用户单持久线程）：title、summary（压缩检查点）、summary_through_id |
+| `assistant_messages` | AI 助手消息（transcript）：role(user/assistant)、type(text/confirm_request/tool_result)、content、meta |
+| `assistant_plans` | AI 记账计划执行日志：plan_id、args、status(pending/executed/cancelled/failed) |
 
 ## API 端点清单（全部挂 `/api`，除 auth 均需 Bearer token）
 
@@ -127,6 +130,20 @@ HTTP 请求
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | / | 首页总览：流水/待办/日程/习惯聚合数据 |
+
+### /api/assistant · /api/transcribe
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /assistant/sessions | 创建会话（幂等：每用户单持久线程，已存在则返回） |
+| GET | /assistant/sessions | 会话列表（有消息才返回，单线程通常至多一条） |
+| GET | /assistant/sessions/{id}/messages | 会话消息（transcript，含 tool_result） |
+| DELETE | /assistant/sessions/{id} | 删除会话 |
+| POST | /assistant/chat | SSE 流式对话：多轮历史 + 结构化记账计划 → confirm_request |
+| POST | /assistant/confirm | 确认/取消记账计划（approved 落库，追加 tool_result 消息） |
+| POST | /assistant/transcribe | 语音转写（DashScope / OpenAI 兼容） |
+
+- **聊天流转框架**：对话是一条平铺有序的 transcript，每轮 = `user → assistant → tool_result`；tool_result（工具执行结果）是聊天流的一等公民，既持久化也回放进模型上下文（带 `[工具结果]` 前缀）。
+- **多轮记忆 + 自动压缩（compaction）**：每轮把近期 transcript（含 tool_result）喂给 LLM；当历史 token 估算超过 `LLM_COMPACT_THRESHOLD_TOKENS`（默认 4000）时，把较早轮次摘要成检查点写入 `assistant_sessions.summary`，近期原文（`LLM_COMPACT_RETAIN_TOKENS`，默认 1200）保留，原始消息仍在 DB 可回放。压缩失败降级、不阻塞本轮。
 
 ## 配置（pydantic-settings，core/config.py）
 

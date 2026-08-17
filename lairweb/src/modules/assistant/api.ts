@@ -27,6 +27,8 @@ export type ChatEvent =
 export interface ConfirmResult {
   ok: boolean
   message: string
+  /** 取消时后端生成的追问文本（复述 + 工具用途 + 问要不要改） */
+  followUp?: string
 }
 
 // ---------- API ----------

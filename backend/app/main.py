@@ -96,6 +96,8 @@ def create_app(
             model=settings.llm_model,
         ),
         llm_api_key=settings.llm_api_key,
+        compact_threshold_tokens=settings.llm_compact_threshold_tokens,
+        retain_tokens=settings.llm_compact_retain_tokens,
     )
 
     # ---------- 语音转写服务 ----------

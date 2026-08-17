@@ -15,7 +15,11 @@ class AssistantSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True)  # 逻辑关联 users.id（无硬外键）
-    title: Mapped[str] = mapped_column(String(100), default="新会话")
+    title: Mapped[str] = mapped_column(String(100), default="新对话")
+    # 上下文自动压缩：summary 保存较早消息的检查点摘要；summary_through_id 记录已压缩进
+    # 摘要的最大消息 id（含）。id <= summary_through_id 的消息已被摘要覆盖，喂模型时不再逐条回放。
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_through_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)

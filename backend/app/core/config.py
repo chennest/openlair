@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     transcribe_openai_api_key: str = Field(
         default="", validation_alias="TRANSCRIBE_OPENAI_API_KEY"
     )
+    # AI 助手上下文压缩：历史 token 估算阈值与保留近期原文的 token 预算（估算值）。
+    llm_compact_threshold_tokens: int = Field(
+        default=4000, validation_alias="LLM_COMPACT_THRESHOLD_TOKENS"
+    )
+    llm_compact_retain_tokens: int = Field(
+        default=1200, validation_alias="LLM_COMPACT_RETAIN_TOKENS"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",

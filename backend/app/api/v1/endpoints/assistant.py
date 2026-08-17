@@ -70,7 +70,7 @@ async def chat(
 async def confirm(
     request: Request, payload: AssistantConfirmInput, user: User = Depends(get_current_user)
 ) -> dict:
-    result = _runtime(request).confirm(user_id=user.id, plan_id=payload.planId, approved=payload.approved)
+    result = await _runtime(request).confirm(user_id=user.id, plan_id=payload.planId, approved=payload.approved)
     return ok_response(result, result["message"])
 
 

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   assistantApi,
   streamChat,
-  type AssistantSession,
   type ChatEvent,
 } from './api'
 import { ApiError, getToken } from '../../api/request'
@@ -23,8 +22,7 @@ interface UIMessage {
   confirmResult?: { state: 'executed' | 'cancelled' | 'failed'; message: string }
 }
 
-// ---------- 状态 ----------
-const sessions = ref<AssistantSession[]>([])
+// ---------- 状态（单一持久线程） ----------
 const currentSessionId = ref<number | null>(null)
 const messages = ref<UIMessage[]>([])
 const inputText = ref('')
@@ -34,9 +32,6 @@ const confirming = ref<string | null>(null) // 正在确认的 planId
 const error = ref('')
 const msgContainer = ref<HTMLElement | null>(null)
 const aborter = ref<AbortController | null>(null)
-const drawerOpen = ref(false)
-const inputEl = ref<HTMLElement | null>(null)
-const delConfirmId = ref<number | null>(null)
 
 // ---------- 语音输入状态 ----------
 const isRecording = ref(false)
@@ -65,7 +60,7 @@ const examples = [
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
-  await loadSessions()
+  await loadThread()
 })
 
 onBeforeUnmount(() => {
@@ -74,32 +69,17 @@ onBeforeUnmount(() => {
   mediaRecorder.value?.stop()
   mediaStream.value?.getTracks().forEach((t) => t.stop())
   window.clearTimeout(recordTimer)
-  // 清理 body 滚动锁（以防卸载时 drawer 开着）
-  document.body.style.overflow = ''
 })
 
-// ---------- 移动端 drawer 开关 + body 滚动锁 ----------
-function toggleDrawer() {
-  drawerOpen.value = !drawerOpen.value
-}
-
-function closeDrawer() {
-  drawerOpen.value = false
-}
-
-watch(drawerOpen, (open) => {
-  document.body.style.overflow = open ? 'hidden' : ''
-})
-
-// ---------- 会话 ----------
-async function loadSessions() {
+// ---------- 线程（单一持久线程） ----------
+async function loadThread() {
   loading.value = true
   error.value = ''
   try {
-    sessions.value = await assistantApi.sessions()
-    // 如果有历史会话，默认选最近一个；否则进入欢迎态
-    if (sessions.value.length > 0 && !currentSessionId.value) {
-      currentSessionId.value = sessions.value[0].id
+    const sessions = await assistantApi.sessions()
+    // 取最近会话；无则进入欢迎态，首条消息发送时后端自动创建
+    if (sessions.length > 0) {
+      currentSessionId.value = sessions[0].id
       await loadMessages()
     }
   } catch (e) {
@@ -107,26 +87,6 @@ async function loadSessions() {
   } finally {
     loading.value = false
   }
-}
-
-async function selectSession(id: number) {
-  if (id === currentSessionId.value) return
-  aborter.value?.abort()
-  currentSessionId.value = id
-  messages.value = []
-  closeDrawer()
-  await loadMessages()
-  scrollToBottom()
-}
-
-/** 进入本地草稿态（不调 API，首条消息发送时后端原子创建） */
-function newDraft() {
-  aborter.value?.abort()
-  currentSessionId.value = null
-  messages.value = []
-  inputText.value = ''
-  closeDrawer()
-  void nextTick(() => inputEl.value?.focus())
 }
 
 async function loadMessages() {
@@ -213,14 +173,7 @@ async function sendMessage() {
         case 'done':
           streamDone = true
           aiMsg.streaming = false
-          if (wasDraft) {
-            const created = evt.sessionId
-            if (!sessions.value.some((s) => s.id === created)) {
-              sessions.value.unshift({ id: created, title: text.slice(0, 20), updatedAt: new Date().toISOString() })
-            }
-            if (currentSessionId.value === null) currentSessionId.value = created
-          }
-          refreshSessionsSilent()
+          if (wasDraft) currentSessionId.value = evt.sessionId
           break
         case 'error':
           aiMsg.content += aiMsg.content ? `\n\n⚠️ ${evt.message}` : `⚠️ ${evt.message}`
@@ -264,7 +217,11 @@ async function handleConfirm(planId: string, approved: boolean) {
       target.pendingPlan = undefined
       target.confirmResult = { state, message: result.message }
     }
-    refreshSessionsSilent()
+    // 取消时后端会追加一条 AI 追问（复述 + 工具用途 + 问要不要改）
+    if (!approved && result.followUp) {
+      messages.value.push({ id: `ai-${Date.now()}`, role: 'assistant', content: result.followUp })
+      void nextTick(() => scrollToBottom())
+    }
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       const target = messages.value.find((m) => m.pendingPlan?.planId === planId)
@@ -277,15 +234,6 @@ async function handleConfirm(planId: string, approved: boolean) {
     }
   } finally {
     confirming.value = null
-  }
-}
-
-/** 静默刷新会话列表（更新标题/时间，不显示 loading） */
-async function refreshSessionsSilent() {
-  try {
-    sessions.value = await assistantApi.sessions()
-  } catch {
-    // 静默失败
   }
 }
 
@@ -357,29 +305,6 @@ async function uploadRecording() {
   }
 }
 
-/** 删除会话（两段式确认） */
-async function onDeleteSession(s: AssistantSession) {
-  if (delConfirmId.value !== s.id) {
-    delConfirmId.value = s.id
-    window.setTimeout(() => {
-      if (delConfirmId.value === s.id) delConfirmId.value = null
-    }, 3000)
-    return
-  }
-  delConfirmId.value = null
-  try {
-    await assistantApi.deleteSession(s.id)
-    sessions.value = sessions.value.filter((x) => x.id !== s.id)
-    if (currentSessionId.value === s.id) {
-      aborter.value?.abort()
-      currentSessionId.value = null
-      messages.value = []
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '删除会话失败'
-  }
-}
-
 // ---------- 工具方法 ----------
 function scrollToBottom() {
   if (msgContainer.value) {
@@ -399,119 +324,11 @@ function onExample(text: string) {
   inputText.value = text
   void sendMessage()
 }
-
-// ---------- 会话标题裁剪 ----------
-function sessionLabel(s: AssistantSession): string {
-  return s.title.length > 12 ? s.title.slice(0, 12) + '…' : s.title
-}
-
-// ---------- 时间格式化 ----------
-function formatTime(dateStr: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) {
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-  if (diffDays === 1) return '昨天'
-  if (diffDays < 7) return `${diffDays}天前`
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
-}
-
-// ---------- watch 会话变化 → 刷新会话列表（标题实时更新） ----------
-watch(currentSessionId, () => {
-  void refreshSessionsSilent()
-})
 </script>
 
 <template>
   <div class="assistant-page">
-    <div class="chat-layout">
-      <!-- ═══ 左侧会话栏（桌面端 flex 子项，手机端 fixed 抽屉） ═══ -->
-      <aside class="session-sidebar" :class="{ 'is-open': drawerOpen }">
-        <div class="sidebar-inner">
-          <!-- 新对话按钮 -->
-          <button
-            class="new-session-btn"
-            :class="{ 'is-active': !loading && currentSessionId === null }"
-            @click="newDraft"
-            title="新对话"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                 class="new-session-icon">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span>新对话</span>
-          </button>
-
-          <!-- 会话分组标题 -->
-          <div class="session-section-label">会话</div>
-
-          <!-- 会话列表 -->
-          <div class="session-list">
-            <button
-              v-for="s in sessions"
-              :key="s.id"
-              class="session-item"
-              :class="{ 'is-active': s.id === currentSessionId }"
-              @click="selectSession(s.id)"
-            >
-              <span class="session-title">{{ sessionLabel(s) }}</span>
-              <span class="session-time">{{ formatTime(s.updatedAt) }}</span>
-              <span
-                class="session-del"
-                role="button"
-                tabindex="0"
-                :class="{ 'is-confirm': delConfirmId === s.id }"
-                @click.stop="onDeleteSession(s)"
-                @keydown.enter.stop="onDeleteSession(s)"
-                aria-label="删除会话"
-              >
-                <svg
-                  v-if="delConfirmId !== s.id"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="session-del-icon"
-                >
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-                <span v-else class="session-del-confirm">确认？</span>
-              </span>
-            </button>
-
-            <!-- 空会话提示 -->
-            <div v-if="!loading && sessions.length === 0" class="session-empty">
-              暂无会话，点击上方按钮开始
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- ═══ 抽屉遮罩（仅手机端） ═══ -->
-      <Transition name="backdrop">
-        <div v-if="drawerOpen" class="drawer-backdrop" @click="closeDrawer" aria-label="关闭会话列表"></div>
-      </Transition>
-
-      <!-- ═══ 右侧聊天区 ═══ -->
-      <div class="chat-area">
-        <!-- 手机端顶部栏（汉堡按钮） -->
-        <div class="mobile-top-bar">
-          <button class="hamburger-btn" @click="toggleDrawer" aria-label="会话列表">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                 class="hamburger-icon">
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          </button>
-          <span class="mobile-title">AI 助手</span>
-        </div>
-
+    <div class="chat-area">
         <!-- 消息区 -->
         <div ref="msgContainer" class="msg-area">
           <div v-if="loading" class="placeholder"><div><p>正在加载…</p></div></div>
@@ -626,7 +443,6 @@ watch(currentSessionId, () => {
           <div class="composer">
             <div class="input-row">
             <textarea
-              ref="inputEl"
               v-model="inputText"
               class="input-field"
               placeholder="用一句话记账，比如：昨天午饭花了 68"
@@ -678,7 +494,6 @@ watch(currentSessionId, () => {
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>
 
@@ -692,30 +507,8 @@ watch(currentSessionId, () => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-/* ── 两栏布局 ── */
-.chat-layout {
-  display: flex;
-  height: 100%;
-  position: relative;
-}
-
-/* ═══ 左侧会话栏 ═══ */
-.session-sidebar {
-  flex: 0 0 250px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--hairline);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.sidebar-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 16px 10px 10px;
 }
 
 /* ── 新对话按钮 ── */
@@ -929,6 +722,7 @@ watch(currentSessionId, () => {
 .chat-area {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
