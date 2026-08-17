@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { setToken, setUser, getUser } from './api/request'
 import { authApi, type AuthUser } from './modules/auth/api'
+import AssistantPanel from './modules/assistant/index.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,8 +33,14 @@ async function logout() {
 /** /login 独立全屏页（无侧边导航与底栏） */
 const isAuthPage = computed(() => route.path === '/login')
 
-/** /assistant 纯聊天页（无 content-header / m-header，由页面自控顶栏） */
-const isAssistantPage = computed(() => route.path === '/assistant')
+// ---------- AI 助手：左上角悬浮入口 + 左侧滑出抽屉 ----------
+const assistantOpen = ref(false)
+function openAssistant() {
+  assistantOpen.value = true
+}
+function closeAssistant() {
+  assistantOpen.value = false
+}
 
 const navItems: { path: string; label: string; icon: string[]; mobile?: boolean }[] = [
   { path: '/', label: '总览', icon: ['M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'] },
@@ -42,7 +49,6 @@ const navItems: { path: string; label: string; icon: string[]; mobile?: boolean 
   { path: '/todo', label: '待办', icon: ['m9 11 3 3L22 4', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'] },
   { path: '/notes', label: '笔记', icon: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'] },
   { path: '/habits', label: '习惯', icon: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'] },
-  { path: '/assistant', label: 'AI 助手', icon: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'] },
 ]
 
 // Lucide 线性图标：24 网格、单笔画 1.75、currentColor（icons.md）
@@ -163,11 +169,12 @@ watch(showMenu, (val) => {
   }
 })
 
-// 路由变化关闭菜单
+// 路由变化关闭菜单 / 助手抽屉
 watch(
   () => route.path,
   () => {
     closeMenu()
+    closeAssistant()
   },
 )
 
@@ -223,8 +230,8 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </aside>
 
-    <main class="content" :class="{ 'is-assistant': route.path === '/assistant' }">
-      <header v-if="!isAssistantPage" class="content-header">
+    <main class="content">
+      <header class="content-header">
         <h1>{{ pageTitle }}</h1>
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
       </header>
@@ -234,7 +241,7 @@ function onKeydown(e: KeyboardEvent) {
 
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
-    <header v-if="!isAssistantPage" class="m-header" ref="mHeaderEl">
+    <header class="m-header" ref="mHeaderEl">
         <span class="m-brand">L</span>
       <strong>{{ pageTitle }}</strong>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
@@ -287,6 +294,40 @@ function onKeydown(e: KeyboardEvent) {
       </button>
     </nav>
   </div>
+
+  <!-- ═══ AI 助手：左上角悬浮入口 + 左侧滑出抽屉 ═══ -->
+  <Teleport to="body">
+    <Transition name="assistant-backdrop">
+      <div v-if="assistantOpen" class="assistant-backdrop" @click="closeAssistant"></div>
+    </Transition>
+    <Transition name="assistant-drawer">
+      <aside v-if="assistantOpen" class="assistant-drawer" aria-label="AI 助手">
+        <div class="assistant-drawer-head">
+          <span class="assistant-drawer-title">AI 助手</span>
+          <button class="assistant-drawer-close" type="button" @click="closeAssistant" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="assistant-drawer-close-icon">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="assistant-drawer-body">
+          <AssistantPanel />
+        </div>
+      </aside>
+    </Transition>
+    <button
+      v-if="!isAuthPage && !assistantOpen"
+      type="button"
+      class="assistant-fab"
+      @click="openAssistant"
+      aria-label="打开 AI 助手"
+      title="AI 助手"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="assistant-fab-icon">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -445,15 +486,147 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 /* ════════════════════════════════════════════
-   /assistant 页面：约束 .content 至视口，消除浏览器级纵向滚动
+   AI 助手：左上角悬浮入口 + 左侧滑出抽屉
    ════════════════════════════════════════════ */
-.content.is-assistant {
-  height: 100dvh;
-  box-sizing: border-box;
+.assistant-fab {
+  position: fixed;
+  top: 18px;
+  left: 252px; /* 桌面：侧栏(236px)右侧，位于内容区左上角 */
+  z-index: 360;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart);
+}
+
+.assistant-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.assistant-fab:active {
+  transform: translateY(0);
+}
+
+.assistant-fab-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.assistant-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.assistant-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 410;
+  width: min(420px, 100vw);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* 纯聊天界面：去 header 后 padding 全归零，由 chat-layout 自控边距 */
-  padding: 0;
+  background: rgba(245, 245, 247, 0.92);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-right: 1px solid var(--hairline);
+  box-shadow: var(--sh-overlay);
+}
+
+.assistant-drawer-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.assistant-drawer-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.assistant-drawer-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-thumb);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.assistant-drawer-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.assistant-drawer-close-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.assistant-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 抽屉 + 遮罩过渡 */
+.assistant-backdrop-enter-active,
+.assistant-backdrop-leave-active {
+  transition: opacity 280ms ease;
+}
+.assistant-backdrop-enter-from,
+.assistant-backdrop-leave-to {
+  opacity: 0;
+}
+
+.assistant-drawer-enter-active,
+.assistant-drawer-leave-active {
+  transition: transform 360ms var(--ease-spring);
+}
+.assistant-drawer-enter-from,
+.assistant-drawer-leave-to {
+  transform: translateX(-100%);
+}
+
+/* 手机端：FAB 下移到头栏之下（内容区左上角），抽屉全宽 */
+@media (max-width: 860px) {
+  .assistant-fab {
+    top: 74px;
+    left: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-drawer-enter-active,
+  .assistant-drawer-leave-active {
+    transition: transform 200ms ease;
+  }
+  .assistant-backdrop-enter-active,
+  .assistant-backdrop-leave-active {
+    transition: opacity 150ms ease;
+  }
+  .assistant-fab {
+    transition: none;
+  }
 }
 </style>
