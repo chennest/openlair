@@ -7,6 +7,7 @@
 :root {
   /* ── Neutrals (the interface skeleton) ── */
   --bg:        #f5f5f7;   /* page ground — COOL grey-white, never warm/cream */
+  --bg-rgb:    245, 245, 247;  /* 同上，RGB 分量（用于 rgba(var(--bg-rgb), α) 玻璃底） */
   --surface:   #ffffff;   /* panels / cards */
   --hover:     #fbfbfd;   /* row hover tint */
   --text:      #1d1d1f;   /* primary text / titles */
@@ -19,6 +20,7 @@
 
   /* ── Accents (emphasis ONLY — body stays grayscale) ── */
   --accent:      #0071e3;  /* Apple blue — primary action / link / focus */
+  --accent-rgb:  0, 113, 227;  /* 同上，RGB 分量（用于 rgba(var(--accent-rgb), α) 透明强调） */
   --accent-link: #0066cc;  /* link/tag text on tinted ground */
   --indigo:      #5e5ce6;
   --heat:        #ff6b00;  /* heat / "hottest" accent */

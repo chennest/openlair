@@ -511,213 +511,6 @@ function onExample(text: string) {
   flex-direction: column;
 }
 
-/* ── 新对话按钮 ── */
-.new-session-btn {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  margin: 0 4px 10px;
-  padding: 10px 16px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--grad-cta);
-  color: #fff;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 113, 227, 0.28);
-  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart), opacity 160ms ease;
-}
-
-.new-session-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 26px rgba(0, 113, 227, 0.34);
-}
-
-.session-section-label {
-  padding: 8px 12px 6px;
-  color: var(--text-4);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.new-session-btn:active {
-  opacity: 0.88;
-}
-
-.new-session-btn.is-active {
-  background: var(--grad-cta);
-  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), 0 8px 20px rgba(0, 113, 227, 0.28);
-}
-
-.new-session-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-}
-
-/* ── 会话列表 ── */
-.session-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text);
-  font-size: 0.86rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background 160ms ease, color 160ms ease;
-  position: relative;
-}
-
-.session-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 0;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  transition: height 200ms var(--ease-out-quart);
-}
-
-.session-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.session-item.is-active {
-  color: var(--accent);
-  background: rgba(0, 113, 227, 0.07);
-}
-
-.session-item.is-active::before {
-  height: 18px;
-}
-
-.session-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  transition: color 160ms ease;
-}
-
-.session-time {
-  flex: 0 0 auto;
-  color: var(--text-4);
-  font-size: 0.72rem;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.session-item.is-active .session-time {
-  color: var(--accent);
-  opacity: 0.7;
-}
-
-/* ── 会话删除按钮 ── */
-.session-del {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 4px;
-  border-radius: var(--r-thumb);
-  color: var(--text-4);
-  opacity: 0.65;
-  cursor: pointer;
-  transition: opacity 160ms ease, color 160ms ease, background 160ms ease;
-}
-
-/* 触屏（无 hover）常显删除按钮；仅悬停设备默认隐藏、hover 会话项时显示 */
-@media (hover: hover) {
-  .session-del {
-    opacity: 0;
-  }
-
-  .session-item:hover .session-del {
-    opacity: 0.65;
-  }
-}
-
-.session-del:hover {
-  opacity: 1 !important;
-  color: var(--text-2);
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.session-del-icon {
-  width: 13px;
-  height: 13px;
-}
-
-.session-del.is-confirm {
-  opacity: 1 !important;
-  color: var(--heat);
-  background: rgba(255, 107, 0, 0.08);
-}
-
-.session-del-confirm {
-  font-size: 0.65rem;
-  font-weight: 600;
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.session-empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--text-4);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-/* ═══ 抽屉遮罩（仅手机端显示） ═══ */
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-  background: rgba(0, 0, 0, 0.32);
-  /* backdrop-filter 由 Vue Transition 控制 */
-}
-
-.backdrop-enter-active {
-  transition: opacity 280ms ease;
-}
-
-.backdrop-leave-active {
-  transition: opacity 220ms ease;
-}
-
-.backdrop-enter-from,
-.backdrop-leave-to {
-  opacity: 0;
-}
-
 /* ═══ 右侧聊天区 ═══ */
 .chat-area {
   flex: 1 1 auto;
@@ -726,47 +519,6 @@ function onExample(text: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* ── 手机端顶部栏（仅 ≤860px 显示） ── */
-.mobile-top-bar {
-  display: none;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--surface);
-}
-
-.hamburger-btn {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-
-.hamburger-btn:hover {
-  background: var(--hover);
-}
-
-.hamburger-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.mobile-title {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
 }
 
 /* ═══ 消息区域 ═══ */
@@ -810,7 +562,7 @@ function onExample(text: string) {
   border-radius: 18px;
   color: #fff;
   background: var(--grad-blue);
-  box-shadow: 0 14px 34px rgba(0, 113, 227, 0.28);
+  box-shadow: 0 14px 34px rgba(var(--accent-rgb), 0.28);
 }
 
 .welcome-mark svg {
@@ -860,7 +612,7 @@ function onExample(text: string) {
 
 .example-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(0, 113, 227, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
   box-shadow: var(--sh-lift);
 }
 
@@ -1083,7 +835,7 @@ function onExample(text: string) {
 
 .input-row:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
 }
 
 .input-field {
@@ -1220,34 +972,6 @@ function onExample(text: string) {
     height: 100%;
   }
 
-  .chat-layout {
-    flex-direction: column;
-  }
-
-  /* 侧栏变为固定抽屉 */
-  .session-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 200;
-    width: 280px;
-    flex: none;
-    border-right: 1px solid var(--hairline);
-    box-shadow: var(--sh-overlay);
-    transform: translateX(-100%);
-    transition: transform 300ms var(--ease-spring);
-  }
-
-  .session-sidebar.is-open {
-    transform: translateX(0);
-  }
-
-  /* 显示手机端顶部栏 */
-  .mobile-top-bar {
-    display: flex;
-  }
-
   /* 聊天区撑满 */
   .chat-area {
     flex: 1 1 auto;
@@ -1278,19 +1002,11 @@ function onExample(text: string) {
   .stream-cursor { animation: none; }
   .msg-enter-active { transition: opacity 150ms ease; }
   .msg-enter-from { transform: none; }
-  .session-sidebar { transition: opacity 200ms ease; }
-  .session-sidebar:not(.is-open) { opacity: 0; }
-  .session-item::before { transition: none; }
   .mic-rec-dot { animation: none; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .drawer-backdrop { background: rgba(0, 0, 0, 0.48); }
 }
 
 @media (prefers-contrast: more) {
   .input-row { border-color: rgba(0,0,0,0.35); }
   .confirm-card { border-color: rgba(0,0,0,0.25); }
-  .session-sidebar { border-right-color: rgba(0,0,0,0.18); }
 }
 </style>

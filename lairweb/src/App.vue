@@ -394,7 +394,7 @@ function onKeydown(e: KeyboardEvent) {
   padding: 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
-  background: rgba(245, 245, 247, 0.72);
+  background: rgba(var(--bg-rgb), 0.72);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: var(--sh-overlay);
@@ -536,7 +536,7 @@ function onKeydown(e: KeyboardEvent) {
   width: min(420px, 100vw);
   display: flex;
   flex-direction: column;
-  background: rgba(245, 245, 247, 0.92);
+  background: rgba(var(--bg-rgb), 0.92);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-right: 1px solid var(--hairline);
