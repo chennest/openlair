@@ -7,6 +7,10 @@ import {
   nextId,
   membersOf,
   userOf,
+  generateInviteCode,
+  inviteOf,
+  setInvite,
+  bookByInvite,
   respond,
   ok,
   err,
@@ -136,6 +140,8 @@ export default {
         if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
         if (b.type === 'shared') return err(400, '已是共享账本')
         b.type = 'shared'
+        // 转共享即自动生成邀请码
+        setInvite(bookId, generateInviteCode())
         return ok({ book: toDTO(b) })
       }),
     ),
@@ -185,8 +191,96 @@ export default {
         if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
         store.books = store.books.filter((x) => x.id !== bookId)
         store.bookMembers = store.bookMembers.filter((x) => x.bookId !== bookId)
+        setInvite(bookId, null)
         store.transactions = store.transactions.filter((x) => x.bookId !== bookId)
         store.budgets = store.budgets.filter((x) => x.bookId !== bookId)
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+
+  // ---------- 邀请码分享 / 加入 / 退出 ----------
+
+  // 查看邀请码（仅 owner）
+  getInvite: defineMock({
+    url: '/api/books/:id/invite',
+    method: 'GET',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        return ok({ code: inviteOf(bookId) ?? null })
+      }),
+    ),
+  }),
+
+  // 生成/重置邀请码（仅 owner；旧码失效）
+  resetInvite: defineMock({
+    url: '/api/books/:id/invite',
+    method: 'POST',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        if (b.type !== 'shared') return err(400, '请先转为共享账本')
+        const code = generateInviteCode()
+        setInvite(bookId, code)
+        return ok({ code })
+      }),
+    ),
+  }),
+
+  // 关闭邀请（仅 owner）
+  disableInvite: defineMock({
+    url: '/api/books/:id/invite',
+    method: 'DELETE',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const b = store.books.find((x) => x.id === bookId)
+        if (!b) return err(404, '账本不存在')
+        if (!isOwner(bookId, Number(auth.userId))) return err(403, '只有账本创建者可以执行此操作')
+        setInvite(bookId, null)
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+
+  // 输入邀请码加入共享账本（任意登录用户）
+  join: defineMock({
+    url: '/api/books/join',
+    method: 'POST',
+    response: respond(
+      guard((req, auth) => {
+        const { code } = req.body ?? {}
+        const b = bookByInvite(String(code ?? ''))
+        if (!b || b.type !== 'shared') return err(404, '邀请码无效或已失效')
+        const uid = Number(auth.userId)
+        if (store.bookMembers.some((m) => m.bookId === b.id && m.userId === uid)) {
+          return err(409, '你已在该账本中')
+        }
+        store.bookMembers.push({ bookId: b.id, userId: uid, role: 'editor', joinedAt: new Date().toISOString() })
+        return ok({ book: toDTO(b) })
+      }),
+    ),
+  }),
+
+  // 成员自助退出（owner 不可）
+  leave: defineMock({
+    url: '/api/books/:id/leave',
+    method: 'POST',
+    response: respond(
+      guard((req, auth) => {
+        const bookId = Number(req.params?.id)
+        const uid = Number(auth.userId)
+        const m = store.bookMembers.find((x) => x.bookId === bookId && x.userId === uid)
+        if (!m) return err(404, '你不是该账本成员')
+        if (m.role === 'owner') return err(400, '账本创建者不能退出，请删除账本')
+        store.bookMembers = store.bookMembers.filter((x) => !(x.bookId === bookId && x.userId === uid))
         return ok({ ok: true })
       }),
     ),

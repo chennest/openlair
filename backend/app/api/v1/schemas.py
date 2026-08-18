@@ -79,6 +79,10 @@ class AddMemberInput(BaseModel):
     name: str | None = None
 
 
+class JoinBookInput(BaseModel):
+    code: str = Field(min_length=1, max_length=32)
+
+
 # ---------- todo ----------
 
 class CreateTodoInput(BaseModel):

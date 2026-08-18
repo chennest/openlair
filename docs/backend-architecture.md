@@ -79,8 +79,8 @@ HTTP 请求
 | 表 | 说明 |
 |---|---|
 | `users` | 用户：id（自增 int）、name、email（唯一）、password_hash |
-| `books` | 账本：name、type（personal/shared）、owner_id |
-| `book_members` | 账本成员：book_id + user_id，多对多 |
+| `books` | 账本：name、type（personal/shared）、invite_code（共享账本邀请码，NULL=未生成，重置即覆盖失效） |
+| `book_members` | 账本成员：book_id + user_id，多对多，role（owner/editor） |
 | `categories` | 分类：16 个固定项——支出 id 1-10（餐饮/交通/购物/居住/娱乐/医疗/学习/人情/通讯/其他），收入 id 11-16（工资/奖金/理财/礼金/退款/其他） |
 | `transactions` | 流水：book_id、type（expense/income）、category、amount、date、note |
 | `budgets` | 月预算：book_id + amount（每月一条） |
@@ -118,10 +118,22 @@ HTTP 请求
 ### /api/books
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | / | 我的账本列表 |
+| GET | / | 我的账本列表（邀请码不下发，防成员转分享） |
 | POST | / | 创建账本（name/type） |
-| POST | /{book_id}/members | 添加成员（userId 或 name 查找） |
+| POST | /join | 输入邀请码加入共享账本（任意登录用户，成为 editor） |
+| GET | /{book_id}/invite | 查看邀请码（仅 owner；null=未生成） |
+| POST | /{book_id}/invite | 生成/重置邀请码（仅 owner；旧码立即失效） |
+| DELETE | /{book_id}/invite | 关闭邀请（仅 owner；置空码，停止新成员加入） |
+| POST | /{book_id}/leave | 成员自助退出（owner 不可） |
+| POST | /{book_id}/members | 添加成员（userId 或 name 查找，兼容旧契约） |
 | DELETE | /{book_id}/members/{user_id} | 移除成员 |
+| POST | /{book_id}/convert | 个人账本 → 共享（单向，自动生成邀请码） |
+| GET | /trash | 回收站列表 |
+| DELETE | /{book_id} | 删除账本 → 回收站（软删除） |
+| POST | /{book_id}/restore | 从回收站恢复 |
+| DELETE | /{book_id}/purge | 彻底删除（级联清流水/预算/成员/邀请码） |
+
+> 邀请码为 8 位大写字母数字（剔除易混字符 `0/O/1/I/L`，约 8.5e11 组合），长期有效、靠「重置」失效；码只经 `/invite` 接口对 owner 下发，不出现在账本列表 DTO 中。
 
 ### /api/todo · /api/calendar · /api/notes · /api/habits
 统一模式：`GET ""` 列表、`POST ""` 创建、`PUT /{id}` 更新、`DELETE /{id}` 删除（数据按用户隔离）。
@@ -162,8 +174,9 @@ HTTP 请求
 
 ## 测试
 
-- `backend/tests/`，命令 `uv run pytest`（当前 20 项全绿）。
-- `test_business_api.py`（17 项）：全链路业务测试——注册/登录/登出、账本创建与成员、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
+- `backend/tests/`，命令 `uv run pytest`（当前 49 项全绿）。
+- `test_business_api.py`（23 项）：全链路业务测试——注册/登录/登出、账本创建与成员、邀请码生成/重置/关闭、邀请码加入/退出、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
+- `test_assistant.py`（23 项）：AI 助手多轮/压缩/计划确认/取消/转写。
 - `test_security.py`（3 项）：JWT 密钥解析优先级（环境变量 > .env > 默认）与 `.env.example` 键完整性。
 - 手工验收：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001` 后按契约调 `/api/auth/login` 等端点核对信封格式。
 

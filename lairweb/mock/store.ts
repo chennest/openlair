@@ -65,6 +65,13 @@ export interface BookMember {
   joinedAt: string
 }
 
+/** book 邀请码（独立于 book DTO，避免下发到账本列表泄漏给成员） */
+export interface BookInvite {
+  bookId: number
+  /** 8 位大写字母数字（剔除 0/O/1/I/L） */
+  code: string
+}
+
 /** transactions 表：交易流水（categoryId → categories.id，bookId → books.id，userId → users.id） */
 export interface Transaction {
   id: number
@@ -172,6 +179,7 @@ export interface StoreShape {
   users: User[]
   books: Book[]
   bookMembers: BookMember[]
+  bookInvites: BookInvite[]
   todos: TodoItem[]
   events: CalendarEvent[]
   notes: Note[]
@@ -336,6 +344,9 @@ function seed(): StoreShape {
     { bookId: 2, userId: 3, role: 'editor', joinedAt: t },
   ]
 
+  // 共享账本 2 预置邀请码（演示 owner 分享界面）
+  const bookInvites: BookInvite[] = [{ bookId: 2, code: 'KD7F2GQW' }]
+
   // 近 90 天交易：个人账本 85 + 共享账本 15（收入 ~25%）
   let txId = 0
   const makeTx = (bookId: number, userId: number): Transaction => {
@@ -367,6 +378,7 @@ function seed(): StoreShape {
     users,
     books,
     bookMembers,
+    bookInvites,
     todos: Array.from({ length: 8 }, (_, i) => {
       const c = nowISO()
       return {
@@ -557,6 +569,36 @@ export function bookOf(id: number): Book | undefined {
 
 export function membersOf(bookId: number): BookMember[] {
   return store.bookMembers.filter((m) => m.bookId === bookId)
+}
+
+/** 邀请码字母表（与后端一致：剔除 0/O/1/I/L） */
+const INVITE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+
+/** 生成 8 位随机邀请码 */
+export function generateInviteCode(): string {
+  let code = ''
+  for (let i = 0; i < 8; i++) code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)]
+  return code
+}
+
+/** 查账本的邀请码（未生成 = undefined） */
+export function inviteOf(bookId: number): string | undefined {
+  return store.bookInvites.find((i) => i.bookId === bookId)?.code
+}
+
+/** 设置/清除邀请码（code = null 时关闭邀请） */
+export function setInvite(bookId: number, code: string | null): void {
+  store.bookInvites = store.bookInvites.filter((i) => i.bookId !== bookId)
+  if (code) store.bookInvites.push({ bookId, code })
+}
+
+/** 按邀请码查账本（仅未删除） */
+export function bookByInvite(code: string): Book | undefined {
+  const normalized = code.toUpperCase().replace(/[^0-9A-Z]/g, '')
+  const invite = store.bookInvites.find((i) => i.code === normalized)
+  if (!invite) return undefined
+  const book = bookOf(invite.bookId)
+  return book && !book.deletedAt ? book : undefined
 }
 
 export function userOf(id: number): User | undefined {

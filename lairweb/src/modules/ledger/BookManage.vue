@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 共享账本成员管理：成员列表（角色/移除）+ 添加成员（选已有用户或输入新名字）+ 软删除
+// 共享账本管理：邀请码分享（owner）+ 成员列表（移除）+ 退出（成员）+ 转共享 + 软删除
 import { computed, onUnmounted, ref, watch } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
 import Tag from '../../components/Tag.vue'
@@ -9,21 +9,19 @@ import type { Book } from './api'
 const props = defineProps<{
   open: boolean
   book: Book | null
-  /** 可选添加的用户池（当前不是成员的人） */
-  candidates: { id: number; name: string; avatarColor: string }[]
+  /** 当前邀请码（owner 专属，由父组件拉取；null = 未生成） */
+  inviteCode: string | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'add', userId: number): void
-  (e: 'addByName', name: string): void
   (e: 'remove', userId: number): void
   (e: 'delete'): void
   (e: 'convert'): void
+  (e: 'reset-invite'): void
+  (e: 'disable-invite'): void
+  (e: 'leave'): void
 }>()
-
-const mode = ref<'list' | 'add'>('list')
-const newName = ref('')
 
 // 删除确认
 const showDeleteConfirm = ref(false)
@@ -36,6 +34,12 @@ const showConvertConfirm = ref(false)
 const convertCountdown = ref(3)
 let convertTimer: ReturnType<typeof setInterval> | null = null
 
+// 邀请码：复制反馈 / 重置确认 / 关闭确认
+const copied = ref(false)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+const confirmReset = ref(false)
+const confirmDisable = ref(false)
+
 // 当前用户是否为 owner
 const currentUserId = computed(() => {
   const u = getUser() as { id?: number } | null
@@ -44,6 +48,10 @@ const currentUserId = computed(() => {
 const isOwner = computed(() => {
   if (!currentUserId.value || !props.book) return false
   return props.book.members.find((m) => m.userId === currentUserId.value)?.role === 'owner'
+})
+const formattedCode = computed(() => {
+  const c = props.inviteCode ?? ''
+  return c.length > 4 ? `${c.slice(0, 4)}-${c.slice(4)}` : c
 })
 
 function startCountdown() {
@@ -76,8 +84,9 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
-      mode.value = 'list'
-      newName.value = ''
+      copied.value = false
+      confirmReset.value = false
+      confirmDisable.value = false
     }
   },
 )
@@ -128,13 +137,29 @@ watch(showConvertConfirm, (v) => {
 onUnmounted(() => {
   clearCountdown()
   clearConvertCountdown()
+  if (copyTimer) clearTimeout(copyTimer)
 })
 
-function addByName() {
-  const n = newName.value.trim()
-  if (!n) return
-  emit('addByName', n)
-  newName.value = ''
+async function copyCode() {
+  if (!props.inviteCode) return
+  try {
+    await navigator.clipboard.writeText(props.inviteCode)
+    copied.value = true
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => (copied.value = false), 1600)
+  } catch {
+    /* 剪贴板不可用则忽略 */
+  }
+}
+
+function doResetInvite() {
+  confirmReset.value = false
+  emit('reset-invite')
+}
+
+function doDisableInvite() {
+  confirmDisable.value = false
+  emit('disable-invite')
 }
 
 function initials(name: string) {
@@ -144,63 +169,66 @@ function initials(name: string) {
 
 <template>
   <BaseModal v-if="open && book" :title="`${book.name} · 成员`" @close="emit('close')">
-    <div v-if="mode === 'list'" class="member-list">
+    <!-- 邀请码分享（仅 owner + 共享账本） -->
+    <section v-if="isOwner && book.type === 'shared'" class="invite">
+      <p class="section-title">邀请成员</p>
+      <p class="section-desc">邀请码就是账本的「钥匙」，对方输入即可加入共享账本。</p>
+
+      <div v-if="inviteCode" class="code-box">
+        <span class="code" aria-label="邀请码">{{ formattedCode }}</span>
+        <button class="copy-btn" @click="copyCode">{{ copied ? '✓ 已复制' : '复制' }}</button>
+      </div>
+      <button v-else class="btn-ghost" @click="emit('reset-invite')">＋ 生成邀请码</button>
+
+      <div v-if="inviteCode" class="invite-actions">
+        <template v-if="!confirmReset && !confirmDisable">
+          <button class="btn-link" @click="confirmReset = true">重置邀请码</button>
+          <button class="btn-link danger" @click="confirmDisable = true">关闭邀请</button>
+        </template>
+        <template v-else-if="confirmReset">
+          <span class="confirm-hint">重置后旧码立即失效</span>
+          <button class="btn-primary-sm" @click="doResetInvite">确认重置</button>
+          <button class="btn-link" @click="confirmReset = false">取消</button>
+        </template>
+        <template v-else-if="confirmDisable">
+          <span class="confirm-hint">关闭后无法再被加入</span>
+          <button class="btn-primary-sm" @click="doDisableInvite">确认关闭</button>
+          <button class="btn-link" @click="confirmDisable = false">取消</button>
+        </template>
+      </div>
+    </section>
+
+    <!-- 成员列表 -->
+    <p class="section-title">成员（{{ book.members.length }}）</p>
+    <div class="member-list">
       <div v-for="m in book.members" :key="m.userId" class="member">
         <span class="face" :style="{ background: m.user?.avatarColor ?? '#aeaeb2' }" aria-hidden="true">
           {{ m.user ? initials(m.user.name) : '?' }}
         </span>
         <span class="who">
-          <span class="name">{{ m.user?.name ?? '未知' }}</span>
+          <span class="name">
+            {{ m.user?.name ?? '未知' }}
+            <span v-if="m.userId === currentUserId" class="me">(我)</span>
+          </span>
           <Tag :variant="m.role === 'owner' ? 'gold' : 'gray'">{{ m.role === 'owner' ? '拥有者' : '成员' }}</Tag>
         </span>
-        <button v-if="m.role !== 'owner'" class="remove" @click="emit('remove', m.userId)">移除</button>
-      </div>
-    </div>
-
-    <div v-else class="add-panel">
-      <label class="label">从已有用户添加</label>
-      <div class="cands">
-        <button
-          v-for="c in candidates"
-          :key="c.id"
-          class="cand"
-          @click="emit('add', c.id)"
-        >
-          <span class="face" :style="{ background: c.avatarColor }">{{ initials(c.name) }}</span>
-          {{ c.name }}
-        </button>
-        <p v-if="candidates.length === 0" class="none">没有可添加的用户了</p>
-      </div>
-
-      <label class="label">或输入新成员名字</label>
-      <div class="row">
-        <input
-          v-model="newName"
-          class="input"
-          placeholder="成员昵称，如：爸爸"
-          maxlength="12"
-          @keyup.enter="addByName"
-        />
-        <button class="add-btn" :disabled="!newName.trim()" @click="addByName">添加</button>
+        <button v-if="isOwner && m.role !== 'owner'" class="remove" @click="emit('remove', m.userId)">移除</button>
       </div>
     </div>
 
     <div class="foot">
       <div class="foot-left">
-        <button v-if="book.type === 'shared' && mode === 'list'" class="btn-ghost" @click="mode = 'add'">＋ 添加成员</button>
-        <button v-if="book.type === 'shared' && mode === 'add'" class="btn-ghost" @click="mode = 'list'">‹ 返回</button>
         <button
-          v-if="isOwner && book.type === 'personal' && mode === 'list'"
+          v-if="isOwner && book.type === 'personal'"
           class="btn-ghost"
-          :title="'转为共享账本后可添加成员（不可再转回个人）'"
+          :title="'转为共享账本后可邀请成员（不可再转回个人）'"
           @click="showConvertConfirm = true"
         >
           转为共享账本
         </button>
+        <button v-if="!isOwner" class="btn-ghost" @click="emit('leave')">退出账本</button>
       </div>
-      <button v-if="isOwner && mode === 'list'" class="btn-danger" @click="showDeleteConfirm = true">
-        删除账本
-      </button>
+      <button v-if="isOwner" class="btn-danger" @click="showDeleteConfirm = true">删除账本</button>
     </div>
   </BaseModal>
 
@@ -252,6 +280,98 @@ function initials(name: string) {
 </template>
 
 <style scoped>
+.section-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+.section-desc {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+/* 邀请码展示 */
+.invite {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.code-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-thumb);
+  background: var(--bg);
+  margin-bottom: 8px;
+}
+.code {
+  flex: 1;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.copy-btn {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 160ms ease;
+}
+.copy-btn:hover {
+  opacity: 0.88;
+}
+.invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+.btn-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.btn-link.danger {
+  color: var(--heat);
+}
+.btn-link:hover {
+  text-decoration: underline;
+}
+.confirm-hint {
+  font-size: 12px;
+  color: var(--heat);
+  font-weight: 600;
+}
+.btn-primary-sm {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 成员列表 */
 .member-list {
   display: flex;
   flex-direction: column;
@@ -289,6 +409,11 @@ function initials(name: string) {
   font-weight: 600;
   color: var(--text);
 }
+.me {
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: 0.8rem;
+}
 .remove {
   border: 0;
   border-radius: var(--r-pill);
@@ -298,82 +423,6 @@ function initials(name: string) {
   color: var(--heat);
   background: var(--heat-bg);
   cursor: pointer;
-}
-.add-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-.cands {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.cand {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 13px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 160ms ease;
-}
-.cand:hover {
-  border-color: var(--accent);
-}
-.cand .face {
-  width: 20px;
-  height: 20px;
-  font-size: 10px;
-}
-.none {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--text-4);
-}
-.row {
-  display: flex;
-  gap: 8px;
-}
-.input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 10px 12px;
-  font-size: 0.92rem;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
-.add-btn {
-  border: 0;
-  border-radius: var(--r-pill);
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  cursor: pointer;
-}
-.add-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 .foot {
   display: flex;
@@ -402,7 +451,6 @@ function initials(name: string) {
 .btn-ghost:hover {
   background: var(--hover);
 }
-/* 删除按钮（危险操作） */
 .btn-danger {
   display: inline-flex;
   align-items: center;
@@ -420,7 +468,6 @@ function initials(name: string) {
 .btn-danger:hover {
   opacity: 0.88;
 }
-/* 删除确认弹窗 */
 .delete-warn {
   margin-bottom: 16px;
 }
@@ -442,6 +489,22 @@ function initials(name: string) {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-3);
+}
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-thumb);
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
 }
 .btn-primary-danger {
   display: inline-flex;
@@ -465,8 +528,6 @@ function initials(name: string) {
 .btn-primary-danger:not(:disabled):hover {
   opacity: 0.88;
 }
-</style>
-
 .convert-warn {
   display: flex;
   flex-direction: column;
@@ -495,3 +556,4 @@ function initials(name: string) {
 .btn-primary:not(:disabled):hover {
   opacity: 0.88;
 }
+</style>

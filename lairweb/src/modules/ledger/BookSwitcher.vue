@@ -12,6 +12,7 @@ const emit = defineEmits<{
   (e: 'switch', bookId: number): void
   (e: 'create'): void
   (e: 'manage', book: Book): void
+  (e: 'join'): void
   (e: 'trash'): void
 }>()
 
@@ -62,6 +63,7 @@ function pick(bookId: number) {
 
         <div class="menu-actions">
           <button class="act" @click="open = false; emit('create')">＋ 新建账本</button>
+          <button class="act" @click="open = false; emit('join')">＋ 加入共享账本</button>
           <button v-if="current" class="act" @click="open = false; emit('manage', current)">
             管理账本
           </button>

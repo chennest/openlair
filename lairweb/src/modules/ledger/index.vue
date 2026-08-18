@@ -12,6 +12,7 @@ import {
 import BookSwitcher from './BookSwitcher.vue'
 import BookManage from './BookManage.vue'
 import BookCreate from './BookCreate.vue'
+import BookJoin from './BookJoin.vue'
 import BookTrash from './BookTrash.vue'
 import LedgerSummary from './LedgerSummary.vue'
 import LedgerBudget from './LedgerBudget.vue'
@@ -33,21 +34,15 @@ const currentBookId = ref(0)
 const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
 const showManage = ref(false)
 const showCreate = ref(false)
+const showJoin = ref(false)
+const joinSubmitting = ref(false)
+const joinError = ref('')
+const inviteCode = ref<string | null>(null)
 
 /** 无账本空态 */
 const noBooks = computed(() => books.value.length === 0)
 const showTrash = ref(false)
 const trashBooks = ref<Book[]>([])
-
-// 成员管理：可添加候选（非当前成员的用户）
-const manageCandidates = computed(() => {
-  const memberIds = new Set(currentBook.value?.members.map((m) => m.userId) ?? [])
-  return books.value
-    .flatMap((b) => b.members)
-    .map((m) => m.user)
-    .filter((u): u is NonNullable<typeof u> => !!u && !memberIds.has(u.id))
-    .filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i)
-})
 
 const showDialog = ref(false)
 const savedTip = ref(false)
@@ -132,18 +127,6 @@ async function handleBookCreate(input: { name: string; type: 'personal' | 'share
   }
 }
 
-async function handleMemberAdd(userId: number) {
-  const r = await bookApi.addMember(currentBookId.value, { userId })
-  if (r.book) await loadBooks()
-  showManage.value = false
-}
-
-async function handleMemberAddByName(name: string) {
-  const r = await bookApi.addMember(currentBookId.value, { name })
-  if (r.book) await loadBooks()
-  showManage.value = false
-}
-
 async function handleMemberRemove(userId: number) {
   const r = await bookApi.removeMember(currentBookId.value, userId)
   if (r.book) await loadBooks()
@@ -155,6 +138,63 @@ async function handleBookConvert() {
   if (r.book) {
     showManage.value = false
     await loadBooks()
+  }
+}
+
+// 邀请码 / 加入 / 退出
+
+async function openManage() {
+  inviteCode.value = null
+  if (currentBookId.value) {
+    try {
+      inviteCode.value = (await bookApi.getInvite(currentBookId.value)).code
+    } catch {
+      inviteCode.value = null
+    }
+  }
+  showManage.value = true
+}
+
+async function handleResetInvite() {
+  if (!currentBookId.value) return
+  try {
+    inviteCode.value = (await bookApi.resetInvite(currentBookId.value)).code
+  } catch {
+    /* 错误已在信封层统一抛出提示 */
+  }
+}
+
+async function handleDisableInvite() {
+  if (!currentBookId.value) return
+  await bookApi.disableInvite(currentBookId.value)
+  inviteCode.value = null
+}
+
+async function handleLeave() {
+  if (!currentBookId.value) return
+  await bookApi.leave(currentBookId.value)
+  showManage.value = false
+  await loadBooks()
+  const active = books.value.filter((b) => !b.deletedAt)
+  if (!active.find((b) => b.id === currentBookId.value)) {
+    currentBookId.value = active[0]?.id ?? 0
+  }
+  await load()
+}
+
+async function handleJoin(code: string) {
+  joinSubmitting.value = true
+  joinError.value = ''
+  try {
+    const r = await bookApi.joinByCode(code)
+    showJoin.value = false
+    await loadBooks()
+    currentBookId.value = r.book.id
+    await load()
+  } catch (e) {
+    joinError.value = e instanceof Error ? e.message : '加入失败'
+  } finally {
+    joinSubmitting.value = false
   }
 }
 
@@ -215,8 +255,11 @@ onMounted(async () => {
   <div v-else-if="noBooks" class="empty-state">
     <p class="empty-symbol">📒</p>
     <p class="empty-title">还没有账本</p>
-    <p class="empty-desc">创建一个账本开始记账，或邀请家人朋友共享账本</p>
-    <button class="empty-btn" @click="showCreate = true">＋ 新建账本</button>
+    <p class="empty-desc">创建一个账本开始记账，或输入邀请码加入家人朋友的共享账本</p>
+    <div class="empty-actions">
+      <button class="empty-btn" @click="showCreate = true">＋ 新建账本</button>
+      <button class="empty-btn ghost" @click="showJoin = true">＋ 加入共享账本</button>
+    </div>
   </div>
 
   <div v-else class="ledger">
@@ -226,7 +269,8 @@ onMounted(async () => {
         :current="currentBook"
         @switch="switchBook"
         @create="showCreate = true"
-        @manage="showManage = true"
+        @manage="openManage"
+        @join="showJoin = true"
         @trash="openTrash"
       />
     </div>
@@ -269,13 +313,14 @@ onMounted(async () => {
     <BookManage
       :open="showManage"
       :book="currentBook"
-      :candidates="manageCandidates"
+      :invite-code="inviteCode"
       @close="showManage = false"
-      @add="handleMemberAdd"
-      @add-by-name="handleMemberAddByName"
       @remove="handleMemberRemove"
       @delete="handleBookDelete"
       @convert="handleBookConvert"
+      @reset-invite="handleResetInvite"
+      @disable-invite="handleDisableInvite"
+      @leave="handleLeave"
     />
 
     <BookTrash
@@ -289,6 +334,15 @@ onMounted(async () => {
 
   <!-- 新建账本弹窗（空态/正常态共用） -->
   <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
+
+  <!-- 加入共享账本弹窗（空态/正常态共用，新用户无账本时也能加入） -->
+  <BookJoin
+    :open="showJoin"
+    :submitting="joinSubmitting"
+    :error="joinError"
+    @close="showJoin = false"
+    @join="handleJoin"
+  />
 </template>
 
 <style scoped>
@@ -402,6 +456,12 @@ onMounted(async () => {
   font-size: 0.9rem;
   color: var(--text-3);
 }
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
 .empty-btn {
   display: inline-flex;
   align-items: center;
@@ -418,6 +478,15 @@ onMounted(async () => {
 }
 .empty-btn:hover {
   opacity: 0.88;
+}
+.empty-btn.ghost {
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--hairline);
+}
+.empty-btn.ghost:hover {
+  background: var(--hover);
+  opacity: 1;
 }
 @media (max-width: 960px) {
   .lower-grid {

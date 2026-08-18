@@ -1,9 +1,9 @@
-"""/api/books 路由：账本列表 / 建账本 / 成员增删。"""
+"""/api/books 路由：账本列表 / 建账本 / 成员增删 / 邀请码分享 / 加入 / 退出。"""
 
 from fastapi import APIRouter, Depends, Request
 
 from app.api.v1.deps import get_current_user
-from app.api.v1.schemas import AddMemberInput, CreateBookInput
+from app.api.v1.schemas import AddMemberInput, CreateBookInput, JoinBookInput
 from app.core.envelope import ok_response
 from app.models.user import User
 
@@ -13,6 +13,16 @@ router = APIRouter(prefix="/books", tags=["books"])
 @router.get("")
 async def list_books(request: Request, user: User = Depends(get_current_user)) -> dict:
     return ok_response(request.app.state.book_service.list(user.id))
+
+
+@router.post("/join")
+async def join_book(
+    request: Request,
+    payload: JoinBookInput,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """输入邀请码加入共享账本（任意登录用户，成为成员）。"""
+    return ok_response(request.app.state.book_service.join(code=payload.code, user_id=user.id))
 
 
 @router.post("")
@@ -46,6 +56,47 @@ async def remove_member(
     _user: User = Depends(get_current_user),
 ) -> dict:
     return ok_response(request.app.state.book_service.remove_member(book_id=book_id, user_id=user_id))
+
+
+# ---------- 邀请码分享 / 加入 / 退出 ----------
+
+
+@router.get("/{book_id}/invite")
+async def get_invite(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.book_service.get_invite(book_id=book_id, user_id=user.id))
+
+
+@router.post("/{book_id}/invite")
+async def generate_invite(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """生成/重置邀请码（旧码立即失效）。"""
+    return ok_response(request.app.state.book_service.generate_invite(book_id=book_id, user_id=user.id))
+
+
+@router.delete("/{book_id}/invite")
+async def disable_invite(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """关闭邀请（彻底停止新成员加入）。"""
+    return ok_response(request.app.state.book_service.disable_invite(book_id=book_id, user_id=user.id))
+
+
+@router.post("/{book_id}/leave")
+async def leave_book(
+    request: Request,
+    book_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.book_service.leave(book_id=book_id, user_id=user.id))
 
 
 # ---------- 回收站（软删除） ----------

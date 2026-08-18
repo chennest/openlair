@@ -147,6 +147,16 @@ export const bookApi = {
     post<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members`, input),
   removeMember: (bookId: number, userId: number) =>
     del<{ ok: boolean; book?: Book }>(`/api/books/${bookId}/members/${userId}`),
+  /** 查看邀请码（仅 owner；null = 未生成） */
+  getInvite: (bookId: number) => get<{ code: string | null }>(`/api/books/${bookId}/invite`),
+  /** 生成/重置邀请码（旧码立即失效） */
+  resetInvite: (bookId: number) => post<{ code: string }>(`/api/books/${bookId}/invite`, {}),
+  /** 关闭邀请（彻底停止新成员加入） */
+  disableInvite: (bookId: number) => del<{ ok: boolean }>(`/api/books/${bookId}/invite`),
+  /** 输入邀请码加入共享账本 */
+  joinByCode: (code: string) => post<{ book: Book }>('/api/books/join', { code }),
+  /** 成员自助退出账本（owner 不可） */
+  leave: (bookId: number) => post<{ ok: boolean }>(`/api/books/${bookId}/leave`, {}),
   /** 回收站列表（软删除的账本） */
   trash: () => get<Book[]>('/api/books/trash'),
   /** 删除账本 → 移入回收站（软删除） */
