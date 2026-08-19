@@ -14,8 +14,9 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine A
 
 WORKDIR /app
 
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 安装 pnpm（国内镜像下载，固定版本避免 latest 解析波动；与 CI web-build 的 pnpm@9.15.0 一致）
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # 先拷依赖清单，利用缓存层
 COPY package.json pnpm-lock.yaml ./
