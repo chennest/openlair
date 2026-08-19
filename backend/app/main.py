@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.system import instrumentator, router as system_router
 from app.api.v1.router import v1_router
 from app.core.config import get_settings
 from app.core.envelope import register_envelope_handlers
@@ -115,10 +116,12 @@ def create_app(
     app.state.user_repository = user_repo
     app.state.token_repository = token_repo
 
-    # 健康检查（K8s 探针用，不依赖业务服务）
-    @app.get("/health", tags=["system"])
-    async def health() -> dict:
-        return {"status": "ok"}
+    # ---------- 系统路由（K8s 探针 + Prometheus 指标）----------
+    # session_factory 挂到 app.state，供 /healthz/ready 就绪探针检查 DB 连通
+    app.state.session_factory = session_factory
+    app.include_router(system_router)
+    # Prometheus 指标：自动采集全部 HTTP 路由（排除探针自身路径），并暴露 /metrics
+    instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
     app.include_router(v1_router)
     return app
