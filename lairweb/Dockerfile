@@ -16,10 +16,11 @@ WORKDIR /app
 
 # 安装 pnpm（国内镜像下载，固定版本避免 latest 解析波动；与 CI web-build 的 pnpm@9.15.0 一致）
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# 先拷依赖清单，利用缓存层
-COPY package.json pnpm-lock.yaml ./
+# 先拷依赖清单（含 .npmrc 镜像源配置），利用缓存层
+COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # 拷贝源码并构建（vue-tsc 类型检查 + vite build）
