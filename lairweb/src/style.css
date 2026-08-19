@@ -260,6 +260,19 @@ textarea:focus {
   padding: 24px 40px 56px;
 }
 
+/* AI 助手页面：内容区变固定高度 flex 列，聊天内部滚动、输入框吸底 */
+.content-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding-bottom: 24px;
+}
+
+.content-chat .content-header {
+  flex: 0 0 auto;
+}
+
 .content-header {
   display: flex;
   align-items: center;
@@ -558,6 +571,11 @@ h1 {
   overscroll-behavior-y: contain;
   padding: 18px 14px;
   touch-action: pan-y;
+}
+
+/* 手机端 AI 助手页面：去掉内容区内边距，聊天占满（输入框紧贴底部 Tab 栏） */
+.m-content-chat {
+  padding: 0;
 }
 
 /* 底部 Tab 栏（玻璃，单强调色） */

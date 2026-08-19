@@ -982,7 +982,7 @@ function onExample(text: string) {
   }
 
   .input-bar {
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 12px 12px;
   }
 
   .msg-bubble {
