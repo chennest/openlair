@@ -224,7 +224,6 @@ function onKeydown(e: KeyboardEvent) {
 
     <main class="content" :class="{ 'content-chat': isAssistantPage }">
       <header class="content-header">
-        <h1>{{ pageTitle }}</h1>
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
       </header>
       <RouterView />
