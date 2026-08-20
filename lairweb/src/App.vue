@@ -239,10 +239,21 @@ function onKeydown(e: KeyboardEvent) {
         aria-label="打开 AI 助手"
         title="AI 助手"
       >
-        <svg class="m-assistant-entry-icon" v-bind="iconProps" aria-hidden="true">
-          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-        </svg>
-        <span>AI 助手</span>
+        <span class="ai-sparkle" aria-hidden="true">
+          <svg class="ai-sparkle-svg" viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="ai-spark-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0a84ff" />
+                <stop offset="100%" stop-color="#5e5ce6" />
+              </linearGradient>
+            </defs>
+            <path
+              fill="url(#ai-spark-grad)"
+              d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"
+            />
+          </svg>
+          <span class="ai-sheen"></span>
+        </span>
       </button>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
       <button
@@ -500,30 +511,76 @@ function onKeydown(e: KeyboardEvent) {
   height: 22px;
 }
 
-/* 手机顶栏：AI 助手入口（顶替原 L 品牌 + 页面标题） */
+/* 手机顶栏：AI 助手入口（渐变流光 ✨，仅图标，无文字） */
 .m-assistant-entry {
   flex: 1;
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: flex-start;
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text);
-  font-size: 0.98rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
   cursor: pointer;
   text-align: left;
-  font-family: inherit;
 }
 
-.m-assistant-entry-icon {
+.ai-sparkle {
+  position: relative;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  color: var(--accent);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  animation: ai-float 3.2s ease-in-out infinite;
+}
+
+.ai-sparkle-svg {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 0 6px rgba(94, 92, 230, 0.45));
+}
+
+/* 流光：一道白色高光扫过图标 */
+.ai-sheen {
+  position: absolute;
+  top: -50%;
+  bottom: -50%;
+  width: 36%;
+  left: -50%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  transform: rotate(22deg);
+  animation: ai-sheen 2.8s ease-in-out infinite;
+}
+
+@keyframes ai-sheen {
+  0% {
+    left: -50%;
+  }
+  55%,
+  100% {
+    left: 140%;
+  }
+}
+
+/* 轻微浮动 + 呼吸感 */
+@keyframes ai-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-sparkle,
+  .ai-sheen {
+    animation: none;
+  }
 }
 
 /* 手机端：入口已进顶栏，隐藏悬浮圆按钮 */
