@@ -6,7 +6,6 @@ import { authApi, type AuthUser } from './modules/auth/api'
 
 const route = useRoute()
 const router = useRouter()
-const pageTitle = computed(() => (route.meta.title as string) || '总览')
 
 // ---------- 登录态：路由变化时从 localStorage 刷新（登录/登出后生效） ----------
 const user = ref<AuthUser | null>(getUser() as AuthUser | null)
@@ -233,8 +232,18 @@ function onKeydown(e: KeyboardEvent) {
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
     <header class="m-header" ref="mHeaderEl">
-        <span class="m-brand">L</span>
-      <strong>{{ pageTitle }}</strong>
+      <button
+        class="m-assistant-entry"
+        type="button"
+        @click="router.push('/assistant')"
+        aria-label="打开 AI 助手"
+        title="AI 助手"
+      >
+        <svg class="m-assistant-entry-icon" v-bind="iconProps" aria-hidden="true">
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+        </svg>
+        <span>AI 助手</span>
+      </button>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
       <button
         v-if="user"
@@ -491,11 +500,36 @@ function onKeydown(e: KeyboardEvent) {
   height: 22px;
 }
 
-/* 手机端：FAB 下移到头栏之下（内容区左上角） */
+/* 手机顶栏：AI 助手入口（顶替原 L 品牌 + 页面标题） */
+.m-assistant-entry {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.m-assistant-entry-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+/* 手机端：入口已进顶栏，隐藏悬浮圆按钮 */
 @media (max-width: 860px) {
   .assistant-fab {
-    top: 74px;
-    left: 12px;
+    display: none;
   }
 }
 

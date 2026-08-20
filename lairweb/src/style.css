@@ -538,25 +538,6 @@ h1 {
   box-shadow: 0 1px 12px rgba(0, 0, 0, 0.04);
 }
 
-.m-brand {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: #fff;
-  background: var(--text);
-  font-weight: 800;
-  font-size: 0.9rem;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-}
-
-.m-header strong {
-  flex: 1;
-  font-size: 1.02rem;
-  letter-spacing: -0.01em;
-}
-
 .m-header time {
   color: var(--text-3);
   font-size: 0.76rem;
