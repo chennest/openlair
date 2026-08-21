@@ -1,67 +1,63 @@
 <script setup lang="ts">
-// 日历模块页：通用月历网格 + 选中日期日程（新增/完成/删除）
-import { computed, onMounted, ref, watch, type Ref } from 'vue'
+// 日历模块页：企业微信式月历 — 格子内嵌日程条（时间+标题）+ 点击弹窗交互
+import { onMounted, ref, type Ref } from 'vue'
 import type { DateValue } from '@internationalized/date'
 import { getLocalTimeZone, today } from '@internationalized/date'
-import { toDate } from 'reka-ui/date'
 import { Plus } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Calendar,
   CalendarCellTrigger,
 } from '@/components/ui/calendar'
-import { calendarApi, type CalendarEvent } from './api'
-import EventList from './EventList.vue'
+import { calendarApi, type CalendarEvent, type CreateEventInput } from './api'
+import EventFormDialog from './EventFormDialog.vue'
+import EventDetailDialog from './EventDetailDialog.vue'
 
 const loading = ref(true)
 const error = ref('')
 const events = ref<CalendarEvent[]>([])
 
-const form = ref({ title: '', date: '', time: '10:00', location: '' })
-const saving = ref(false)
-
-// ---------- 通用月历状态 ----------
-/** 当前选中日期（月历 v-model） */
+// ---------- 月历状态 ----------
+/** 当前选中日期 */
 const selectedDate = ref(today(getLocalTimeZone())) as Ref<DateValue>
+/** 当前显示月份（编程导航用） */
+const placeholder = ref(today(getLocalTimeZone())) as Ref<DateValue>
+
+// ---------- 弹窗状态 ----------
+const formOpen = ref(false)
+const detailOpen = ref(false)
+const detailEvent = ref<CalendarEvent | null>(null)
+const saving = ref(false)
+const busy = ref(false)
 
 /** DateValue → 'YYYY-MM-DD'（与后端契约一致） */
 function dayKey(d: DateValue): string {
   return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
 }
 
-/** 该日期是否有日程（月历格子小圆点） */
-function hasEvents(d: DateValue): boolean {
+/** 某日期当天全部日程（格子渲染用） */
+function eventsOf(d: DateValue): CalendarEvent[] {
   const k = dayKey(d)
-  return events.value.some((e) => e.date === k)
+  return events.value.filter((e) => e.date === k)
 }
 
-/** 选中日期当天日程 */
-const dayEvents = computed(() => {
-  const k = dayKey(selectedDate.value)
-  return events.value.filter((e) => e.date === k)
-})
+/** 回到今天 */
+function goToday() {
+  const t = today(getLocalTimeZone())
+  placeholder.value = t
+  selectedDate.value = t
+}
 
-/** 选中日期标题：8月21日 星期五 */
-const dayTitle = computed(() =>
-  toDate(selectedDate.value, getLocalTimeZone()).toLocaleDateString('zh-CN', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  }),
-)
-
-// 点击日历日期 → 新增表单的日期跟随选中
-watch(selectedDate, (d) => {
-  form.value.date = dayKey(d)
-})
+/** 点击日程条：打开详情弹窗 */
+function openDetail(ev: CalendarEvent) {
+  detailEvent.value = ev
+  detailOpen.value = true
+}
 
 async function load() {
   loading.value = true
   try {
     events.value = (await calendarApi.list()).events
-    // 首次加载：表单日期默认今天（若尚未设置）
-    if (!form.value.date) form.value.date = dayKey(today(getLocalTimeZone()))
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -69,26 +65,40 @@ async function load() {
   }
 }
 
-async function createEvent() {
-  if (!form.value.title.trim()) return
+async function createEvent(input: CreateEventInput) {
   saving.value = true
   try {
-    await calendarApi.create(form.value)
-    form.value = { title: '', date: dayKey(selectedDate.value), time: '10:00', location: '' }
+    await calendarApi.create(input)
+    formOpen.value = false
+    // 新日程落在所选月份内时,确保月历停在对应月份
+    const [y, m] = input.date.split('-').map(Number)
+    if (y && m) placeholder.value = selectedDate.value.set({ year: y, month: m })
     await load()
   } finally {
     saving.value = false
   }
 }
 
-async function toggleDone(e: CalendarEvent) {
-  await calendarApi.update(e.id, { done: !e.done })
-  await load()
+async function toggleDone(ev: CalendarEvent) {
+  busy.value = true
+  try {
+    await calendarApi.update(ev.id, { done: !ev.done })
+    detailOpen.value = false
+    await load()
+  } finally {
+    busy.value = false
+  }
 }
 
 async function removeEvent(id: number) {
-  await calendarApi.remove(id)
-  await load()
+  busy.value = true
+  try {
+    await calendarApi.remove(id)
+    detailOpen.value = false
+    await load()
+  } finally {
+    busy.value = false
+  }
 }
 
 onMounted(load)
@@ -99,196 +109,241 @@ onMounted(load)
   <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p></div></div>
 
   <div v-else class="calendar">
-    <div class="cal-layout">
-      <!-- ═══ 左：通用月历网格 ═══ -->
-      <section class="cal-panel">
-        <Calendar
-          v-model="selectedDate"
-          :default-placeholder="today(getLocalTimeZone())"
-          weekday-format="short"
-          class="rounded-[var(--r-panel)] border bg-card shadow-[var(--sh-panel)]"
-        >
-          <template #calendar-cell="{ date }">
-            <CalendarCellTrigger
-              :day="date"
-              :month="date"
-              class="cal-cell"
-            >
-              <span class="cal-day-num">{{ date.day }}</span>
-              <span v-if="hasEvents(date)" class="cal-dot" aria-hidden="true"></span>
-            </CalendarCellTrigger>
-          </template>
-        </Calendar>
-      </section>
+    <!-- 工具栏：今天 + 新建日程（点击才弹出） -->
+    <div class="cal-toolbar">
+      <Button variant="outline" size="sm" class="today-btn rounded-full px-4" @click="goToday">
+        今天
+      </Button>
+      <span class="flex-1"></span>
+      <Button size="sm" class="new-btn rounded-full px-4" @click="formOpen = true">
+        <Plus class="size-4" />
+        新建日程
+      </Button>
+    </div>
 
-      <!-- ═══ 右：选中日期日程 ═══ -->
-      <section class="day-panel">
-        <div class="day-head">
-          <div>
-            <h2 class="day-title">{{ dayTitle }}</h2>
-            <p class="day-count">{{ dayEvents.length }} 项日程</p>
+    <!-- 月历网格：格子内嵌日程条（企微式） -->
+    <Calendar
+      v-model="selectedDate"
+      v-model:placeholder="placeholder"
+      :default-placeholder="today(getLocalTimeZone())"
+      weekday-format="short"
+      class="cal-root"
+    >
+      <template #calendar-cell="{ date }">
+        <div class="cal-cell-box">
+          <CalendarCellTrigger
+            :day="date"
+            :month="date"
+            class="cal-day-trigger"
+          >
+            {{ date.day }}
+          </CalendarCellTrigger>
+          <div class="cal-events">
+            <div
+              v-for="ev in eventsOf(date).slice(0, 3)"
+              :key="ev.id"
+              class="cal-ev"
+              :class="{ done: ev.done }"
+              :title="`${ev.time} ${ev.title}`"
+              @click.stop="openDetail(ev)"
+            >
+              <span class="ev-dot" aria-hidden="true"></span>
+              <span class="ev-time">{{ ev.time }}</span>
+              <span class="ev-title">{{ ev.title }}</span>
+            </div>
+            <div
+              v-if="eventsOf(date).length > 3"
+              class="ev-more"
+              @click.stop="selectedDate = date"
+            >
+              +{{ eventsOf(date).length - 3 }} 个日程
+            </div>
           </div>
         </div>
+      </template>
+    </Calendar>
 
-        <EventList
-          :events="dayEvents"
-          :title="'当日日程'"
-          @toggle="toggleDone"
-          @remove="removeEvent"
-        />
+    <!-- 新建日程弹窗（点击按钮才弹出） -->
+    <EventFormDialog
+      :open="formOpen"
+      :default-date="dayKey(selectedDate)"
+      :saving="saving"
+      @close="formOpen = false"
+      @submit="createEvent"
+    />
 
-        <!-- 新增日程 -->
-        <form class="composer" @submit.prevent="createEvent">
-          <div class="composer-row">
-            <Input
-              v-model="form.title"
-              class="field-title h-11 flex-1 min-w-[140px]"
-              placeholder="日程标题"
-              required
-            />
-            <Input v-model="form.date" class="field-date h-11" type="date" />
-            <Input v-model="form.time" class="field-time h-11" type="time" />
-          </div>
-          <div class="composer-row">
-            <Input
-              v-model="form.location"
-              class="field-location h-11 flex-1 min-w-[140px]"
-              placeholder="地点（可选）"
-            />
-            <Button type="submit" class="field-submit h-11 rounded-full px-5" :disabled="saving">
-              <Plus class="size-4" />
-              {{ saving ? '添加中…' : '添加' }}
-            </Button>
-          </div>
-        </form>
-      </section>
-    </div>
+    <!-- 日程详情弹窗（点击日程条弹出） -->
+    <EventDetailDialog
+      :open="detailOpen"
+      :event="detailEvent"
+      :busy="busy"
+      @close="detailOpen = false"
+      @toggle="toggleDone"
+      @remove="removeEvent"
+    />
   </div>
 </template>
 
 <style scoped>
 /* ════════════════════════════════════════════════════════════
-   calendar page — 通用月历网格（reka Calendar）+ 当日日程
+   calendar page — 企业微信式月历（格子内嵌日程条）
    ════════════════════════════════════════════════════════════ */
 
-.cal-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 400px) 1fr;
-  gap: 18px;
-  align-items: start;
+/* ── 工具栏 ── */
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
-/* ── 月历面板 ── */
-.cal-panel {
-  position: sticky;
-  top: 20px;
+/* ── 月历根：白卡面板 ── */
+.cal-root {
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  box-shadow: var(--sh-panel);
 }
 
-/* 格子：44px 触控目标，日程小圆点绝对定位 */
-.cal-cell {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
+/* ── 格子：定高、内容顶对齐（覆盖 shadcn 默认小格子） ── */
+.calendar :deep([data-slot='calendar-cell']) {
+  height: 104px;
+  align-items: flex-start;
+  padding: 6px 4px 4px;
+  overflow: hidden;
 }
 
-.cal-day-num {
-  line-height: 1;
+/* 选中日期：整格浅蓝底（非实色） */
+.calendar :deep([data-slot='calendar-cell']:has([data-selected])) {
+  background: rgba(0, 113, 227, 0.06);
+  border-radius: var(--r-thumb);
 }
 
-.cal-dot {
-  position: absolute;
-  bottom: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
+/* ── 格子内：日期数字 + 日程区 ── */
+.cal-cell-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  height: 100%;
+  gap: 3px;
 }
 
-/* 今日(未选中):蓝色细描边,与选中蓝底区分 */
-.cal-cell[data-today]:not([data-selected]) {
+.cal-day-trigger {
+  width: 30px;
+  height: 30px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
+/* 今日（未选中）：蓝色细描边，与选中蓝底区分 */
+.cal-day-trigger[data-today]:not([data-selected]) {
   background: transparent;
   color: var(--accent);
   font-weight: 700;
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
-/* 选中态格子的圆点变白（选中蓝底） */
-.cal-cell[data-selected] .cal-dot {
-  background: #fff;
-}
-
-/* ── 右侧：当日日程 ── */
-.day-panel {
-  min-width: 0;
-}
-
-.day-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.day-title {
-  margin: 0;
-  font-size: clamp(1.3rem, 2.4vw, 1.7rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
-
-.day-count {
-  margin: 4px 0 0;
-  color: var(--text-3);
-  font-size: 0.82rem;
-}
-
-/* ── 新增表单 ── */
-.composer {
+.cal-events {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 18px;
-  padding: 14px;
-  border-radius: var(--r-panel);
-  background: var(--surface);
-  box-shadow: var(--sh-panel);
+  gap: 2px;
+  width: 100%;
+  min-height: 0;
 }
 
-.composer-row {
+/* ── 日程条：浅蓝底圆角小块，时间+标题 ── */
+.cal-ev {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(0, 113, 227, 0.09);
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background 140ms ease;
 }
 
-.composer-row .field-date,
-.composer-row .field-time {
+.cal-ev:hover {
+  background: rgba(0, 113, 227, 0.18);
+}
+
+.cal-ev.done {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.ev-dot {
   flex: 0 0 auto;
-  width: auto;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
-/* ── 响应式：手机端上下排列 ── */
+.cal-ev.done .ev-dot {
+  background: var(--text-4);
+}
+
+.ev-time {
+  flex: 0 0 auto;
+  color: var(--text-2);
+  font-size: 0.66rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-ev.done .ev-time {
+  color: var(--text-4);
+}
+
+.ev-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.cal-ev.done .ev-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+/* ── “+N 个日程” ── */
+.ev-more {
+  padding: 0 6px;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── 响应式：手机端格子变矮 ── */
 @media (max-width: 860px) {
-  .cal-layout {
-    grid-template-columns: 1fr;
+  .calendar :deep([data-slot='calendar-cell']) {
+    height: 64px;
+    padding: 3px 2px;
   }
 
-  .cal-panel {
-    position: static;
+  .cal-day-trigger {
+    width: 26px;
+    height: 26px;
+    font-size: 0.78rem;
   }
 
-  .composer-row {
-    flex-direction: column;
+  .cal-ev {
+    padding: 0 4px;
   }
 
-  .composer-row .field-date,
-  .composer-row .field-time {
-    width: 100%;
+  .cal-events {
+    overflow: hidden;
   }
 }
 </style>
