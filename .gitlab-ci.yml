@@ -10,7 +10,6 @@
 
 stages:
   - test
-  - build
   - package
   - deploy
 
@@ -48,36 +47,13 @@ backend-test:
     - if: '$CI_COMMIT_BRANCH == "test"'
     - if: '$CI_COMMIT_TAG'
 # ============================================================
-# Stage 2: lairweb 构建（pnpm + Vite typecheck & build）
-# ============================================================
-web-build:
-  stage: build
-  tags: [k8s]
-  image: ${IMAGE_NODE}
-  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
-  needs: []
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@9.15.0 --activate
-  script:
-    - cd lairweb
-    - pnpm install --frozen-lockfile
-    - pnpm run build
-  artifacts:
-    paths:
-      - lairweb/dist/
-    expire_in: 1 week
-  rules:
-    # 只在 test 分支推送或打 Git tag 时构建镜像
-    - if: '$CI_COMMIT_BRANCH == "test"'
-    - if: '$CI_COMMIT_TAG'
-# ============================================================
-# Stage 3: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
+# Stage 2: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
 # 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-backend:<tag>
 # tag 策略：
 #   Git tag（v1.2.3）→ 镜像 tag = v1.2.3（生产发版）
 #   分支推送      → 镜像 tag = <分支名>-<pipeline序号>（如 test-12、dev-5）
 # buildah 优势：不需要特权模式/DinD，K8s job Pod 内直接构建
+# 注：前端类型检查由 lairweb/Dockerfile 的 pnpm run build 兜底，无需单独 web-build job
 # ============================================================
 backend-package:
   stage: package
