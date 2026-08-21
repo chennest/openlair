@@ -126,6 +126,7 @@ onMounted(load)
       v-model="selectedDate"
       v-model:placeholder="placeholder"
       :default-placeholder="today(getLocalTimeZone())"
+      locale="zh-CN"
       weekday-format="short"
       class="cal-root"
     >
