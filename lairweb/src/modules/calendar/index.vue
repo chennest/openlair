@@ -166,10 +166,9 @@ onMounted(load)
       </template>
     </Calendar>
 
-    <!-- 新建日程弹窗（点击按钮才弹出） -->
+    <!-- 新建日程弹窗（点击按钮才弹出；日期/时间默认当前） -->
     <EventFormDialog
       :open="formOpen"
-      :default-date="dayKey(selectedDate)"
       :saving="saving"
       @close="formOpen = false"
       @submit="createEvent"

@@ -10,8 +10,6 @@ import type { CreateEventInput } from './api'
 
 const props = defineProps<{
   open: boolean
-  /** 默认日期（选中日期） */
-  defaultDate: string
   saving: boolean
 }>()
 
@@ -20,13 +18,25 @@ const emit = defineEmits<{
   (e: 'submit', input: CreateEventInput): void
 }>()
 
-const form = ref<CreateEventInput>({ title: '', date: '', time: '10:00', location: '' })
+/** 当前时刻 HH:mm（作为默认时间） */
+function nowTime(): string {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
-// 打开时重置表单，日期默认选中日
+/** 今天 YYYY-MM-DD（作为默认日期） */
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const form = ref<CreateEventInput>({ title: '', date: todayStr(), time: nowTime(), location: '' })
+
+// 打开时重置表单：日期 = 今天（当前），时间 = 当前时刻
 watch(
   () => props.open,
   (open) => {
-    if (open) form.value = { title: '', date: props.defaultDate, time: '10:00', location: '' }
+    if (open) form.value = { title: '', date: todayStr(), time: nowTime(), location: '' }
   },
 )
 
