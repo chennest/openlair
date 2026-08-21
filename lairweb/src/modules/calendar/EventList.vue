@@ -6,7 +6,13 @@ import { Switch } from '@/components/ui/switch'
 import Tag from '../../components/Tag.vue'
 import type { CalendarEvent } from './api'
 
-defineProps<{ events: CalendarEvent[] }>()
+const props = withDefaults(defineProps<{
+  events: CalendarEvent[]
+  /** 卡片标题（默认“近期日程”） */
+  title?: string
+}>(), {
+  title: '近期日程',
+})
 
 const emit = defineEmits<{
   (e: 'toggle', item: CalendarEvent): void
@@ -17,7 +23,7 @@ const emit = defineEmits<{
 <template>
   <article class="card">
     <div class="card-title">
-      <span>近期日程</span>
+      <span>{{ props.title }}</span>
       <Tag variant="green">{{ events.length }} 项</Tag>
     </div>
     <div class="row-list">
