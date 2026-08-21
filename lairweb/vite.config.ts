@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 import { mockDevServerPlugin } from 'vite-plugin-mock-dev-server'
 
 // https://vite.dev/config/
@@ -60,6 +61,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
+      tailwindcss(),
       buildVersionPlugin(),
       // 仅 mock 模式挂载：拦截 /api 请求到内存 mock 层（lairweb/mock/）
       ...(useMock
