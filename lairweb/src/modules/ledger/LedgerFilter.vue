@@ -1,10 +1,15 @@
 <script setup lang="ts">
 // 历史查询筛选栏：类型 segmented / 日期快捷范围 / 分类 / 关键字
 // 纯展示：props 进（当前值 + 分类列表），交互 emit change（完整 query 变更）
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { RotateCcw } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Category, LedgerQuery } from './api'
 
-defineProps<{
+const props = defineProps<{
   categories: Category[]
   value: LedgerQuery
 }>()
@@ -72,57 +77,72 @@ function clearAll() {
   preset.value = ''
   emit('change', { page: 1 })
 }
+
+// ---------- shadcn 控件适配（Tabs / Select 的值用字符串键映射） ----------
+const typeKey = computed({
+  get: () => (props.value.type === '支出' ? '支出' : props.value.type === '收入' ? '收入' : 'all'),
+  set: (k: string) => pickType(k === 'all' ? '' : (k as '支出' | '收入')),
+})
+
+const catKey = computed({
+  get: () => (props.value.categoryId ? String(props.value.categoryId) : 'all'),
+  set: (v: string) => pickCategory(v === 'all' ? 0 : Number(v)),
+})
 </script>
 
 <template>
   <div class="filter">
-    <!-- 类型 segmented（白胶囊，components.md §5） -->
-    <div class="seg" role="tablist" aria-label="交易类型">
-      <button
-        class="seg-btn"
-        :class="{ on: !value.type }"
-        @click="pickType('')"
-      >全部</button>
-      <button
-        class="seg-btn"
-        :class="{ on: value.type === '支出' }"
-        @click="pickType('支出')"
-      >支出</button>
-      <button
-        class="seg-btn"
-        :class="{ on: value.type === '收入' }"
-        @click="pickType('收入')"
-      >收入</button>
-    </div>
+    <!-- 类型 segmented（Tabs 白胶囊） -->
+    <Tabs v-model="typeKey">
+      <TabsList class="seg">
+        <TabsTrigger value="all" class="seg-btn">全部</TabsTrigger>
+        <TabsTrigger value="支出" class="seg-btn">支出</TabsTrigger>
+        <TabsTrigger value="收入" class="seg-btn">收入</TabsTrigger>
+      </TabsList>
+    </Tabs>
 
     <!-- 日期快捷 -->
     <div class="presets" role="tablist" aria-label="日期范围">
-      <button
+      <Button
         v-for="p in PRESETS"
         :key="p.key"
+        variant="ghost"
+        size="sm"
         class="preset-btn"
         :class="{ on: preset === p.key }"
         @click="pickPreset(p.key)"
-      >{{ p.label }}</button>
+      >{{ p.label }}</Button>
     </div>
 
     <!-- 分类 -->
-    <select class="select" :value="value.categoryId ? String(value.categoryId) : ''" @change="pickCategory(Number(($event.target as HTMLSelectElement).value))">
-      <option value="">全部分类</option>
-      <option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
-    </select>
+    <Select v-model="catKey">
+      <SelectTrigger class="cat-select">
+        <SelectValue placeholder="全部分类" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">全部分类</SelectItem>
+        <SelectItem v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</SelectItem>
+      </SelectContent>
+    </Select>
 
     <!-- 关键字 -->
-    <input
+    <Input
       class="kw"
-      :value="value.keyword ?? ''"
+      :model-value="value.keyword ?? ''"
       placeholder="搜索备注 / 分类"
-      @input="change({ keyword: ($event.target as HTMLInputElement).value, page: 1 })"
+      @update:model-value="change({ keyword: String($event), page: 1 })"
     />
 
-    <button v-if="value.type || value.categoryId || value.keyword || value.startDate" class="reset" @click="clearAll">
+    <Button
+      v-if="value.type || value.categoryId || value.keyword || value.startDate"
+      variant="ghost"
+      size="sm"
+      class="reset"
+      @click="clearAll"
+    >
+      <RotateCcw class="size-3.5" />
       重置
-    </button>
+    </Button>
   </div>
 </template>
 
@@ -139,24 +159,23 @@ function clearAll() {
   box-shadow: var(--sh-panel);
 }
 .seg {
-  display: inline-flex;
+  height: auto;
   background: rgba(0, 0, 0, 0.05);
   border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
 .seg-btn {
-  border: none;
-  cursor: pointer;
+  height: auto;
+  flex: 0 0 auto;
   font-size: 13px;
   font-weight: 500;
   padding: 6px 14px;
   border-radius: var(--r-pill);
-  background: transparent;
   color: var(--text-2);
   transition: all 200ms var(--ease-out-quart);
 }
-.seg-btn.on {
+.seg-btn[data-active] {
   background: var(--surface);
   color: var(--text);
   font-weight: 600;
@@ -187,25 +206,21 @@ function clearAll() {
   background: rgba(0, 113, 227, 0.08);
   font-weight: 600;
 }
-.select,
-.kw {
-  border: 1px solid var(--hairline);
+.cat-select {
+  height: 36px;
   border-radius: var(--r-pill);
-  color: var(--text);
-  outline: none;
-  background: var(--surface);
-  padding: 7px 14px;
+  padding: 0 14px;
   font-size: 13px;
-  font: inherit;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  background: var(--surface);
+  border-color: var(--hairline);
+  min-width: 120px;
 }
 .kw {
   min-width: 180px;
-}
-.select:focus,
-.kw:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
+  height: 36px;
+  border-radius: var(--r-pill);
+  padding: 0 14px;
+  font-size: 13px;
 }
 .reset {
   margin-left: auto;

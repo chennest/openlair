@@ -1,8 +1,12 @@
 <script setup lang="ts">
 // 共享账本管理：邀请码分享（owner）+ 成员列表（移除）+ 退出（成员）+ 转共享 + 软删除
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { Check, Copy, Plus } from '@lucide/vue'
 import BaseModal from '../../components/BaseModal.vue'
 import Tag from '../../components/Tag.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { getUser } from '../../api/request'
 import type { Book } from './api'
 
@@ -176,24 +180,31 @@ function initials(name: string) {
 
       <div v-if="inviteCode" class="code-box">
         <span class="code" aria-label="邀请码">{{ formattedCode }}</span>
-        <button class="copy-btn" @click="copyCode">{{ copied ? '✓ 已复制' : '复制' }}</button>
+        <Button size="sm" @click="copyCode">
+          <Check v-if="copied" class="size-3.5" />
+          <Copy v-else class="size-3.5" />
+          {{ copied ? '已复制' : '复制' }}
+        </Button>
       </div>
-      <button v-else class="btn-ghost" @click="emit('reset-invite')">＋ 生成邀请码</button>
+      <Button v-else size="sm" @click="emit('reset-invite')">
+        <Plus class="size-3.5" />
+        生成邀请码
+      </Button>
 
       <div v-if="inviteCode" class="invite-actions">
         <template v-if="!confirmReset && !confirmDisable">
-          <button class="btn-link" @click="confirmReset = true">重置邀请码</button>
-          <button class="btn-link danger" @click="confirmDisable = true">关闭邀请</button>
+          <Button variant="ghost" size="sm" class="btn-link" @click="confirmReset = true">重置邀请码</Button>
+          <Button variant="ghost" size="sm" class="btn-link danger" @click="confirmDisable = true">关闭邀请</Button>
         </template>
         <template v-else-if="confirmReset">
           <span class="confirm-hint">重置后旧码立即失效</span>
-          <button class="btn-primary-sm" @click="doResetInvite">确认重置</button>
-          <button class="btn-link" @click="confirmReset = false">取消</button>
+          <Button size="sm" class="btn-primary-sm" @click="doResetInvite">确认重置</Button>
+          <Button variant="ghost" size="sm" class="btn-link" @click="confirmReset = false">取消</Button>
         </template>
         <template v-else-if="confirmDisable">
           <span class="confirm-hint">关闭后无法再被加入</span>
-          <button class="btn-primary-sm" @click="doDisableInvite">确认关闭</button>
-          <button class="btn-link" @click="confirmDisable = false">取消</button>
+          <Button size="sm" class="btn-primary-sm" @click="doDisableInvite">确认关闭</Button>
+          <Button variant="ghost" size="sm" class="btn-link" @click="confirmDisable = false">取消</Button>
         </template>
       </div>
     </section>
@@ -212,23 +223,31 @@ function initials(name: string) {
           </span>
           <Tag :variant="m.role === 'owner' ? 'gold' : 'gray'">{{ m.role === 'owner' ? '拥有者' : '成员' }}</Tag>
         </span>
-        <button v-if="isOwner && m.role !== 'owner'" class="remove" @click="emit('remove', m.userId)">移除</button>
+        <Button v-if="isOwner && m.role !== 'owner'" size="sm" variant="destructive" class="remove" @click="emit('remove', m.userId)">移除</Button>
       </div>
     </div>
 
     <div class="foot">
       <div class="foot-left">
-        <button
+        <Button
           v-if="isOwner && book.type === 'personal'"
+          variant="outline"
           class="btn-ghost"
           :title="'转为共享账本后可邀请成员（不可再转回个人）'"
           @click="showConvertConfirm = true"
         >
           转为共享账本
-        </button>
-        <button v-if="!isOwner" class="btn-ghost" @click="emit('leave')">退出账本</button>
+        </Button>
+        <Button v-if="!isOwner" variant="outline" class="btn-ghost" @click="emit('leave')">退出账本</Button>
       </div>
-      <button v-if="isOwner" class="btn-danger" @click="showDeleteConfirm = true">删除账本</button>
+      <Button
+        v-if="isOwner"
+        variant="destructive"
+        class="bg-destructive text-white hover:bg-destructive/90"
+        @click="showDeleteConfirm = true"
+      >
+        删除账本
+      </Button>
     </div>
   </BaseModal>
 
@@ -241,8 +260,8 @@ function initials(name: string) {
       </p>
     </div>
 
-    <label class="label">输入账本名称以确认</label>
-    <input
+    <Label class="label">输入账本名称以确认</Label>
+    <Input
       v-model="deleteNameInput"
       class="input"
       :placeholder="`请输入「${book.name}」`"
@@ -251,14 +270,15 @@ function initials(name: string) {
     />
 
     <div class="foot">
-      <button class="btn-ghost" @click="showDeleteConfirm = false">取消</button>
-      <button
-        class="btn-primary-danger"
+      <Button variant="outline" class="btn-ghost" @click="showDeleteConfirm = false">取消</Button>
+      <Button
+        variant="destructive"
+        class="bg-destructive text-white hover:bg-destructive/90"
         :disabled="!isDeleteConfirmReady()"
         @click="confirmDelete()"
       >
         {{ deleteCountdown > 0 ? `${deleteCountdown}s 后可确认` : '确认删除' }}
-      </button>
+      </Button>
     </div>
   </BaseModal>
 
@@ -271,10 +291,10 @@ function initials(name: string) {
       </p>
     </div>
     <div class="foot">
-      <button class="btn-ghost" @click="showConvertConfirm = false">取消</button>
-      <button class="btn-primary" :disabled="convertCountdown > 0" @click="confirmConvert()">
+      <Button variant="outline" class="btn-ghost" @click="showConvertConfirm = false">取消</Button>
+      <Button class="btn-primary" :disabled="convertCountdown > 0" @click="confirmConvert()">
         {{ convertCountdown > 0 ? `${convertCountdown}s 后可确认` : '确认转为共享' }}
-      </button>
+      </Button>
     </div>
   </BaseModal>
 </template>
@@ -317,22 +337,6 @@ function initials(name: string) {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.copy-btn {
-  flex: 0 0 auto;
-  height: 34px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.copy-btn:hover {
-  opacity: 0.88;
-}
 .invite-actions {
   display: flex;
   flex-wrap: wrap;
@@ -341,19 +345,25 @@ function initials(name: string) {
   min-height: 32px;
 }
 .btn-link {
+  height: auto;
+  padding: 4px 0;
   border: 0;
   background: transparent;
   color: var(--accent);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  padding: 4px 0;
 }
 .btn-link.danger {
   color: var(--heat);
 }
 .btn-link:hover {
   text-decoration: underline;
+  color: var(--accent);
+  background: transparent;
+}
+.btn-link.danger:hover {
+  color: var(--heat);
 }
 .confirm-hint {
   font-size: 12px;
@@ -363,13 +373,9 @@ function initials(name: string) {
 .btn-primary-sm {
   height: 32px;
   padding: 0 14px;
-  border: 0;
   border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
   font-size: 12.5px;
   font-weight: 600;
-  cursor: pointer;
 }
 /* 成员列表 */
 .member-list {
@@ -415,14 +421,11 @@ function initials(name: string) {
   font-size: 0.8rem;
 }
 .remove {
-  border: 0;
+  height: auto;
   border-radius: var(--r-pill);
   padding: 6px 12px;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--heat);
-  background: var(--heat-bg);
-  cursor: pointer;
 }
 .foot {
   display: flex;
@@ -451,23 +454,6 @@ function initials(name: string) {
 .btn-ghost:hover {
   background: var(--hover);
 }
-.btn-danger {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--heat);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: opacity 160ms ease, transform 160ms ease;
-}
-.btn-danger:hover {
-  opacity: 0.88;
-}
 .delete-warn {
   margin-bottom: 16px;
 }
@@ -492,6 +478,7 @@ function initials(name: string) {
 }
 .input {
   width: 100%;
+  height: 42px;
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   border-radius: var(--r-thumb);
@@ -506,28 +493,6 @@ function initials(name: string) {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
 }
-.btn-primary-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--heat);
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-primary-danger:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-primary-danger:not(:disabled):hover {
-  opacity: 0.88;
-}
 .convert-warn {
   display: flex;
   flex-direction: column;
@@ -540,20 +505,8 @@ function initials(name: string) {
   justify-content: center;
   height: 44px;
   padding: 0 20px;
-  border: 0;
   border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--accent);
   font-weight: 600;
   font-size: 13px;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-primary:not(:disabled):hover {
-  opacity: 0.88;
 }
 </style>

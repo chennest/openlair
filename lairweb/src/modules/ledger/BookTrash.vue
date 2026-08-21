@@ -2,6 +2,9 @@
 // 账本回收站：显示已删除的账本，支持恢复或彻底删除
 import { onUnmounted, ref, watch } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type { Book } from './api'
 
 const props = defineProps<{
@@ -98,8 +101,8 @@ watch(purgeTarget, (v) => {
           </span>
         </div>
         <div class="trash-actions">
-          <button class="btn-restore" @click="emit('restore', b.id)">恢复</button>
-          <button class="btn-purge" @click="openPurge(b)">彻底删除（不可恢复）</button>
+          <Button size="sm" class="btn-restore" @click="emit('restore', b.id)">恢复</Button>
+          <Button size="sm" variant="destructive" class="btn-purge" @click="openPurge(b)">彻底删除（不可恢复）</Button>
         </div>
       </div>
     </div>
@@ -114,8 +117,8 @@ watch(purgeTarget, (v) => {
       </p>
     </div>
 
-    <label class="label">输入账本名称以确认</label>
-    <input
+    <Label class="label">输入账本名称以确认</Label>
+    <Input
       v-model="purgeNameInput"
       class="input"
       :placeholder="`请输入「${purgeTarget.name}」`"
@@ -124,14 +127,15 @@ watch(purgeTarget, (v) => {
     />
 
     <div class="foot">
-      <button class="btn-ghost" @click="closePurge">取消</button>
-      <button
-        class="btn-primary-danger"
+      <Button variant="outline" class="btn-ghost" @click="closePurge">取消</Button>
+      <Button
+        variant="destructive"
+        class="bg-destructive text-white hover:bg-destructive/90"
         :disabled="!isPurgeReady()"
         @click="confirmPurge()"
       >
         {{ purgeCountdown > 0 ? `${purgeCountdown}s 后可确认` : '确认彻底删除' }}
-      </button>
+      </Button>
     </div>
   </BaseModal>
 </template>
@@ -182,33 +186,13 @@ watch(purgeTarget, (v) => {
   gap: 8px;
   flex: 0 0 auto;
 }
-.btn-restore {
-  border: 0;
-  border-radius: var(--r-pill);
-  padding: 7px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-restore:hover {
-  opacity: 0.88;
-}
+.btn-restore,
 .btn-purge {
-  border: 0;
+  height: auto;
   border-radius: var(--r-pill);
   padding: 7px 14px;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--heat);
-  background: var(--heat-bg);
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-purge:hover {
-  opacity: 0.75;
 }
 
 /* 彻底删除确认弹窗 */
@@ -236,6 +220,7 @@ watch(purgeTarget, (v) => {
 }
 .input {
   width: 100%;
+  height: 42px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-thumb);
   padding: 10px 12px;
@@ -270,27 +255,5 @@ watch(purgeTarget, (v) => {
 }
 .btn-ghost:hover {
   background: var(--hover);
-}
-.btn-primary-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--heat);
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-primary-danger:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-primary-danger:not(:disabled):hover {
-  opacity: 0.88;
 }
 </style>

@@ -2,6 +2,9 @@
 // 新建账本弹窗：个人账本或共享账本
 import { ref, watch } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 const props = defineProps<{ open: boolean }>()
 
@@ -32,20 +35,20 @@ function submit() {
 <template>
   <BaseModal v-if="open" title="新建账本" @close="emit('close')">
     <!-- 类型 -->
-    <label class="label">账本类型</label>
+    <Label class="label">账本类型</Label>
     <div class="types">
-      <button class="type-btn" :class="{ on: type === 'shared' }" @click="type = 'shared'">
+      <Button variant="outline" class="type-btn" :class="{ on: type === 'shared' }" @click="type = 'shared'">
         <span class="t-name">共享账本</span>
         <span class="t-desc">多人一起记账（家庭、旅行、合租…）</span>
-      </button>
-      <button class="type-btn" :class="{ on: type === 'personal' }" @click="type = 'personal'">
+      </Button>
+      <Button variant="outline" class="type-btn" :class="{ on: type === 'personal' }" @click="type = 'personal'">
         <span class="t-name">个人账本</span>
         <span class="t-desc">仅自己可见的流水</span>
-      </button>
+      </Button>
     </div>
 
-    <label class="label">账本名称</label>
-    <input
+    <Label class="label">账本名称</Label>
+    <Input
       v-model="name"
       class="input"
       placeholder="如：家庭共享账本 / 大理旅行"
@@ -54,8 +57,8 @@ function submit() {
     />
 
     <div class="foot">
-      <button class="btn-ghost" @click="emit('close')">取消</button>
-      <button class="btn-primary" :disabled="!name.trim()" @click="submit">创建</button>
+      <Button variant="outline" class="btn-ghost" @click="emit('close')">取消</Button>
+      <Button class="btn-primary" :disabled="!name.trim()" @click="submit">创建</Button>
     </div>
   </BaseModal>
 </template>
@@ -76,7 +79,10 @@ function submit() {
 .type-btn {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 4px;
+  height: auto;
   padding: 14px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
@@ -88,6 +94,7 @@ function submit() {
 }
 .type-btn:hover {
   border-color: rgba(0, 113, 227, 0.4);
+  background: var(--surface);
 }
 .type-btn.on {
   border-color: var(--accent);
@@ -103,6 +110,7 @@ function submit() {
 }
 .input {
   width: 100%;
+  height: 42px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-thumb);
   padding: 11px 12px;

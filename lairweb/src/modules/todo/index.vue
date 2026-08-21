@@ -1,6 +1,17 @@
 <script setup lang="ts">
 // 待办模块页：四象限视图 + 新增/勾选/删除
 import { onMounted, ref } from 'vue'
+import { Loader2, CircleAlert, Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Card, CardContent } from '@/components/ui/card'
 import { todoApi, QUADRANTS, DUES, type TodoItem } from './api'
 import QuadrantCard from './QuadrantCard.vue'
 
@@ -48,19 +59,51 @@ onMounted(load)
 </script>
 
 <template>
-  <div v-if="loading" class="placeholder"><div><p>正在加载待办…</p></div></div>
-  <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p></div></div>
+  <div v-if="loading" class="empty-state">
+    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+      <CardContent class="flex flex-col items-center gap-3 py-10">
+        <Loader2 class="size-6 animate-spin text-[var(--accent)]" />
+        <p class="empty-title">正在加载待办…</p>
+      </CardContent>
+    </Card>
+  </div>
+
+  <div v-else-if="error" class="empty-state">
+    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+      <CardContent class="flex flex-col items-center gap-3 py-10">
+        <CircleAlert class="size-6 text-[var(--heat)]" />
+        <p class="empty-title">{{ error }}</p>
+      </CardContent>
+    </Card>
+  </div>
 
   <div v-else class="todo">
     <form class="composer" @submit.prevent="createTodo">
-      <input v-model="form.text" placeholder="新增待办…" required />
-      <select v-model="form.quadrant">
-        <option v-for="q in QUADRANTS" :key="q" :value="q">{{ q }}</option>
-      </select>
-      <select v-model="form.due">
-        <option v-for="d in DUES" :key="d" :value="d">{{ d }}</option>
-      </select>
-      <button type="submit" :disabled="saving">{{ saving ? '添加中…' : '添加' }}</button>
+      <Input
+        v-model="form.text"
+        placeholder="新增待办…"
+        class="composer-input h-11 min-w-[120px] flex-1"
+      />
+      <Select v-model="form.quadrant">
+        <SelectTrigger class="min-h-11 min-w-[132px]" aria-label="选择象限">
+          <SelectValue placeholder="象限" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="q in QUADRANTS" :key="q" :value="q">{{ q }}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="form.due">
+        <SelectTrigger class="min-h-11 min-w-[104px]" aria-label="选择期限">
+          <SelectValue placeholder="期限" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="d in DUES" :key="d" :value="d">{{ d }}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button type="submit" :disabled="saving" class="h-11 gap-1.5 px-5">
+        <Plus class="size-4" />
+        {{ saving ? '添加中…' : '添加' }}
+      </Button>
     </form>
 
     <div class="todo-grid">
@@ -79,84 +122,41 @@ onMounted(load)
 <style scoped>
 .composer {
   display: flex;
+  align-items: center;
   gap: 10px;
   margin-bottom: 18px;
-  padding: 14px;
+  padding: 12px;
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--sh-panel);
-}
-.composer input {
-  flex: 1;
-  min-width: 120px;
 }
 .todo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 18px;
 }
-.placeholder {
+
+/* 空状态 / 占位（Card + 图标） */
+.empty-state {
   display: grid;
   place-items: center;
   min-height: 46vh;
-  text-align: center;
-  border: 1px dashed var(--faint);
+}
+.empty-card {
+  border-color: var(--faint);
   border-radius: var(--r-panel);
   background: var(--surface);
+}
+.empty-title {
   color: var(--text-3);
+  font-size: 0.9rem;
 }
-.placeholder .symbol {
-  font-size: 2.4rem;
-  margin-bottom: 12px;
-  color: var(--accent);
-}
-input,
-select {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  color: var(--text);
-  outline: none;
-  background: var(--surface);
-  padding: 10px 12px;
-  font: inherit;
-  transition: border-color 160ms ease;
-}
-select option {
-  color: var(--text);
-}
-input:focus,
-select:focus {
-  border-color: var(--accent);
-}
-.composer button {
-  display: inline-flex;
-  align-items: center;
-  min-width: 90px;
-  height: 44px;
-  padding: 0 16px;
-  border-radius: var(--r-pill);
-  border: 0;
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
-}
-.composer button:hover {
-  box-shadow: var(--sh-cta);
-}
-.composer button:active {
-  transform: scale(0.97);
-}
-.composer button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+
 @media (max-width: 640px) {
   .composer {
     flex-wrap: wrap;
   }
-  .composer input {
+  .composer :deep(.composer-input) {
     flex-basis: 100%;
   }
 }

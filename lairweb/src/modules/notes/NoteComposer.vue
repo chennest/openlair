@@ -1,6 +1,10 @@
 <script setup lang="ts">
 // 笔记新增表单（纯展示，emit submit）
 import { ref } from 'vue'
+import { Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import type { CreateNoteInput } from './api'
 
 const emit = defineEmits<{
@@ -32,17 +36,38 @@ defineExpose({ reset })
 
 <template>
   <form class="composer" @submit.prevent="submit">
-    <input v-model="form.title" placeholder="笔记标题" required />
-    <textarea v-model="form.summary" rows="2" placeholder="内容摘要…"></textarea>
-    <input v-model="tagsText" placeholder="标签，逗号分隔（如：工作, 灵感）" />
-    <button type="submit" :disabled="saving">{{ saving ? '保存中…' : '新增笔记' }}</button>
+    <Input
+      v-model="form.title"
+      class="field-title h-11"
+      placeholder="笔记标题"
+      required
+    />
+    <Textarea
+      v-model="form.summary"
+      class="field-summary min-h-20"
+      rows="2"
+      placeholder="内容摘要…"
+    />
+    <Input
+      v-model="tagsText"
+      class="field-tags h-11"
+      placeholder="标签，逗号分隔（如：工作, 灵感）"
+    />
+    <Button type="submit" class="field-submit h-11 rounded-full px-6" :disabled="saving">
+      <Plus class="size-4" />
+      {{ saving ? '保存中…' : '新增笔记' }}
+    </Button>
   </form>
 </template>
 
 <style scoped>
 .composer {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'title   submit'
+    'summary summary'
+    'tags    tags';
   gap: 10px;
   margin-bottom: 18px;
   padding: 14px;
@@ -50,61 +75,26 @@ defineExpose({ reset })
   background: var(--surface);
   box-shadow: var(--sh-panel);
 }
-.composer textarea {
-  grid-column: span 3;
-  min-height: 40px;
+.field-title {
+  grid-area: title;
 }
-.composer button {
-  grid-column: span 3;
+.field-submit {
+  grid-area: submit;
 }
-input,
-textarea {
-  width: 100%;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  color: var(--text);
-  outline: none;
-  background: var(--surface);
-  padding: 10px 12px;
-  font: inherit;
-  transition: border-color 160ms ease;
+.field-summary {
+  grid-area: summary;
 }
-input:focus,
-textarea:focus {
-  border-color: var(--accent);
-}
-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 120px;
-  height: 44px;
-  padding: 0 16px;
-  border-radius: var(--r-pill);
-  border: 0;
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
-}
-button:hover {
-  box-shadow: var(--sh-cta);
-}
-button:active {
-  transform: scale(0.97);
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.field-tags {
+  grid-area: tags;
 }
 @media (max-width: 640px) {
   .composer {
     grid-template-columns: 1fr;
-  }
-  .composer textarea,
-  .composer button {
-    grid-column: span 1;
+    grid-template-areas:
+      'title'
+      'summary'
+      'tags'
+      'submit';
   }
 }
 </style>

@@ -2,6 +2,10 @@
 // 记一笔弹窗：基于 BaseModal；分类列表随类型切换（支出/收入分类表）
 import { ref, watch, computed } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Category, CreateTransactionInput } from './api'
 
 const props = defineProps<{
@@ -76,17 +80,19 @@ function submit() {
 
 <template>
   <BaseModal v-if="open" title="记一笔" @close="emit('close')">
-    <!-- 类型切换（白胶囊 segmented） -->
-    <div class="type-switch">
-      <button class="type-btn" :class="{ on: form.type === '支出' }" @click="form.type = '支出'">支出</button>
-      <button class="type-btn income" :class="{ on: form.type === '收入' }" @click="form.type = '收入'">收入</button>
-    </div>
+    <!-- 类型切换（Tabs 白胶囊 segmented） -->
+    <Tabs v-model="form.type" class="type-tabs">
+      <TabsList class="type-switch">
+        <TabsTrigger value="支出" class="type-btn">支出</TabsTrigger>
+        <TabsTrigger value="收入" class="type-btn">收入</TabsTrigger>
+      </TabsList>
+    </Tabs>
 
     <!-- 金额 -->
-    <label class="field-label">金额</label>
+    <Label class="field-label">金额</Label>
     <div class="amount-box">
       <span class="yuan">¥</span>
-      <input
+      <Input
         v-model.number="form.amount"
         type="number"
         step="0.01"
@@ -98,66 +104,68 @@ function submit() {
     </div>
 
     <!-- 分类（随类型切换） -->
-    <label class="field-label">分类</label>
+    <Label class="field-label">分类</Label>
     <div class="cat-grid">
-      <button
+      <Button
         v-for="c in categoryOptions"
         :key="c.id"
+        variant="outline"
         class="cat-btn"
         :class="{ on: form.categoryId === c.id }"
         @click="pickCategory(c.id)"
-      >{{ c.name }}</button>
+      >{{ c.name }}</Button>
     </div>
 
     <!-- 日期 + 备注 -->
     <div class="row2">
       <div>
-        <label class="field-label">日期</label>
-        <input v-model="form.date" type="date" class="input" />
+        <Label class="field-label">日期</Label>
+        <Input v-model="form.date" type="date" class="input" />
       </div>
       <div>
-        <label class="field-label">备注</label>
-        <input v-model="form.note" type="text" placeholder="可选" class="input" @keyup.enter="submit" />
+        <Label class="field-label">备注</Label>
+        <Input v-model="form.note" type="text" placeholder="可选" class="input" @keyup.enter="submit" />
       </div>
     </div>
 
     <div class="modal-foot">
-      <button class="btn-ghost" @click="emit('close')">取消</button>
-      <button class="btn-primary" :disabled="saving || !form.amount || Number(form.amount) <= 0 || !form.categoryId" @click="submit">
+      <Button variant="outline" class="btn-ghost" @click="emit('close')">取消</Button>
+      <Button class="btn-primary" :disabled="saving || !form.amount || Number(form.amount) <= 0 || !form.categoryId" @click="submit">
         {{ saving ? '保存中…' : '保存这笔' }}
-      </button>
+      </Button>
     </div>
   </BaseModal>
 </template>
 
 <style scoped>
+.type-tabs {
+  width: 100%;
+}
 .type-switch {
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
+  height: auto;
   padding: 4px;
   border-radius: var(--r-pill);
   background: rgba(0, 0, 0, 0.05);
 }
 .type-btn {
+  height: auto;
+  flex: none;
   padding: 11px;
-  border: 0;
   border-radius: var(--r-pill);
   color: var(--text-2);
   background: transparent;
   font-weight: 600;
-  cursor: pointer;
   transition: all 160ms var(--ease-out-quart);
 }
-.type-btn.on {
+.type-btn[data-active] {
   color: var(--text);
   background: var(--surface);
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-.type-btn.income.on {
-  color: #0a5a2c;
-  background: rgba(48, 209, 88, 0.16);
 }
 .field-label {
   display: block;
@@ -202,6 +210,7 @@ function submit() {
   gap: 8px;
 }
 .cat-btn {
+  height: auto;
   padding: 10px 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-thumb);
@@ -214,11 +223,16 @@ function submit() {
 }
 .cat-btn:hover {
   border-color: rgba(0, 113, 227, 0.4);
+  background: var(--surface);
 }
 .cat-btn.on {
   border-color: var(--accent);
   color: #fff;
   background: var(--accent);
+}
+.cat-btn.on:hover {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .row2 {
   display: grid;
@@ -227,6 +241,7 @@ function submit() {
 }
 .input {
   width: 100%;
+  height: 42px;
   padding: 11px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-thumb);

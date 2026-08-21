@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 记账模块页：账本切换 + 摘要/预算/趋势/统计/筛选/流水/弹窗，负责数据加载与查询状态
 import { computed, onMounted, ref } from 'vue'
+import { Check, Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import {
   ledgerApi,
   bookApi,
@@ -257,8 +259,14 @@ onMounted(async () => {
     <p class="empty-title">还没有账本</p>
     <p class="empty-desc">创建一个账本开始记账，或输入邀请码加入家人朋友的共享账本</p>
     <div class="empty-actions">
-      <button class="empty-btn" @click="showCreate = true">＋ 新建账本</button>
-      <button class="empty-btn ghost" @click="showJoin = true">＋ 加入共享账本</button>
+      <Button @click="showCreate = true">
+        <Plus class="size-4" />
+        新建账本
+      </Button>
+      <Button variant="outline" @click="showJoin = true">
+        <Plus class="size-4" />
+        加入共享账本
+      </Button>
     </div>
   </div>
 
@@ -278,9 +286,21 @@ onMounted(async () => {
     <LedgerSummary :summary="data!.summary">
       <template #action>
         <div class="hero-actions">
-          <button class="add-btn" :disabled="books.length === 0" :title="books.length === 0 ? '请先创建账本' : ''" @click="showDialog = true">＋ 记一笔</button>
+          <Button
+            variant="ghost"
+            class="add-btn"
+            :disabled="books.length === 0"
+            :title="books.length === 0 ? '请先创建账本' : ''"
+            @click="showDialog = true"
+          >
+            <Plus class="size-4" />
+            记一笔
+          </Button>
           <Transition name="fade">
-            <span v-if="savedTip" class="saved-tip">✓ 已记录</span>
+            <span v-if="savedTip" class="saved-tip">
+              <Check class="size-3.5" />
+              已记录
+            </span>
           </Transition>
         </div>
       </template>
@@ -365,6 +385,7 @@ onMounted(async () => {
 .add-btn {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   height: 40px;
   padding: 0 20px;
   border-radius: var(--r-pill);
@@ -380,6 +401,7 @@ onMounted(async () => {
 }
 .add-btn:hover {
   background: rgba(255, 255, 255, 0.26);
+  color: #fff;
 }
 .add-btn:active {
   transform: scale(0.97);
@@ -390,6 +412,9 @@ onMounted(async () => {
   transform: none;
 }
 .saved-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: rgba(255, 255, 255, 0.92);
   font-weight: 600;
   font-size: 0.88rem;
@@ -462,31 +487,12 @@ onMounted(async () => {
   flex-wrap: wrap;
   justify-content: center;
 }
-.empty-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
+.empty-actions :deep(button) {
+  height: 44px;
   padding: 0 22px;
-  border: 0;
   border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
   font-size: 0.92rem;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.empty-btn:hover {
-  opacity: 0.88;
-}
-.empty-btn.ghost {
-  background: var(--surface);
-  color: var(--accent);
-  border: 1px solid var(--hairline);
-}
-.empty-btn.ghost:hover {
-  background: var(--hover);
-  opacity: 1;
+  font-weight: 600;
 }
 @media (max-width: 960px) {
   .lower-grid {

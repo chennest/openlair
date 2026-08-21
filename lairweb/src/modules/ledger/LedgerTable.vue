@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // 流水列表：按日分组（今天/昨天/日期）+ 日合计 + 分页
 import { computed } from 'vue'
+import { ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import Tag from '../../components/Tag.vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { Transaction } from './api'
 
 const props = defineProps<{
@@ -83,14 +86,16 @@ const groups = computed<DayGroup[]>(() => {
         <div v-for="t in g.rows" :key="t.id" class="row">
           <span class="main">
             <span v-if="shared" class="face" :title="`${t.userName} 记的`" aria-hidden="true">{{ t.userName.slice(0, 1) }}</span>
-            <span class="cat">{{ t.category }}</span>
+            <Badge variant="secondary" class="cat-badge">{{ t.category }}</Badge>
             <span class="text">{{ t.note || '—' }}</span>
           </span>
           <span class="sub">
             <span class="amt num" :class="t.type === '收入' ? 'income' : 'expense'">
               {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
             </span>
-            <button class="mini ghost" aria-label="删除" @click="emit('remove', t.id)">✕</button>
+            <Button variant="ghost" size="icon-sm" class="row-del" aria-label="删除" @click="emit('remove', t.id)">
+              <X class="size-3.5" />
+            </Button>
           </span>
         </div>
       </div>
@@ -98,9 +103,15 @@ const groups = computed<DayGroup[]>(() => {
 
     <!-- 分页 -->
     <nav v-if="totalPages > 1" class="pager" aria-label="分页">
-      <button class="page-btn" :disabled="page <= 1" @click="emit('page', page - 1)">‹ 上一页</button>
+      <Button variant="outline" size="sm" class="page-btn" :disabled="page <= 1" @click="emit('page', page - 1)">
+        <ChevronLeft class="size-4" />
+        上一页
+      </Button>
       <span class="page-info num">{{ page }} / {{ totalPages }}</span>
-      <button class="page-btn" :disabled="page >= totalPages" @click="emit('page', page + 1)">下一页 ›</button>
+      <Button variant="outline" size="sm" class="page-btn" :disabled="page >= totalPages" @click="emit('page', page + 1)">
+        下一页
+        <ChevronRight class="size-4" />
+      </Button>
     </nav>
   </article>
 </template>
@@ -187,14 +198,11 @@ const groups = computed<DayGroup[]>(() => {
   gap: 10px;
   min-width: 0;
 }
-.cat {
+.cat-badge {
   flex: 0 0 auto;
-  padding: 2px 9px;
-  border-radius: var(--r-pill);
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-2);
-  background: rgba(0, 0, 0, 0.05);
 }
 .face {
   width: 22px;
@@ -229,18 +237,12 @@ const groups = computed<DayGroup[]>(() => {
 .expense {
   color: var(--text);
 }
-.mini.ghost {
-  min-width: 0;
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 8px;
+.row-del {
   color: var(--text-3);
-  background: transparent;
-  cursor: pointer;
-  transition: color 160ms ease;
 }
-.mini.ghost:hover {
+.row-del:hover {
   color: var(--heat);
+  background: transparent;
 }
 .pager {
   display: flex;

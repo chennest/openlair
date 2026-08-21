@@ -2,6 +2,8 @@
 // 输入邀请码加入共享账本：8 位码，自动大写 + 分段展示
 import { computed, ref, watch } from 'vue'
 import BaseModal from '../../components/BaseModal.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 const props = defineProps<{
   open: boolean
@@ -26,8 +28,8 @@ watch(
 const formatted = computed(() => (code.value.length > 4 ? `${code.value.slice(0, 4)}-${code.value.slice(4)}` : code.value))
 const ready = computed(() => code.value.length === 8 && !props.submitting)
 
-function onInput(e: Event) {
-  const raw = (e.target as HTMLInputElement).value
+function onUpdate(value: string | number | undefined) {
+  const raw = String(value ?? '')
   code.value = raw.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 8)
 }
 
@@ -42,25 +44,25 @@ function submit() {
     <div class="join">
       <p class="desc">输入好友分享的邀请码，即可加入对方的共享账本一起记账。</p>
 
-      <input
-        class="code-input"
-        :value="formatted"
+      <Input
+        :model-value="formatted"
         inputmode="text"
         autocomplete="off"
         spellcheck="false"
         placeholder="例如 KD7F-2GQW"
         maxlength="9"
-        @input="onInput"
+        class="code-input"
+        @update:model-value="onUpdate"
         @keyup.enter="submit"
       />
 
       <p v-if="error" class="err">{{ error }}</p>
 
       <div class="foot">
-        <button class="btn-ghost" @click="emit('close')">取消</button>
-        <button class="btn-primary" :disabled="!ready" @click="submit">
+        <Button variant="outline" class="btn-ghost" @click="emit('close')">取消</Button>
+        <Button class="btn-primary" :disabled="!ready" @click="submit">
           {{ submitting ? '加入中…' : '加入' }}
-        </button>
+        </Button>
       </div>
     </div>
   </BaseModal>

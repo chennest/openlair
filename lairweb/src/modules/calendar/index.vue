@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 日历模块页：日程列表 + 新增/完成/删除
 import { onMounted, ref } from 'vue'
+import { Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { calendarApi, type CalendarEvent } from './api'
 import EventList from './EventList.vue'
 
@@ -53,11 +56,14 @@ onMounted(load)
 
   <div v-else class="calendar">
     <form class="composer" @submit.prevent="createEvent">
-      <input v-model="form.title" placeholder="日程标题" required />
-      <input v-model="form.date" type="date" />
-      <input v-model="form.time" type="time" />
-      <input v-model="form.location" placeholder="地点（可选）" />
-      <button type="submit" :disabled="saving">{{ saving ? '添加中…' : '添加日程' }}</button>
+      <Input v-model="form.title" class="field-title h-11" placeholder="日程标题" required />
+      <Input v-model="form.date" class="field-date h-11" type="date" />
+      <Input v-model="form.time" class="field-time h-11" type="time" />
+      <Input v-model="form.location" class="field-location h-11" placeholder="地点（可选）" />
+      <Button type="submit" class="field-submit h-11 rounded-full px-5" :disabled="saving">
+        <Plus class="size-4" />
+        {{ saving ? '添加中…' : '添加日程' }}
+      </Button>
     </form>
 
     <EventList :events="events" @toggle="toggleDone" @remove="removeEvent" />
@@ -75,33 +81,22 @@ onMounted(load)
   background: var(--surface);
   box-shadow: var(--sh-panel);
 }
-.composer input:first-child {
-  flex: 1;
-  min-width: 160px;
+.field-title {
+  flex: 1 1 160px;
 }
-.composer button {
-  display: inline-flex;
-  align-items: center;
+.field-date {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+.field-time {
+  flex: 0 0 auto;
   min-width: 110px;
-  height: 44px;
-  padding: 0 16px;
-  border-radius: var(--r-pill);
-  border: 0;
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
 }
-.composer button:hover {
-  box-shadow: var(--sh-cta);
+.field-location {
+  flex: 1 1 140px;
 }
-.composer button:active {
-  transform: scale(0.97);
-}
-.composer button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.field-submit {
+  flex: 0 0 auto;
 }
 .placeholder {
   display: grid;
@@ -118,17 +113,14 @@ onMounted(load)
   margin-bottom: 12px;
   color: var(--accent);
 }
-input {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  color: var(--text);
-  outline: none;
-  background: var(--surface);
-  padding: 10px 12px;
-  font: inherit;
-  transition: border-color 160ms ease;
-}
-input:focus {
-  border-color: var(--accent);
+@media (max-width: 640px) {
+  .field-title,
+  .field-location {
+    flex-basis: 100%;
+  }
+  .field-date,
+  .field-time {
+    flex: 1 1 auto;
+  }
 }
 </style>

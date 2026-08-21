@@ -1,5 +1,8 @@
 <script setup lang="ts">
 // 笔记卡片（纯展示 + 删除）
+import { Trash2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+
 defineProps<{
   title: string
   summary: string
@@ -16,7 +19,16 @@ const emit = defineEmits<{
   <article class="card">
     <div class="card-title">
       <span>{{ updatedAt }}</span>
-      <span class="more" @click="emit('remove')">删除 ✕</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="card-del rounded-full text-muted-foreground hover:text-destructive"
+        title="删除笔记"
+        aria-label="删除笔记"
+        @click="emit('remove')"
+      >
+        <Trash2 class="size-4" />
+      </Button>
     </div>
     <h3 class="note-title">{{ title }}</h3>
     <p class="hint">{{ summary }}</p>
@@ -49,15 +61,8 @@ const emit = defineEmits<{
   font-weight: 600;
   letter-spacing: -0.01em;
 }
-.more {
-  color: var(--text-3);
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 160ms ease;
-}
-.more:hover {
-  color: var(--heat);
+.card-del {
+  flex: 0 0 auto;
 }
 .note-title {
   margin: 0 0 8px;
@@ -85,5 +90,11 @@ const emit = defineEmits<{
   font-weight: 600;
   color: var(--text-2);
   background: rgba(0, 0, 0, 0.05);
+}
+@media (max-width: 860px) {
+  .card-del {
+    width: 44px;
+    height: 44px;
+  }
 }
 </style>

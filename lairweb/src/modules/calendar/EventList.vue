@@ -1,5 +1,8 @@
 <script setup lang="ts">
 // 日程列表（纯展示 + 完成/删除）
+import { Trash2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import Tag from '../../components/Tag.vue'
 import type { CalendarEvent } from './api'
 
@@ -24,8 +27,23 @@ const emit = defineEmits<{
           <span class="text" :class="{ done: e.done }">{{ e.title }}</span>
         </span>
         <span class="sub">
-          <span>{{ e.date }} · {{ e.time }} · {{ e.location || '未填地点' }}</span>
-          <button class="mini ghost" @click.stop="emit('remove', e.id)">✕</button>
+          <span class="meta">{{ e.date }} · {{ e.time }} · {{ e.location || '未填地点' }}</span>
+          <Switch
+            :model-value="e.done"
+            :title="e.done ? '标记为未完成' : '标记为已完成'"
+            aria-label="切换完成状态"
+            @update:model-value="emit('toggle', e)"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            class="del rounded-full text-muted-foreground hover:text-destructive"
+            title="删除日程"
+            aria-label="删除日程"
+            @click.stop="emit('remove', e.id)"
+          >
+            <Trash2 class="size-4" />
+          </Button>
         </span>
       </div>
     </div>
@@ -102,18 +120,20 @@ const emit = defineEmits<{
   color: var(--text-3);
   font-size: 0.78rem;
   white-space: nowrap;
-}
-.mini.ghost {
   min-width: 0;
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--text-3);
-  background: transparent;
-  cursor: pointer;
-  transition: color 160ms ease;
 }
-.mini.ghost:hover {
-  color: var(--heat);
+.meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 860px) {
+  .del {
+    width: 44px;
+    height: 44px;
+  }
+  .meta {
+    max-width: 46vw;
+  }
 }
 </style>
