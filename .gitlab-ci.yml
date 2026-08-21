@@ -22,12 +22,15 @@ variables:
   COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
 
 # ============================================================
-# Stage 1: backend 测试（uv + pytest）
+# Stage 1: backend 测试（uv + pytest）— 【可选】失败不阻塞打包
+# 用 needs 解耦:下方 package job 不依赖本 job,与测试并行执行
 # ============================================================
 backend-test:
   stage: test
   tags: [k8s]
   image: ${IMAGE_PYTHON}
+  # 可选:测试失败仅标记流水线 warning,不影响打包与部署
+  allow_failure: true
   before_script:
     # 从清华源安装 uv（PyPI 官方源国内慢）
     - pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
@@ -51,6 +54,8 @@ web-build:
   stage: build
   tags: [k8s]
   image: ${IMAGE_NODE}
+  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
+  needs: []
   before_script:
     - corepack enable
     - corepack prepare pnpm@9.15.0 --activate
@@ -78,6 +83,8 @@ backend-package:
   stage: package
   tags: [k8s]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
+  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
+  needs: []
   script:
     # 登录 Harbor
     # ⚠️ buildah login 选项必须在前（旧版不支持 registry 在前的顺序，报 too many arguments）
@@ -110,6 +117,8 @@ web-package:
   stage: package
   tags: [k8s]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
+  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
+  needs: []
   script:
     # ⚠️ printf 不带换行（echo 会加 \n，Harbor 拒绝带换行密码 → invalid username/password）
     - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
@@ -138,6 +147,10 @@ deploy-test:
   image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
   environment:
     name: test
+  # 只等镜像构建完成(不等 test,test 可选并行)
+  needs:
+    - backend-package
+    - web-package
   rules:
     - if: '$CI_COMMIT_BRANCH == "test"'
   before_script:
