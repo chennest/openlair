@@ -58,8 +58,11 @@
   --secondary-foreground: var(--text);
   --muted: var(--hover);
   --muted-foreground: var(--text-2);
-  --accent: var(--hover);
-  --accent-foreground: var(--text);
+  /* ⚠ 注意:style.css 的 :root 也定义了 --accent(#0071e3 品牌蓝)。
+     此处后加载会覆盖它,必须保持同值,否则 --primary 退化成浅灰、全局蓝丢失。
+     shadcn 的 accent 语义(浅灰 hover)被弱化:相关组件 hover 呈蓝底白字,可接受 */
+  --accent: #0071e3;
+  --accent-foreground: #ffffff;
   --destructive: #ff3b30;
   --border: var(--hairline);
   --input: rgba(0, 0, 0, 0.14);
