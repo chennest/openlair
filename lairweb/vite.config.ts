@@ -59,6 +59,9 @@ export default defineConfig(({ mode }) => {
   const proxyTargets: Record<string, string> = useMock ? {} : { '/api': apiProxyTarget }
 
   return {
+    resolve: {
+      alias: { '@': new URL('./src', import.meta.url).pathname },
+    },
     plugins: [
       vue(),
       tailwindcss(),
