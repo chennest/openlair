@@ -30,14 +30,16 @@ const detailEvent = ref<CalendarEvent | null>(null)
 const saving = ref(false)
 const busy = ref(false)
 
-/** DateValue → 'YYYY-MM-DD'（与后端契约一致） */
-function dayKey(d: DateValue): string {
+/** DateValue → 'YYYY-MM-DD'（与后端契约一致）。入参可能为 null/undefined（reka 网格填充位），返回空串 */
+function dayKey(d: DateValue | null | undefined): string {
+  if (!d) return ''
   return `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
 }
 
 /** 某日期当天全部日程（格子渲染用） */
-function eventsOf(d: DateValue): CalendarEvent[] {
+function eventsOf(d: DateValue | null | undefined): CalendarEvent[] {
   const k = dayKey(d)
+  if (!k) return []
   return events.value.filter((e) => e.date === k)
 }
 
@@ -130,11 +132,11 @@ onMounted(load)
       weekday-format="short"
       class="cal-root"
     >
-      <template #calendar-cell="{ date }">
-        <div class="cal-cell-box">
+      <template #calendar-cell="{ date, month }">
+        <div v-if="date" class="cal-cell-box">
           <CalendarCellTrigger
             :day="date"
-            :month="date"
+            :month="month"
             class="cal-day-trigger"
           >
             {{ date.day }}
