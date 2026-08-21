@@ -143,20 +143,22 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
         <CalendarGridBody>
           <CalendarGridRow v-for="(weekDates, index) in month.rows" :key="`weekDate-${index}`" class="mt-2 w-full">
             <CalendarCell
-              v-for="weekDate in weekDates"
-              :key="weekDate.toString()"
+              v-for="(weekDate, wdIndex) in weekDates"
+              :key="weekDate ? weekDate.toString() : `wd-${wdIndex}`"
               :date="weekDate"
             >
-              <slot
-                name="calendar-cell"
-                :date="weekDate"
-                :month="month.value"
-              >
-                <CalendarCellTrigger
-                  :day="weekDate"
+              <template v-if="weekDate">
+                <slot
+                  name="calendar-cell"
+                  :date="weekDate"
                   :month="month.value"
-                />
-              </slot>
+                >
+                  <CalendarCellTrigger
+                    :day="weekDate"
+                    :month="month.value"
+                  />
+                </slot>
+              </template>
             </CalendarCell>
           </CalendarGridRow>
         </CalendarGridBody>
