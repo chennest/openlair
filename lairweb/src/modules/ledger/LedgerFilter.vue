@@ -95,9 +95,18 @@ const catKey = computed({
     <!-- 类型 segmented（Tabs 白胶囊） -->
     <Tabs v-model="typeKey">
       <TabsList class="seg">
-        <TabsTrigger value="all" class="seg-btn">全部</TabsTrigger>
-        <TabsTrigger value="支出" class="seg-btn">支出</TabsTrigger>
-        <TabsTrigger value="收入" class="seg-btn">收入</TabsTrigger>
+        <TabsTrigger
+          value="all"
+          class="h-auto flex-0 px-[14px] text-[13px] font-medium rounded-full text-[var(--text-2)] data-[state=active]:bg-[var(--surface)] data-[state=active]:text-[var(--text)] data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_3px_rgba(0,0,0,0.12)]"
+        >全部</TabsTrigger>
+        <TabsTrigger
+          value="支出"
+          class="h-auto flex-0 px-[14px] text-[13px] font-medium rounded-full text-[var(--text-2)] data-[state=active]:bg-[var(--surface)] data-[state=active]:text-[var(--text)] data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_3px_rgba(0,0,0,0.12)]"
+        >支出</TabsTrigger>
+        <TabsTrigger
+          value="收入"
+          class="h-auto flex-0 px-[14px] text-[13px] font-medium rounded-full text-[var(--text-2)] data-[state=active]:bg-[var(--surface)] data-[state=active]:text-[var(--text)] data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_3px_rgba(0,0,0,0.12)]"
+        >收入</TabsTrigger>
       </TabsList>
     </Tabs>
 
@@ -108,8 +117,12 @@ const catKey = computed({
         :key="p.key"
         variant="ghost"
         size="sm"
-        class="preset-btn"
-        :class="{ on: preset === p.key }"
+        class="text-[12.5px] font-medium px-3 rounded-full text-[var(--text-2)]"
+        :class="
+          preset === p.key
+            ? 'bg-[rgba(0,113,227,0.08)] text-[var(--accent)] font-semibold hover:bg-[rgba(0,113,227,0.14)]'
+            : ''
+        "
         @click="pickPreset(p.key)"
       >{{ p.label }}</Button>
     </div>
@@ -165,46 +178,10 @@ const catKey = computed({
   padding: 3px;
   gap: 2px;
 }
-.seg-btn {
-  height: auto;
-  flex: 0 0 auto;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  color: var(--text-2);
-  transition: all 200ms var(--ease-out-quart);
-}
-.seg-btn[data-active] {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
 .presets {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 2px;
-}
-.preset-btn {
-  border: none;
-  cursor: pointer;
-  font-size: 12.5px;
-  font-weight: 500;
-  padding: 6px 11px;
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--text-2);
-  transition: all 160ms ease;
-}
-.preset-btn:hover {
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.04);
-}
-.preset-btn.on {
-  color: var(--accent);
-  background: rgba(0, 113, 227, 0.08);
-  font-weight: 600;
 }
 .cat-select {
   height: 36px;
