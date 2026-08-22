@@ -74,7 +74,10 @@ function change(patch: Partial<LedgerQuery>) {
 }
 
 function pickPreset(key: DatePreset) {
-  change({ ...rangeOf(key), page: 1 })
+  // 解构强制携带键:rangeOf('') 返回 {},若直接展开则 patch 无 startDate/endDate 键,
+  // 父组件合并后旧日期残留,"全部"会失效。解构后始终带键(值为 undefined = 清除)。
+  const { startDate, endDate } = rangeOf(key)
+  change({ startDate, endDate, page: 1 })
 }
 
 function pickType(type: LedgerQuery['type']) {
