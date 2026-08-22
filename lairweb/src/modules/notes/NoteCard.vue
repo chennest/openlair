@@ -22,7 +22,7 @@ const emit = defineEmits<{
       <Button
         variant="ghost"
         size="icon"
-        class="card-del rounded-full text-muted-foreground hover:text-destructive"
+        class="rounded-full text-muted-foreground hover:text-destructive max-[860px]:size-11"
         title="删除笔记"
         aria-label="删除笔记"
         @click="emit('remove')"
@@ -61,9 +61,6 @@ const emit = defineEmits<{
   font-weight: 600;
   letter-spacing: -0.01em;
 }
-.card-del {
-  flex: 0 0 auto;
-}
 .note-title {
   margin: 0 0 8px;
   font-size: 1.05rem;
@@ -90,11 +87,5 @@ const emit = defineEmits<{
   font-weight: 600;
   color: var(--text-2);
   background: rgba(0, 0, 0, 0.05);
-}
-@media (max-width: 860px) {
-  .card-del {
-    width: 44px;
-    height: 44px;
-  }
 }
 </style>

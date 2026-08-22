@@ -199,8 +199,8 @@ onMounted(load)
   margin-bottom: 14px;
 }
 
-/* ── 月历根：白卡面板 ── */
-.cal-root {
+/* ── 月历根：白卡面板（Calendar 根是 reka Primitive，scoped 类不穿透 → :deep 从页面根命中） ── */
+.calendar :deep(.cal-root) {
   width: 100%;
   border: 1px solid var(--hairline);
   border-radius: var(--r-panel);
@@ -232,7 +232,8 @@ onMounted(load)
   gap: 3px;
 }
 
-.cal-day-trigger {
+/* CalendarCellTrigger 根是 reka Primitive，scoped 类不穿透 → :deep 从页面根命中 */
+.calendar :deep(.cal-day-trigger) {
   width: 30px;
   height: 30px;
   font-size: 0.84rem;
@@ -241,7 +242,7 @@ onMounted(load)
 }
 
 /* 今日（未选中）：蓝色细描边，与选中蓝底区分 */
-.cal-day-trigger[data-today]:not([data-selected]) {
+.calendar :deep(.cal-day-trigger[data-today]:not([data-selected])) {
   background: transparent;
   color: var(--accent);
   font-weight: 700;
@@ -334,7 +335,7 @@ onMounted(load)
     padding: 3px 2px;
   }
 
-  .cal-day-trigger {
+  .calendar :deep(.cal-day-trigger) {
     width: 26px;
     height: 26px;
     font-size: 0.78rem;

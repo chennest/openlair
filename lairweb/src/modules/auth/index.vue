@@ -141,7 +141,11 @@ async function submit() {
           <AlertDescription>{{ error }}</AlertDescription>
         </Alert>
 
-        <Button type="submit" class="cta mt-5 w-full" :disabled="loading">
+        <Button
+          type="submit"
+          class="mt-5 h-12 w-full rounded-[var(--r-pill)] bg-[var(--grad-cta)] text-[0.98rem] font-bold shadow-[var(--sh-cta)] hover:bg-[var(--grad-cta)] hover:shadow-[0_22px_60px_rgba(0,113,227,0.3)]"
+          :disabled="loading"
+        >
           <Loader2 v-if="loading" class="size-4 animate-spin" />
           {{ loading ? '请稍候…' : isLogin ? '登录' : '注册并登录' }}
         </Button>
@@ -214,20 +218,6 @@ async function submit() {
   background: var(--surface);
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-/* 主 CTA：覆盖 Button 默认纯色背景，改用渐变 + 玻璃阴影 */
-.cta {
-  height: 48px;
-  border-radius: var(--r-pill);
-  background: var(--grad-cta);
-  font-size: 0.98rem;
-  font-weight: 700;
-  box-shadow: var(--sh-cta);
-}
-.cta:hover {
-  background: var(--grad-cta);
-  box-shadow: 0 22px 60px rgba(0, 113, 227, 0.3);
 }
 
 /* 演示账号提示 */

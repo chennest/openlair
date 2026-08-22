@@ -40,12 +40,13 @@ onMounted(async () => {
   }
 })
 
-/** 标签配色：tagClass → shadcn Badge 自定义类（覆盖 secondary 默认灰） */
+/** 标签配色：tagClass → shadcn Badge 自定义 Tailwind utility（覆盖 secondary 默认灰）
+    ⚠ Badge 根是 reka Primitive，父组件 scoped 类不穿透，配色必须走 utility */
 const TAG_TONES: Record<string, string> = {
-  red: 'badge-heat',
-  green: 'badge-live',
-  gold: 'badge-accent',
-  gray: 'badge-gray',
+  red: 'text-[var(--heat)] bg-[var(--heat-bg)]',
+  green: 'text-[#0a5a2c] bg-[rgba(48,209,88,0.16)]',
+  gold: 'text-white bg-[var(--accent)]',
+  gray: 'text-[var(--text-2)] bg-[rgba(0,0,0,0.05)]',
 }
 function badgeTone(tagClass: string): string {
   return TAG_TONES[tagClass] ?? 'badge-gray'
@@ -54,7 +55,7 @@ function badgeTone(tagClass: string): string {
 
 <template>
   <div v-if="loading" class="empty-state">
-    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
       <CardContent class="flex flex-col items-center gap-3 py-10">
         <Loader2 class="size-6 animate-spin text-[var(--accent)]" />
         <p class="empty-title">正在加载总览…</p>
@@ -63,7 +64,7 @@ function badgeTone(tagClass: string): string {
   </div>
 
   <div v-else-if="error" class="empty-state">
-    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
       <CardContent class="flex flex-col items-center gap-3 py-10">
         <CircleAlert class="size-6 text-[var(--heat)]" />
         <p class="empty-title">{{ error }}</p>
@@ -80,7 +81,7 @@ function badgeTone(tagClass: string): string {
           type="button"
           variant="ghost"
           size="sm"
-          class="more-btn h-7 gap-1 px-2 text-xs font-medium"
+          class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]"
         >
           查看明细 <ArrowUpRight class="size-3.5" />
         </Button>
@@ -97,7 +98,7 @@ function badgeTone(tagClass: string): string {
     <article class="card">
       <div class="card-title">
         <span class="title-label"><ListTodo class="size-4" />待办事项</span>
-        <Button type="button" variant="ghost" size="sm" class="more-btn h-7 gap-1 px-2 text-xs font-medium">
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
           全部待办 <ArrowUpRight class="size-3.5" />
         </Button>
       </div>
@@ -112,7 +113,7 @@ function badgeTone(tagClass: string): string {
     <article class="card">
       <div class="card-title">
         <span class="title-label"><CalendarDays class="size-4" />今日日程</span>
-        <Button type="button" variant="ghost" size="sm" class="more-btn h-7 gap-1 px-2 text-xs font-medium">
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
           查看日历 <ArrowUpRight class="size-3.5" />
         </Button>
       </div>
@@ -127,7 +128,7 @@ function badgeTone(tagClass: string): string {
     <article class="card">
       <div class="card-title">
         <span class="title-label"><Flame class="size-4" />习惯打卡</span>
-        <Button type="button" variant="ghost" size="sm" class="more-btn h-7 gap-1 px-2 text-xs font-medium">
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
           全部习惯 <ArrowUpRight class="size-3.5" />
         </Button>
       </div>
@@ -178,13 +179,6 @@ function badgeTone(tagClass: string): string {
 }
 .title-label svg {
   color: var(--text-3);
-}
-.more-btn {
-  color: var(--text-3);
-}
-.more-btn:hover {
-  color: var(--accent);
-  background: transparent;
 }
 .big-num {
   font-size: 2.1rem;
@@ -249,34 +243,11 @@ function badgeTone(tagClass: string): string {
   white-space: nowrap;
 }
 
-/* shadcn Badge 自定义配色（token）：覆盖 secondary 默认灰 */
-.badge-heat {
-  color: var(--heat);
-  background: var(--heat-bg);
-}
-.badge-live {
-  color: #0a5a2c;
-  background: rgba(48, 209, 88, 0.16);
-}
-.badge-accent {
-  color: #fff;
-  background: var(--accent);
-}
-.badge-gray {
-  color: var(--text-2);
-  background: rgba(0, 0, 0, 0.05);
-}
-
 /* 空状态 / 占位（Card + 图标） */
 .empty-state {
   display: grid;
   place-items: center;
   min-height: 46vh;
-}
-.empty-card {
-  border-color: var(--faint);
-  border-radius: var(--r-panel);
-  background: var(--surface);
 }
 .empty-title {
   color: var(--text-3);

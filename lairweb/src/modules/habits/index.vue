@@ -64,10 +64,10 @@ onMounted(load)
     <form class="composer" @submit.prevent="createHabit">
       <Input
         v-model="newName"
-        class="composer-input h-11 rounded-[var(--r-thumb)]"
+        class="h-11 min-w-0 flex-1 rounded-[var(--r-thumb)]"
         placeholder="新习惯名称，如：喝水 8 杯"
       />
-      <Button type="submit" :disabled="saving" class="composer-submit h-11 rounded-full">
+      <Button type="submit" :disabled="saving" class="h-11 min-w-[120px] rounded-full px-[18px] font-semibold max-[860px]:w-full">
         <Plus class="size-4" />
         {{ saving ? '添加中…' : '添加习惯' }}
       </Button>
@@ -86,15 +86,6 @@ onMounted(load)
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--sh-panel);
-}
-.composer-input {
-  flex: 1;
-  min-width: 0;
-}
-.composer-submit {
-  min-width: 120px;
-  padding-inline: 18px;
-  font-weight: 600;
 }
 .placeholder {
   display: grid;
@@ -115,9 +106,6 @@ onMounted(load)
 @media (max-width: 860px) {
   .composer {
     flex-direction: column;
-  }
-  .composer-submit {
-    width: 100%;
   }
 }
 </style>

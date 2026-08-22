@@ -51,7 +51,7 @@ const dotColor = computed(() => QUADRANT_COLORS[props.title] ?? 'var(--text-3)')
           <Button
             variant="ghost"
             size="icon"
-            class="del-btn"
+            class="text-[var(--text-3)] hover:bg-transparent hover:text-[var(--heat)] max-[640px]:size-11"
             aria-label="删除任务"
             @click.stop="emit('remove', item.id)"
           >
@@ -169,23 +169,9 @@ const dotColor = computed(() => QUADRANT_COLORS[props.title] ?? 'var(--text-3)')
   font-size: 0.78rem;
   color: var(--text-3);
 }
-.del-btn {
-  color: var(--text-3);
-}
-.del-btn:hover {
-  color: var(--heat);
-  background: transparent;
-}
 .empty {
   margin: 6px 4px;
   color: var(--text-4);
   font-size: 0.84rem;
-}
-
-@media (max-width: 640px) {
-  .del-btn {
-    width: 44px;
-    height: 44px;
-  }
 }
 </style>

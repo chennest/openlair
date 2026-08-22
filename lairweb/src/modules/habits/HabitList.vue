@@ -33,14 +33,14 @@ const emit = defineEmits<{
           <span class="progress-label">{{ h.week.filter((d) => d).length }}/7 天</span>
           <Progress
             :model-value="(h.week.filter((d) => d).length / 7) * 100"
-            class="progress-bar bg-[var(--track)]"
+            class="w-[96px] bg-[var(--track)] max-[860px]:w-full"
             aria-label="本周完成度"
           />
         </div>
 
         <Button
           size="sm"
-          class="check-btn rounded-full"
+          class="min-h-9 min-w-[76px] rounded-full px-4 max-[860px]:min-h-11"
           :class="h.done ? 'bg-[var(--live)] text-white hover:bg-[var(--live)]/85' : ''"
           @click="emit('toggle', h)"
         >
@@ -52,7 +52,7 @@ const emit = defineEmits<{
         <Button
           variant="ghost"
           size="icon"
-          class="del-btn rounded-full text-[var(--text-3)] hover:bg-destructive/10 hover:text-destructive"
+          class="rounded-full text-[var(--text-3)] hover:bg-destructive/10 hover:text-destructive max-[860px]:size-11"
           :title="`删除「${h.name}」`"
           aria-label="删除习惯"
           @click="emit('remove', h.id)"
@@ -149,17 +149,6 @@ const emit = defineEmits<{
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.progress-bar {
-  width: 96px;
-}
-.check-btn {
-  min-width: 76px;
-  min-height: 36px;
-  padding-inline: 16px;
-}
-.del-btn {
-  flex: 0 0 auto;
-}
 
 @media (max-width: 860px) {
   .habit-row {
@@ -173,16 +162,6 @@ const emit = defineEmits<{
     flex: 1;
     align-items: stretch;
     min-width: 0;
-  }
-  .progress-bar {
-    width: 100%;
-  }
-  .check-btn {
-    min-height: 44px;
-  }
-  .del-btn {
-    min-height: 44px;
-    min-width: 44px;
   }
 }
 </style>

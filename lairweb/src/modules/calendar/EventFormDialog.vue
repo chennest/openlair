@@ -49,21 +49,21 @@ function submit() {
 <template>
   <BaseModal v-if="open" title="新建日程" @close="emit('close')">
     <div class="ev-form">
-      <Label class="f-label">标题</Label>
+      <Label class="mt-2.5 text-[0.8rem] font-semibold text-[var(--text-2)]">标题</Label>
       <Input v-model="form.title" class="h-11" placeholder="日程标题" autofocus @keyup.enter="submit" />
 
       <div class="row2">
         <div>
-          <Label class="f-label">日期</Label>
+          <Label class="mt-2.5 text-[0.8rem] font-semibold text-[var(--text-2)]">日期</Label>
           <Input v-model="form.date" class="h-11 w-full" type="date" />
         </div>
         <div>
-          <Label class="f-label">时间</Label>
+          <Label class="mt-2.5 text-[0.8rem] font-semibold text-[var(--text-2)]">时间</Label>
           <Input v-model="form.time" class="h-11 w-full" type="time" />
         </div>
       </div>
 
-      <Label class="f-label">地点（可选）</Label>
+      <Label class="mt-2.5 text-[0.8rem] font-semibold text-[var(--text-2)]">地点（可选）</Label>
       <Input v-model="form.location" class="h-11" placeholder="地点" @keyup.enter="submit" />
 
       <div class="foot">
@@ -83,13 +83,6 @@ function submit() {
   flex-direction: column;
   gap: 6px;
   padding: 4px 0;
-}
-
-.f-label {
-  margin-top: 10px;
-  color: var(--text-2);
-  font-size: 0.8rem;
-  font-weight: 600;
 }
 
 .row2 {

@@ -45,7 +45,7 @@ const emit = defineEmits<{
       <div class="foot">
         <Button
           variant="outline"
-          class="del-btn"
+          class="text-[var(--text-3)] hover:border-[rgba(255,59,48,0.35)] hover:text-[var(--destructive)]"
           :disabled="busy"
           @click="emit('remove', event.id)"
         >
@@ -111,14 +111,5 @@ const emit = defineEmits<{
   justify-content: flex-end;
   gap: 10px;
   margin-top: 20px;
-}
-
-.del-btn {
-  color: var(--text-3);
-}
-
-.del-btn:hover {
-  color: var(--destructive);
-  border-color: rgba(255, 59, 48, 0.35);
 }
 </style>

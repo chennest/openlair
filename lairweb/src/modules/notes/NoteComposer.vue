@@ -38,22 +38,22 @@ defineExpose({ reset })
   <form class="composer" @submit.prevent="submit">
     <Input
       v-model="form.title"
-      class="field-title h-11"
+      class="[grid-area:title] h-11"
       placeholder="笔记标题"
       required
     />
     <Textarea
       v-model="form.summary"
-      class="field-summary min-h-20"
+      class="[grid-area:summary] min-h-20"
       rows="2"
       placeholder="内容摘要…"
     />
     <Input
       v-model="tagsText"
-      class="field-tags h-11"
+      class="[grid-area:tags] h-11"
       placeholder="标签，逗号分隔（如：工作, 灵感）"
     />
-    <Button type="submit" class="field-submit h-11 rounded-full px-6" :disabled="saving">
+    <Button type="submit" class="[grid-area:submit] h-11 rounded-full px-6" :disabled="saving">
       <Plus class="size-4" />
       {{ saving ? '保存中…' : '新增笔记' }}
     </Button>
@@ -74,18 +74,6 @@ defineExpose({ reset })
   border-radius: var(--r-panel);
   background: var(--surface);
   box-shadow: var(--sh-panel);
-}
-.field-title {
-  grid-area: title;
-}
-.field-submit {
-  grid-area: submit;
-}
-.field-summary {
-  grid-area: summary;
-}
-.field-tags {
-  grid-area: tags;
 }
 @media (max-width: 640px) {
   .composer {

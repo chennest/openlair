@@ -60,7 +60,7 @@ onMounted(load)
 
 <template>
   <div v-if="loading" class="empty-state">
-    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
       <CardContent class="flex flex-col items-center gap-3 py-10">
         <Loader2 class="size-6 animate-spin text-[var(--accent)]" />
         <p class="empty-title">正在加载待办…</p>
@@ -69,7 +69,7 @@ onMounted(load)
   </div>
 
   <div v-else-if="error" class="empty-state">
-    <Card class="empty-card w-full max-w-sm border border-dashed ring-0 shadow-none">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
       <CardContent class="flex flex-col items-center gap-3 py-10">
         <CircleAlert class="size-6 text-[var(--heat)]" />
         <p class="empty-title">{{ error }}</p>
@@ -141,11 +141,6 @@ onMounted(load)
   display: grid;
   place-items: center;
   min-height: 46vh;
-}
-.empty-card {
-  border-color: var(--faint);
-  border-radius: var(--r-panel);
-  background: var(--surface);
 }
 .empty-title {
   color: var(--text-3);
