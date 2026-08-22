@@ -35,70 +35,49 @@ function submit() {
 <template>
   <BaseModal v-if="open" title="新建账本" @close="emit('close')">
     <!-- 类型 -->
-    <Label class="label">账本类型</Label>
+    <Label class="mt-4 mb-2 text-[12px] font-semibold text-[var(--text-3)]">账本类型</Label>
     <div class="types">
-      <Button variant="outline" class="type-btn" :class="{ on: type === 'shared' }" @click="type = 'shared'">
+      <Button
+        variant="outline"
+        class="flex-col items-start justify-start gap-1 h-auto px-[14px] py-[14px] rounded-[var(--r-card)]! text-foreground bg-white text-left cursor-pointer transition-colors hover:border-[rgba(0,113,227,0.4)] hover:bg-white"
+        :class="type === 'shared' ? 'border-primary bg-primary/6' : ''"
+        @click="type = 'shared'"
+      >
         <span class="t-name">共享账本</span>
         <span class="t-desc">多人一起记账（家庭、旅行、合租…）</span>
       </Button>
-      <Button variant="outline" class="type-btn" :class="{ on: type === 'personal' }" @click="type = 'personal'">
+      <Button
+        variant="outline"
+        class="flex-col items-start justify-start gap-1 h-auto px-[14px] py-[14px] rounded-[var(--r-card)]! text-foreground bg-white text-left cursor-pointer transition-colors hover:border-[rgba(0,113,227,0.4)] hover:bg-white"
+        :class="type === 'personal' ? 'border-primary bg-primary/6' : ''"
+        @click="type = 'personal'"
+      >
         <span class="t-name">个人账本</span>
         <span class="t-desc">仅自己可见的流水</span>
       </Button>
     </div>
 
-    <Label class="label">账本名称</Label>
+    <Label class="mt-4 mb-2 text-[12px] font-semibold text-[var(--text-3)]">账本名称</Label>
     <Input
       v-model="name"
-      class="input"
+      class="h-[42px] px-3 py-[11px] border-[var(--hairline)]! rounded-[var(--r-thumb)]! text-foreground bg-white shadow-none! text-[0.95rem] md:text-[0.95rem]"
       placeholder="如：家庭共享账本 / 大理旅行"
       maxlength="20"
       @keyup.enter="submit"
     />
 
     <div class="foot">
-      <Button variant="outline" class="btn-ghost" @click="emit('close')">取消</Button>
-      <Button class="btn-primary" :disabled="!name.trim()" @click="submit">创建</Button>
+      <Button variant="outline" class="h-11 pl-[19px] pr-[19px] rounded-full! text-foreground bg-white/80 font-semibold cursor-pointer" @click="emit('close')">取消</Button>
+      <Button class="min-w-[100px] h-11 pl-[18px] pr-[18px] rounded-full! font-semibold disabled:opacity-[0.45]" :disabled="!name.trim()" @click="submit">创建</Button>
     </div>
   </BaseModal>
 </template>
 
 <style scoped>
-.label {
-  display: block;
-  margin: 16px 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
 .types {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-}
-.type-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 4px;
-  height: auto;
-  padding: 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-card);
-  background: var(--surface);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-.type-btn:hover {
-  border-color: rgba(0, 113, 227, 0.4);
-  background: var(--surface);
-}
-.type-btn.on {
-  border-color: var(--accent);
-  background: rgba(0, 113, 227, 0.06);
 }
 .t-name {
   font-size: 0.95rem;
@@ -108,61 +87,11 @@ function submit() {
   font-size: 12px;
   color: var(--text-3);
 }
-.input {
-  width: 100%;
-  height: 42px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 11px 12px;
-  font-size: 0.95rem;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
 .foot {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 24px;
-}
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 19px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--r-pill);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.8);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-.btn-ghost:hover {
-  background: var(--hover);
-}
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 100px;
-  height: 44px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 @media (max-width: 640px) {
   .types {

@@ -101,8 +101,8 @@ watch(purgeTarget, (v) => {
           </span>
         </div>
         <div class="trash-actions">
-          <Button size="sm" class="btn-restore" @click="emit('restore', b.id)">恢复</Button>
-          <Button size="sm" variant="destructive" class="btn-purge" @click="openPurge(b)">彻底删除（不可恢复）</Button>
+          <Button size="sm" class="h-auto rounded-full! pl-[14px] pr-[14px] py-[7px] text-[12.5px] font-semibold" @click="emit('restore', b.id)">恢复</Button>
+          <Button size="sm" variant="destructive" class="h-auto rounded-full! pl-[14px] pr-[14px] py-[7px] text-[12.5px] font-semibold" @click="openPurge(b)">彻底删除（不可恢复）</Button>
         </div>
       </div>
     </div>
@@ -117,17 +117,17 @@ watch(purgeTarget, (v) => {
       </p>
     </div>
 
-    <Label class="label">输入账本名称以确认</Label>
+    <Label class="mb-2 text-[12px] font-semibold text-[var(--text-3)]">输入账本名称以确认</Label>
     <Input
       v-model="purgeNameInput"
-      class="input"
+      class="h-[42px] px-3 py-[10px] border-[var(--hairline)]! rounded-[var(--r-thumb)]! text-foreground bg-white shadow-none! text-[0.92rem] md:text-[0.92rem]"
       :placeholder="`请输入「${purgeTarget.name}」`"
       maxlength="20"
       @keyup.enter="confirmPurge()"
     />
 
     <div class="foot">
-      <Button variant="outline" class="btn-ghost" @click="closePurge">取消</Button>
+      <Button variant="outline" class="h-11 pl-[19px] pr-[19px] rounded-full! text-foreground bg-white/80 font-semibold cursor-pointer" @click="closePurge">取消</Button>
       <Button
         variant="destructive"
         class="bg-destructive text-white hover:bg-destructive/90"
@@ -186,14 +186,6 @@ watch(purgeTarget, (v) => {
   gap: 8px;
   flex: 0 0 auto;
 }
-.btn-restore,
-.btn-purge {
-  height: auto;
-  border-radius: var(--r-pill);
-  padding: 7px 14px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
 
 /* 彻底删除确认弹窗 */
 .delete-warn {
@@ -211,49 +203,10 @@ watch(purgeTarget, (v) => {
   color: var(--text-2);
   line-height: 1.55;
 }
-.label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-.input {
-  width: 100%;
-  height: 42px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 10px 12px;
-  font-size: 0.92rem;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
 .foot {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 24px;
-}
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 19px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--r-pill);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.8);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-.btn-ghost:hover {
-  background: var(--hover);
 }
 </style>

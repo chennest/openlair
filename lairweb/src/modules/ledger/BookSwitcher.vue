@@ -32,12 +32,18 @@ function pick(bookId: number) {
 
 <template>
   <div class="switcher">
-    <Button variant="outline" class="trigger" aria-haspopup="listbox" :aria-expanded="open" @click="open = !open">
+    <Button
+      variant="outline"
+      class="justify-start gap-2.5 h-11 pl-[14px] pr-[14px] rounded-full! bg-white text-foreground text-[0.92rem] font-semibold cursor-pointer hover:border-primary"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
       <span class="avatar" :class="{ shared: current?.type === 'shared' }" aria-hidden="true">
         {{ current ? initials(current.name) : '账' }}
       </span>
       <span class="name">{{ current?.name ?? '选择账本' }}</span>
-      <ChevronDown class="chev" :size="16" aria-hidden="true" />
+      <ChevronDown class="chev" :class="open ? 'rotate-180' : 'rotate-0'" :size="16" aria-hidden="true" />
     </Button>
 
     <Transition name="pop">
@@ -47,8 +53,8 @@ function pick(bookId: number) {
           v-for="b in books"
           :key="b.id"
           variant="ghost"
-          class="item"
-          :class="{ on: b.id === current?.id }"
+          class="justify-start gap-2.5 w-full py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-foreground text-[0.9rem] font-semibold cursor-pointer text-left transition-colors"
+          :class="b.id === current?.id ? 'bg-[rgba(0,113,227,0.08)] hover:bg-primary/8' : ''"
           role="option"
           @click="pick(b.id)"
         >
@@ -70,18 +76,18 @@ function pick(bookId: number) {
         </Button>
 
         <div class="menu-actions">
-          <Button variant="ghost" class="act" @click="open = false; emit('create')">
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('create')">
             <Plus class="size-4" />
             新建账本
           </Button>
-          <Button variant="ghost" class="act" @click="open = false; emit('join')">
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('join')">
             <Plus class="size-4" />
             加入共享账本
           </Button>
-          <Button v-if="current" variant="ghost" class="act" @click="open = false; emit('manage', current)">
+          <Button v-if="current" variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('manage', current)">
             管理账本
           </Button>
-          <Button variant="ghost" class="act act-trash" @click="open = false; emit('trash')">
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-[var(--text-3)] text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-[var(--heat-bg)]! hover:text-[var(--heat)]!" @click="open = false; emit('trash')">
             <Trash2 class="size-4" />
             回收站
           </Button>
@@ -95,32 +101,9 @@ function pick(bookId: number) {
 .switcher {
   position: relative;
 }
-.trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.trigger:hover {
-  border-color: var(--accent);
-  background: var(--surface);
-}
 .chev {
   color: var(--text-3);
   transition: transform 200ms var(--ease-out-quart);
-}
-.trigger[aria-expanded='true'] .chev {
-  transform: rotate(180deg);
 }
 .avatar {
   width: 24px;
@@ -153,29 +136,6 @@ function pick(bookId: number) {
   font-weight: 600;
   color: var(--text-3);
   letter-spacing: 0.04em;
-}
-.item {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 150ms ease;
-}
-.item:hover {
-  background: var(--hover);
-}
-.item.on {
-  background: rgba(0, 113, 227, 0.08);
 }
 .item-name {
   flex: 1;
@@ -215,32 +175,6 @@ function pick(bookId: number) {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--hairline);
-}
-.act {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--accent);
-  font-size: 0.86rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 150ms ease;
-}
-.act:hover {
-  background: rgba(0, 113, 227, 0.06);
-}
-.act-trash {
-  color: var(--text-3);
-}
-.act-trash:hover {
-  color: var(--heat);
-  background: var(--heat-bg);
 }
 .pop-enter-active,
 .pop-leave-active {

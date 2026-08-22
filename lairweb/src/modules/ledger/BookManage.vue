@@ -193,18 +193,18 @@ function initials(name: string) {
 
       <div v-if="inviteCode" class="invite-actions">
         <template v-if="!confirmReset && !confirmDisable">
-          <Button variant="ghost" size="sm" class="btn-link" @click="confirmReset = true">重置邀请码</Button>
-          <Button variant="ghost" size="sm" class="btn-link danger" @click="confirmDisable = true">关闭邀请</Button>
+          <Button variant="ghost" size="sm" class="h-auto py-1 pl-0 pr-0 text-primary text-[13px] font-semibold cursor-pointer hover:underline hover:text-primary hover:bg-transparent" @click="confirmReset = true">重置邀请码</Button>
+          <Button variant="ghost" size="sm" class="h-auto py-1 pl-0 pr-0 text-[var(--heat)] text-[13px] font-semibold cursor-pointer hover:underline hover:text-[var(--heat)]! hover:bg-transparent" @click="confirmDisable = true">关闭邀请</Button>
         </template>
         <template v-else-if="confirmReset">
           <span class="confirm-hint">重置后旧码立即失效</span>
-          <Button size="sm" class="btn-primary-sm" @click="doResetInvite">确认重置</Button>
-          <Button variant="ghost" size="sm" class="btn-link" @click="confirmReset = false">取消</Button>
+          <Button size="sm" class="pl-[14px] pr-[14px] rounded-full! text-[12.5px] font-semibold" @click="doResetInvite">确认重置</Button>
+          <Button variant="ghost" size="sm" class="h-auto py-1 pl-0 pr-0 text-primary text-[13px] font-semibold cursor-pointer hover:underline hover:text-primary hover:bg-transparent" @click="confirmReset = false">取消</Button>
         </template>
         <template v-else-if="confirmDisable">
           <span class="confirm-hint">关闭后无法再被加入</span>
-          <Button size="sm" class="btn-primary-sm" @click="doDisableInvite">确认关闭</Button>
-          <Button variant="ghost" size="sm" class="btn-link" @click="confirmDisable = false">取消</Button>
+          <Button size="sm" class="pl-[14px] pr-[14px] rounded-full! text-[12.5px] font-semibold" @click="doDisableInvite">确认关闭</Button>
+          <Button variant="ghost" size="sm" class="h-auto py-1 pl-0 pr-0 text-primary text-[13px] font-semibold cursor-pointer hover:underline hover:text-primary hover:bg-transparent" @click="confirmDisable = false">取消</Button>
         </template>
       </div>
     </section>
@@ -223,7 +223,7 @@ function initials(name: string) {
           </span>
           <Tag :variant="m.role === 'owner' ? 'gold' : 'gray'">{{ m.role === 'owner' ? '拥有者' : '成员' }}</Tag>
         </span>
-        <Button v-if="isOwner && m.role !== 'owner'" size="sm" variant="destructive" class="remove" @click="emit('remove', m.userId)">移除</Button>
+        <Button v-if="isOwner && m.role !== 'owner'" size="sm" variant="destructive" class="h-auto rounded-full! pl-3 pr-3 py-1.5 text-[12.5px] font-semibold" @click="emit('remove', m.userId)">移除</Button>
       </div>
     </div>
 
@@ -232,13 +232,13 @@ function initials(name: string) {
         <Button
           v-if="isOwner && book.type === 'personal'"
           variant="outline"
-          class="btn-ghost"
+          class="h-10 pl-[18px] pr-[18px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer"
           :title="'转为共享账本后可邀请成员（不可再转回个人）'"
           @click="showConvertConfirm = true"
         >
           转为共享账本
         </Button>
-        <Button v-if="!isOwner" variant="outline" class="btn-ghost" @click="emit('leave')">退出账本</Button>
+        <Button v-if="!isOwner" variant="outline" class="h-10 pl-[18px] pr-[18px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer" @click="emit('leave')">退出账本</Button>
       </div>
       <Button
         v-if="isOwner"
@@ -260,17 +260,17 @@ function initials(name: string) {
       </p>
     </div>
 
-    <Label class="label">输入账本名称以确认</Label>
+    <Label class="mt-4 mb-2 text-[12px] font-semibold text-[var(--text-3)]">输入账本名称以确认</Label>
     <Input
       v-model="deleteNameInput"
-      class="input"
+      class="h-[42px] px-3 py-[10px] border-[var(--hairline)]! rounded-[var(--r-thumb)]! text-foreground bg-white shadow-none! text-[0.92rem] md:text-[0.92rem]"
       :placeholder="`请输入「${book.name}」`"
       maxlength="20"
       @keyup.enter="confirmDelete()"
     />
 
     <div class="foot">
-      <Button variant="outline" class="btn-ghost" @click="showDeleteConfirm = false">取消</Button>
+      <Button variant="outline" class="h-10 pl-[18px] pr-[18px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer" @click="showDeleteConfirm = false">取消</Button>
       <Button
         variant="destructive"
         class="bg-destructive text-white hover:bg-destructive/90"
@@ -291,8 +291,8 @@ function initials(name: string) {
       </p>
     </div>
     <div class="foot">
-      <Button variant="outline" class="btn-ghost" @click="showConvertConfirm = false">取消</Button>
-      <Button class="btn-primary" :disabled="convertCountdown > 0" @click="confirmConvert()">
+      <Button variant="outline" class="h-10 pl-[18px] pr-[18px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer" @click="showConvertConfirm = false">取消</Button>
+      <Button class="h-11 pl-5 pr-5 rounded-full! font-semibold text-[13px]" :disabled="convertCountdown > 0" @click="confirmConvert()">
         {{ convertCountdown > 0 ? `${convertCountdown}s 后可确认` : '确认转为共享' }}
       </Button>
     </div>
@@ -344,37 +344,9 @@ function initials(name: string) {
   gap: 10px;
   min-height: 32px;
 }
-.btn-link {
-  height: auto;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-link.danger {
-  color: var(--heat);
-}
-.btn-link:hover {
-  text-decoration: underline;
-  color: var(--accent);
-  background: transparent;
-}
-.btn-link.danger:hover {
-  color: var(--heat);
-}
 .confirm-hint {
   font-size: 12px;
   color: var(--heat);
-  font-weight: 600;
-}
-.btn-primary-sm {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--r-pill);
-  font-size: 12.5px;
   font-weight: 600;
 }
 /* 成员列表 */
@@ -420,13 +392,6 @@ function initials(name: string) {
   color: var(--text-3);
   font-size: 0.8rem;
 }
-.remove {
-  height: auto;
-  border-radius: var(--r-pill);
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
 .foot {
   display: flex;
   justify-content: space-between;
@@ -436,23 +401,6 @@ function initials(name: string) {
 .foot-left {
   display: flex;
   gap: 10px;
-}
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  padding: 0 18px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--r-pill);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.8);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-.btn-ghost:hover {
-  background: var(--hover);
 }
 .delete-warn {
   margin-bottom: 16px;
@@ -469,44 +417,10 @@ function initials(name: string) {
   color: var(--text-2);
   line-height: 1.55;
 }
-.label {
-  display: block;
-  margin: 16px 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-.input {
-  width: 100%;
-  height: 42px;
-  box-sizing: border-box;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 10px 12px;
-  font-size: 0.92rem;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
 .convert-warn {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-bottom: 4px;
-}
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  padding: 0 20px;
-  border-radius: var(--r-pill);
-  font-weight: 600;
-  font-size: 13px;
 }
 </style>

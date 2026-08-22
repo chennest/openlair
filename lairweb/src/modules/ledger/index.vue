@@ -288,7 +288,7 @@ onMounted(async () => {
         <div class="hero-actions">
           <Button
             variant="ghost"
-            class="add-btn"
+            class="h-10 pl-5 pr-5 rounded-full! bg-[rgba(255,255,255,0.16)] border border-white/22 backdrop-blur-[8px] text-white font-semibold text-[0.92rem] cursor-pointer transition-all duration-[160ms] ease-[var(--ease-out-quart)] hover:bg-white/26 hover:text-white disabled:opacity-[0.45] disabled:cursor-not-allowed"
             :disabled="books.length === 0"
             :title="books.length === 0 ? '请先创建账本' : ''"
             @click="showDialog = true"
@@ -380,36 +380,6 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-/* 渐变 hero 上的玻璃 chip（components.md §8：glass-chip 配方） */
-.add-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 20px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), background 160ms ease;
-}
-.add-btn:hover {
-  background: rgba(255, 255, 255, 0.26);
-  color: #fff;
-}
-.add-btn:active {
-  transform: scale(0.97);
-}
-.add-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
 }
 .saved-tip {
   display: inline-flex;

@@ -51,7 +51,7 @@ function submit() {
         spellcheck="false"
         placeholder="例如 KD7F-2GQW"
         maxlength="9"
-        class="code-input"
+        class="py-[14px] pl-4 pr-4 border-[var(--hairline)]! rounded-[var(--r-thumb)]! text-[1.5rem] md:text-[1.5rem] font-bold tracking-[0.14em] text-center text-foreground bg-[var(--bg)]! tabular-nums shadow-none! placeholder:font-medium placeholder:tracking-[0.02em] placeholder:text-[0.95rem] placeholder:text-[var(--text-4)]!"
         @update:model-value="onUpdate"
         @keyup.enter="submit"
       />
@@ -59,8 +59,8 @@ function submit() {
       <p v-if="error" class="err">{{ error }}</p>
 
       <div class="foot">
-        <Button variant="outline" class="btn-ghost" @click="emit('close')">取消</Button>
-        <Button class="btn-primary" :disabled="!ready" @click="submit">
+        <Button variant="outline" class="h-[42px] pl-[18px] pr-[18px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer" @click="emit('close')">取消</Button>
+        <Button class="h-[42px] pl-[22px] pr-[22px] rounded-full! font-semibold text-[13px] hover:opacity-[0.88] disabled:opacity-[0.45]" :disabled="!ready" @click="submit">
           {{ submitting ? '加入中…' : '加入' }}
         </Button>
       </div>
@@ -80,32 +80,6 @@ function submit() {
   color: var(--text-2);
   line-height: 1.55;
 }
-.code-input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 14px 16px;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-align: center;
-  color: var(--text);
-  background: var(--bg);
-  outline: none;
-  font-variant-numeric: tabular-nums;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.code-input::placeholder {
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  font-size: 0.95rem;
-  color: var(--text-4);
-}
-.code-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
 .err {
   margin: 0;
   font-size: 0.86rem;
@@ -117,44 +91,5 @@ function submit() {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 8px;
-}
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  height: 42px;
-  padding: 0 18px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--r-pill);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.8);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-.btn-ghost:hover {
-  background: var(--hover);
-}
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 42px;
-  padding: 0 22px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: opacity 160ms ease;
-}
-.btn-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.btn-primary:not(:disabled):hover {
-  opacity: 0.88;
 }
 </style>
