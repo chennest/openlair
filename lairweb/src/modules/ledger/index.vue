@@ -71,7 +71,9 @@ async function load() {
     loading.value = false
     return
   }
-  loading.value = true
+  // 初次加载才全屏 loading;切换筛选/账本时静默刷新(保留页面内容,避免闪烁)
+  const isInitial = !data.value
+  if (isInitial) loading.value = true
   try {
     const q: LedgerQuery = { ...query.value, bookId: currentBookId.value }
     const [d, t] = await Promise.all([ledgerApi.list(q), ledgerApi.trend(currentBookId.value)])

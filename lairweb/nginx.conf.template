@@ -23,9 +23,11 @@ server {
     }
 
     # SPA history 路由回退（静态页面响应带 front-version 头）
+    # index.html 不缓存：每次访问重新验证，保证客户端拿到最新资源清单（assets 带 hash 长缓存）
     location / {
         try_files $uri $uri/ /index.html;
         add_header front-version "${APP_VERSION}" always;
+        add_header Cache-Control "no-cache" always;
     }
 
     # 静态资源缓存（Vite 产物带 hash，可长缓存；同样带 front-version 头）

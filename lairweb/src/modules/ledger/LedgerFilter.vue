@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 历史查询筛选栏：类型 segmented / 日期快捷范围 / 分类 / 关键字
 // 纯展示：props 进（当前值 + 分类列表），交互 emit change（完整 query 变更）
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,15 +52,28 @@ function rangeOf(preset: DatePreset): { startDate?: string; endDate?: string } {
   }
 }
 
-// 当前档位（自定义日期时显示为「自定义」）
-const preset = ref<DatePreset>('')
+// 当前档位：由 props.value 推导（受控）,保证与父组件 query 状态一致
+// （切账本/清空后父组件重置 query,此处自动回到"全部",不会残留错误高亮）
+const preset = computed<DatePreset>(() => {
+  const v = props.value
+  if (v.startDate && v.endDate) {
+    const now = new Date()
+    const today = fmt(now)
+    const s = new Date(now)
+    s.setDate(now.getDate() - 6)
+    if (v.startDate === today && v.endDate === today) return 'today'
+    if (v.startDate === fmt(s) && v.endDate === today) return 'week'
+    if (v.startDate === fmt(new Date(now.getFullYear(), now.getMonth(), 1)) && v.endDate === today) return 'month'
+    if (v.startDate === fmt(new Date(now.getFullYear(), now.getMonth() - 2, 1)) && v.endDate === today) return 'month3'
+  }
+  return ''
+})
 
 function change(patch: Partial<LedgerQuery>) {
   emit('change', { ...patch })
 }
 
 function pickPreset(key: DatePreset) {
-  preset.value = key
   change({ ...rangeOf(key), page: 1 })
 }
 
@@ -74,8 +87,15 @@ function pickCategory(categoryId: number) {
 }
 
 function clearAll() {
-  preset.value = ''
-  emit('change', { page: 1 })
+  // 完整清除:日期范围/类型/分类/关键字全部重置(否则父组件合并后 startDate 等残留,重置不生效)
+  emit('change', {
+    page: 1,
+    startDate: undefined,
+    endDate: undefined,
+    type: undefined,
+    categoryId: undefined,
+    keyword: undefined,
+  })
 }
 
 // ---------- shadcn 控件适配（Tabs / Select 的值用字符串键映射） ----------
