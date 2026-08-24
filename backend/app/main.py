@@ -8,6 +8,7 @@ from app.api.v1.router import v1_router
 from app.core.config import get_settings
 from app.core.envelope import register_envelope_handlers
 from app.db.session import create_database_engine, create_session_factory, init_database
+from app.repositories.api_keys import ApiKeyRepository
 from app.repositories.books import BookRepository
 from app.repositories.events import EventRepository
 from app.repositories.habits import HabitRepository
@@ -17,6 +18,7 @@ from app.repositories.todo import TodoRepository
 from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
 from app.seed import seed
+from app.services.api_keys import ApiKeyService
 from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
 from app.services.assistant.plans import PlanService
 from app.services.assistant.runtime import AssistantRuntime
@@ -62,6 +64,7 @@ def create_app(
     # ---------- 仓储 ----------
     user_repo = UserRepository(session_factory)
     token_repo = TokenRepository(session_factory)
+    api_key_repo = ApiKeyRepository(session_factory)
     book_repo = BookRepository(session_factory)
     ledger_repo = LedgerRepository(session_factory)
     todo_repo = TodoRepository(session_factory)
@@ -71,6 +74,7 @@ def create_app(
 
     # ---------- 服务（业务逻辑层） ----------
     app.state.auth_service = AuthService(user_repo, token_repo)
+    app.state.api_key_service = ApiKeyService(api_key_repo)
     app.state.ledger_service = LedgerService(ledger_repo, user_repo, book_repo)
     app.state.book_service = BookService(book_repo, user_repo)
     app.state.todo_service = TodoService(todo_repo)
@@ -115,6 +119,7 @@ def create_app(
     # ---------- 鉴权依赖所需仓储 ----------
     app.state.user_repository = user_repo
     app.state.token_repository = token_repo
+    app.state.api_key_repository = api_key_repo
 
     # ---------- 系统路由（K8s 探针 + Prometheus 指标）----------
     # session_factory 挂到 app.state，供 /healthz/ready 就绪探针检查 DB 连通

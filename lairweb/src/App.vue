@@ -41,6 +41,7 @@ const navItems: { path: string; label: string; icon: string[]; mobile?: boolean 
   { path: '/notes', label: '笔记', icon: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'] },
   { path: '/habits', label: '习惯', icon: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'] },
   { path: '/assistant', label: 'AI 助手', mobile: false, icon: ['M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'] },
+  { path: '/api-keys', label: 'API Keys', mobile: false, icon: ['M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4'] },
 ]
 
 // Lucide 线性图标：24 网格、单笔画 1.75、currentColor（icons.md）
@@ -144,6 +145,11 @@ function closeMenu() {
 function goProfile() {
   closeMenu()
   router.push('/profile')
+}
+
+function goApiKeys() {
+  closeMenu()
+  router.push('/api-keys')
 }
 
 // 菜单外点击关闭
@@ -270,6 +276,12 @@ function onKeydown(e: KeyboardEvent) {
               <circle cx="12" cy="7" r="4" />
             </svg>
             <span>个人信息</span>
+          </button>
+          <button class="m-menu-item" @click="goApiKeys">
+            <svg class="m-menu-icon" v-bind="iconProps" aria-hidden="true">
+              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+            </svg>
+            <span>API Keys</span>
           </button>
           <div class="m-menu-divider"></div>
           <button class="m-menu-item is-heat" @click="logout">

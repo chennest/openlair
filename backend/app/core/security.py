@@ -64,6 +64,21 @@ def decode_token(token: str) -> dict:
     return claims
 
 
+# ---------- API Key（第三方/MCP 客户端访问凭证） ----------
+
+API_KEY_PREFIX = "ol_"
+
+
+def generate_api_key() -> str:
+    """生成 API Key 明文：`ol_` + 32 字节 URL-safe 随机串（≈43 字符，熵 256bit）。"""
+    return API_KEY_PREFIX + secrets.token_urlsafe(32)
+
+
+def hash_api_key(api_key: str) -> str:
+    """API Key 哈希（SHA-256 十六进制）。数据库只存哈希，明文仅创建时返回一次。"""
+    return hashlib.sha256(api_key.encode()).hexdigest()
+
+
 # ---------- 密码哈希（scrypt，模拟 bcrypt 语义） ----------
 
 SCRYPT_N = 2**14

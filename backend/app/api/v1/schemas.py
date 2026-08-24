@@ -41,6 +41,12 @@ class LoginInput(BaseModel):
     password: str
 
 
+# ---------- api keys ----------
+
+class CreateApiKeyInput(BaseModel):
+    name: str = Field(min_length=1, max_length=30)
+
+
 # ---------- ledger ----------
 
 class CreateTransactionInput(BaseModel):

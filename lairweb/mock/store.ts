@@ -4,7 +4,7 @@
 // - 运行中增删改查直接改内存，重启即恢复初始数据
 // - 通过 globalThis 共享：vite-plugin-mock-dev-server 对每个 mock 文件单独 esbuild
 //   bundle，若用模块级变量，每个文件会得到独立实例（id 冲突 + 数据不互通）
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 // ---------- seedable 伪随机 (mulberry32) ----------
 function mulberry32(seed: number) {
@@ -157,6 +157,18 @@ export interface AssistantMessage {
   createdAt: string
 }
 
+/** api_keys 表：用户 API Key（只存哈希，明文仅创建时返回一次；撤销即置 revokedAt） */
+export interface ApiKey {
+  id: number
+  userId: number
+  name: string
+  keyHash: string
+  prefix: string
+  createdAt: string
+  lastUsedAt?: string
+  revokedAt?: string
+}
+
 // ---------- 常量 ----------
 export const QUADRANTS = ['重要紧急', '重要不紧急', '紧急不重要', '不重要不紧急']
 export const MONTH = () => {
@@ -186,6 +198,7 @@ export interface StoreShape {
   habits: Habit[]
   assistantSessions: AssistantSession[]
   assistantMessages: AssistantMessage[]
+  apiKeys: ApiKey[]
 }
 
 const g = globalThis as unknown as { __openlair_mock__?: SharedRuntime }
@@ -280,6 +293,15 @@ function verifyToken(token: string): TokenStatus {
 /** 登出：jti 进黑名单 */
 export function revokeToken(jti: string) {
   rt.revokedJtis.add(jti)
+}
+
+/** API Key：生成明文（ol_ + 32 字节随机串），哈希用 SHA-256（与后端一致：只存哈希） */
+export function generateMockApiKey(): string {
+  return `ol_${randomBytes(32).toString('base64url')}`
+}
+
+export function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
 }
 
 /** 密码哈希（模拟 bcrypt）：scrypt$salt$hash */
@@ -429,6 +451,7 @@ function seed(): StoreShape {
     }),
     assistantSessions: [],
     assistantMessages: [],
+    apiKeys: [],
   }
 }
 
@@ -671,8 +694,19 @@ export interface AuthContext {
   jti: string
 }
 
-/** 从请求头解析并验签 Bearer token（模拟后端 OAuth2PasswordBearer 依赖） */
+/** 从请求头解析并验签凭证（模拟后端 OAuth2PasswordBearer + API Key 依赖）：
+ * - X-API-Key: <ol_xxx>：哈希比对 store.apiKeys，未撤销则以其 userId 通过（jti 为空串）
+ * - Authorization: Bearer <jwt>：JWT 验签 */
 export function requireAuth(req: MockReq): AuthContext | null {
+  const apiKeyHeader = req.headers?.['x-api-key']
+  if (typeof apiKeyHeader === 'string' && apiKeyHeader.trim()) {
+    const found = store.apiKeys.find(
+      (k) => k.keyHash === hashApiKey(apiKeyHeader.trim()) && !k.revokedAt,
+    )
+    if (!found) return null
+    found.lastUsedAt = new Date().toISOString()
+    return { userId: String(found.userId), jti: '' }
+  }
   const header = req.headers?.authorization
   if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null
   const result = verifyToken(header.slice(7).trim())

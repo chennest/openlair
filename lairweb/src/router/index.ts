@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: () => import('../modules/notes/index.vue'), meta: { title: '笔记' } },
     { path: '/habits', name: 'habits', component: () => import('../modules/habits/index.vue'), meta: { title: '习惯' } },
     { path: '/assistant', name: 'assistant', component: () => import('../modules/assistant/index.vue'), meta: { title: 'AI 助手' } },
+    { path: '/api-keys', name: 'apiKeys', component: () => import('../modules/apiKey/index.vue'), meta: { title: 'API Keys' } },
     { path: '/profile', name: 'profile', component: () => import('../modules/profile/index.vue'), meta: { title: '个人信息' } },
   ],
 })

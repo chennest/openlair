@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.api_keys import router as api_keys_router
 from app.api.v1.endpoints.assistant import router as assistant_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.books import router as books_router
@@ -15,8 +16,9 @@ from app.api.v1.endpoints.modules import (
 )
 
 v1_router = APIRouter(prefix="/api")
-v1_router.include_router(assistant_router)
 v1_router.include_router(auth_router)
+v1_router.include_router(api_keys_router)
+v1_router.include_router(assistant_router)
 v1_router.include_router(ledger_router)
 v1_router.include_router(books_router)
 v1_router.include_router(todo_router)
