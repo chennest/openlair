@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// API Key 管理页：创建（明文仅展示一次）+ 列表 + 撤销
+// API Key 管理页：创建（弹窗：输入名称 → 展示明文一次）+ 列表 + 撤销
 import { onMounted, ref } from 'vue'
-import { Copy, KeyRound, Plus, Trash2, X } from '@lucide/vue'
+import { KeyRound, Plus, Trash2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { apiKeyApi, type ApiKeyItem } from './api'
+import CreatedKeyDialog from './CreatedKeyDialog.vue'
 
 // ---------- 三态：loading / error / data ----------
 const loading = ref(true)
@@ -12,11 +13,10 @@ const error = ref('')
 const keys = ref<ApiKeyItem[]>([])
 
 const newName = ref('')
+const dialogOpen = ref(false)
 const saving = ref(false)
-
-/** 创建成功但还未“确认已保存”的明文（仅此刻存在内存，刷新即消失） */
-const pendingKey = ref<{ name: string; key: string } | null>(null)
-const copied = ref(false)
+/** 创建成功后待展示的明文（仅存在于会话中，关闭弹窗即丢弃） */
+const pendingKey = ref<string | null>(null)
 
 async function load() {
   loading.value = true
@@ -29,31 +29,28 @@ async function load() {
   }
 }
 
-async function createKey() {
-  if (!newName.value.trim() || saving.value) return
+function openCreate() {
+  dialogOpen.value = true
+}
+
+async function submitCreate(name: string) {
+  if (saving.value) return
   saving.value = true
   try {
-    const data = await apiKeyApi.create(newName.value.trim())
-    newName.value = ''
-    copied.value = false
-    pendingKey.value = { name: data.item.name, key: data.apiKey }
+    const data = await apiKeyApi.create(name)
+    pendingKey.value = data.apiKey
     await load()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '创建失败'
+    dialogOpen.value = false
   } finally {
     saving.value = false
   }
 }
 
-async function copyKey() {
-  if (!pendingKey.value) return
-  await navigator.clipboard.writeText(pendingKey.value.key)
-  copied.value = true
-}
-
-function dismissPending() {
+function closeDialog() {
+  dialogOpen.value = false
   pendingKey.value = null
-  copied.value = false
 }
 
 async function revokeKey(id: number) {
@@ -84,8 +81,8 @@ onMounted(load)
     <h1 class="page-title">API Keys</h1>
     <p class="page-sub">创建长期访问凭证供 MCP / 脚本 / 第三方客户端使用，等价于你的登录身份，可随时撤销。</p>
 
-    <!-- 创建 -->
-    <form class="composer" @submit.prevent="createKey">
+    <!-- 创建入口：点击弹出创建弹窗 -->
+    <div class="composer">
       <div class="composer-field">
         <KeyRound class="composer-icon" />
         <Input
@@ -93,30 +90,13 @@ onMounted(load)
           class="h-11 min-w-0 flex-1 rounded-[var(--r-thumb)]"
           placeholder="名称，如：我的 MCP 客户端"
           maxlength="30"
+          @keyup.enter="openCreate"
         />
       </div>
-      <Button type="submit" :disabled="saving" class="h-11 min-w-[130px] rounded-full px-[18px] font-semibold max-[860px]:w-full">
+      <Button class="h-11 min-w-[130px] rounded-full px-[18px] font-semibold max-[860px]:w-full" @click="openCreate">
         <Plus class="size-4" />
-        {{ saving ? '创建中…' : '创建 API Key' }}
+        创建 API Key
       </Button>
-    </form>
-
-    <!-- 创建成功：明文只展示一次 -->
-    <div v-if="pendingKey" class="pending-panel">
-      <div class="pending-head">
-        <span class="pending-title">已创建「{{ pendingKey.name }}」</span>
-        <button class="close-btn" type="button" aria-label="关闭" @click="dismissPending">
-          <X class="size-4" />
-        </button>
-      </div>
-      <div class="key-plain">
-        <code>{{ pendingKey.key }}</code>
-        <Button size="sm" variant="outline" class="copy-btn" @click="copyKey">
-          <Copy class="size-3.5" />
-          {{ copied ? '已复制' : '复制' }}
-        </Button>
-      </div>
-      <p class="pending-warn">请立即保存此 Key，关闭后无法再次查看明文。</p>
     </div>
 
     <!-- 列表：统一面板 + hairline 分割 -->
@@ -130,22 +110,30 @@ onMounted(load)
           <span>创建于 {{ fmt(k.createdAt) }}</span>
           <span>最近使用 {{ fmt(k.lastUsedAt) }}</span>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          class="revoke-btn"
-          @click="revokeKey(k.id)"
-        >
+        <Button size="sm" variant="ghost" class="revoke-btn" @click="revokeKey(k.id)">
           <Trash2 class="size-3.5" />
           撤销
         </Button>
       </div>
     </div>
     <p v-else class="empty-hint">还没有 API Key，先创建一个试试。</p>
+
+    <!-- 创建弹窗（form → reveal 两态） -->
+    <CreatedKeyDialog
+      :open="dialogOpen"
+      :pending-key="pendingKey"
+      :saving="saving"
+      @close="closeDialog"
+      @submit="submitCreate"
+    />
   </div>
 </template>
 
 <style scoped>
+/* 顶部避让全局 AI 助手悬浮按钮（top 18 + 44 = 62px），防止标题/副标题被遮住 */
+.keys-page {
+  padding-top: 56px;
+}
 .page-title {
   margin: 0 0 8px;
   font-size: clamp(27px, 5vw, 46px);
@@ -186,59 +174,6 @@ onMounted(load)
 }
 .composer-field :deep(.input) {
   padding-left: 36px;
-}
-
-.pending-panel {
-  margin-bottom: 18px;
-  padding: 16px;
-  border-radius: var(--r-panel);
-  background: var(--surface);
-  box-shadow: var(--sh-panel);
-}
-.pending-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.pending-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-.close-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--track);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.key-plain {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.key-plain code {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 10px 12px;
-  border-radius: var(--r-thumb);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.copy-btn {
-  flex: 0 0 auto;
-}
-.pending-warn {
-  margin: 10px 0 0;
-  color: var(--heat);
-  font-size: 13px;
 }
 
 .panel-list {
