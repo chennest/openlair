@@ -23,6 +23,7 @@ from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
 from app.services.assistant.plans import PlanService
 from app.services.assistant.runtime import AssistantRuntime
 from app.services.assistant.transcribe import create_transcriber
+from app.services.snap import SnapParser
 from app.services.auth import AuthService
 from app.services.books import BookService
 from app.services.ledger import LedgerService
@@ -114,6 +115,13 @@ def create_app(
         openai_base_url=settings.transcribe_openai_base_url,
         openai_api_key=settings.transcribe_openai_api_key,
         openai_model=settings.transcribe_model,
+    )
+
+    # ---------- 截图识别服务（视觉多模态；SNAP_* 缺省回退 LLM_*） ----------
+    app.state.snap_parser = SnapParser(
+        base_url=settings.snap_base_url or settings.llm_base_url,
+        api_key=settings.snap_api_key or settings.llm_api_key,
+        model=settings.snap_model,
     )
 
     # ---------- 鉴权依赖所需仓储 ----------

@@ -14,10 +14,12 @@ from app.api.v1.endpoints.modules import (
     overview_router,
     todo_router,
 )
+from app.api.v1.endpoints.snap import router as snap_router
 
 v1_router = APIRouter(prefix="/api")
 v1_router.include_router(auth_router)
 v1_router.include_router(api_keys_router)
+v1_router.include_router(snap_router)
 v1_router.include_router(assistant_router)
 v1_router.include_router(ledger_router)
 v1_router.include_router(books_router)
