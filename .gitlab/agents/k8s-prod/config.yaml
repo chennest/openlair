@@ -1,8 +1,0 @@
-# GitLab Agent k8s-prod 配置 — CI/CD Tunnel + GitOps（生产集群）
-# 授权整个 chennest 群组（含子群组），组内所有项目都能用本 agent 连接集群
-ci_access:
-  groups:
-    - id: chennest
-
-gitops:
-  manifest_projects: []
