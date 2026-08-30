@@ -14,6 +14,7 @@ from app.repositories.events import EventRepository
 from app.repositories.habits import HabitRepository
 from app.repositories.ledger import LedgerRepository
 from app.repositories.notes import NoteRepository
+from app.repositories.settings import SettingRepository
 from app.repositories.todo import TodoRepository
 from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
@@ -72,9 +73,10 @@ def create_app(
     event_repo = EventRepository(session_factory)
     note_repo = NoteRepository(session_factory)
     habit_repo = HabitRepository(session_factory)
+    setting_repo = SettingRepository(session_factory)
 
     # ---------- 服务（业务逻辑层） ----------
-    app.state.auth_service = AuthService(user_repo, token_repo)
+    app.state.auth_service = AuthService(user_repo, token_repo, setting_repo)
     app.state.api_key_service = ApiKeyService(api_key_repo)
     app.state.ledger_service = LedgerService(ledger_repo, user_repo, book_repo)
     app.state.book_service = BookService(book_repo, user_repo)

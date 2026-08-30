@@ -12,6 +12,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
+from app.repositories.settings import SettingRepository
 from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
 from app.services import iso_z
@@ -32,11 +33,20 @@ def user_dto(user: User) -> dict:
 
 
 class AuthService:
-    def __init__(self, users: UserRepository, tokens: TokenRepository) -> None:
+    def __init__(
+        self,
+        users: UserRepository,
+        tokens: TokenRepository,
+        settings: SettingRepository,
+    ) -> None:
         self._users = users
         self._tokens = tokens
+        self._settings = settings
 
     def register(self, *, name: str, email: str, password: str) -> dict:
+        # 注册开关：settings.allow_register "0"=禁止（默认） / "1"=允许
+        if self._settings.get("allow_register", "0") != "1":
+            raise ApiError(403, "系统暂未开放注册，请联系管理员")
         name = name.strip()
         email = email.strip().lower()
         if not name or len(name) > 20:

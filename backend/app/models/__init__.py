@@ -9,6 +9,7 @@ from app.models.event import CalendarEvent
 from app.models.habit import Habit
 from app.models.note import Note
 from app.models.revoked_token import RevokedToken
+from app.models.setting import Setting
 from app.models.todo import TodoItem
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -26,6 +27,7 @@ __all__ = [
     "Habit",
     "Note",
     "RevokedToken",
+    "Setting",
     "TodoItem",
     "Transaction",
     "User",

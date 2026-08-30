@@ -22,6 +22,9 @@ const showPw = ref(false)
 const loading = ref(false)
 const error = ref('')
 
+// 注册开关：与后端 settings.allow_register 一致（生产默认禁止，开放时改 true）
+const allowRegister = false
+
 const isLogin = computed(() => mode.value === 'login')
 const title = computed(() => (isLogin.value ? '欢迎回来' : '创建账号'))
 const subtitle = computed(() => (isLogin.value ? '登录你的 OpenLair 工作台' : '注册后即可开始记账与日程管理'))
@@ -81,7 +84,15 @@ async function submit() {
 
       <div class="seg mb-6 grid grid-cols-2 gap-1 p-1" role="tablist">
         <button class="seg-btn" :class="{ on: isLogin }" @click="switchMode('login')">登录</button>
-        <button class="seg-btn" :class="{ on: !isLogin }" @click="switchMode('register')">注册</button>
+        <button
+          class="seg-btn"
+          :class="{ on: !isLogin }"
+          :disabled="!allowRegister"
+          :title="allowRegister ? '' : '系统暂未开放注册'"
+          @click="allowRegister && switchMode('register')"
+        >
+          注册<span v-if="!allowRegister" class="ml-1 text-[10px] opacity-60">未开放</span>
+        </button>
       </div>
 
       <h2 class="text-2xl font-bold tracking-tight">{{ title }}</h2>
@@ -216,6 +227,11 @@ async function submit() {
   background: var(--surface);
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.seg-btn:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 @media (max-width: 640px) {
