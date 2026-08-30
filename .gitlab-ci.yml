@@ -131,12 +131,12 @@ deploy-test:
     - if: '$CI_COMMIT_BRANCH == "test"'
   before_script:
     # 🔍 调试：检查 KUBECONFIG 注入情况（验证完删除）
-    - echo "=== KUBECONFIG env: [$KUBECONFIG] ==="
+    - 'echo "=== KUBECONFIG env: [$KUBECONFIG] ==="'
     - env | grep -iE 'kube|agent|kas' | sort
-    - echo "=== KUBECONFIG 文件内容 ==="
-    - cat ${KUBECONFIG:-/nonexistent} 2>/dev/null | head -80
-    - echo "=== kubeconfig 目录 ==="
-    - ls -la $(dirname ${KUBECONFIG:-/tmp}) 2>&1 | head -10
+    - 'echo "=== KUBECONFIG 文件内容 ==="'
+    - 'cat ${KUBECONFIG:-/nonexistent} 2>/dev/null | head -80'
+    - 'echo "=== kubeconfig 目录 ==="'
+    - 'ls -la $(dirname ${KUBECONFIG:-/tmp}) 2>&1 | head -10'
     # GitLab 自动注入 kubeconfig（server=KAS），切到 test 集群的 agent context
     - kubectl config get-contexts
     - kubectl config use-context infra/gitops:k8s-test
