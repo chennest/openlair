@@ -154,7 +154,7 @@ async function submit() {
 
         <Button
           type="submit"
-          class="mt-5 h-12 w-full rounded-[var(--r-pill)] bg-[var(--grad-cta)] text-[0.98rem] font-bold shadow-[var(--sh-cta)] hover:bg-[var(--grad-cta)] hover:shadow-[0_22px_60px_rgba(0,113,227,0.3)]"
+          class="cta-btn mt-5 h-12 w-full rounded-[var(--r-pill)] text-[0.98rem] font-bold shadow-[var(--sh-cta)] hover:shadow-[0_22px_60px_rgba(0,113,227,0.3)]"
           :disabled="loading"
         >
           <Loader2 v-if="loading" class="size-4 animate-spin" />
@@ -205,6 +205,17 @@ async function submit() {
   font-weight: 800;
   font-size: 1.35rem;
   box-shadow: var(--sh-cta);
+}
+
+/* CTA 渐变按钮：渐变是 background-image 不是 color，
+   走 Tailwind 任意值会落到 background-color 而失效（invalid at computed-value time → 透明），
+   必须用原生 background 简写，同 brand-mark */
+.cta-btn {
+  background: var(--grad-cta);
+  color: #fff;
+}
+.cta-btn:hover {
+  background: var(--grad-cta);
 }
 
 /* 分段控件（白胶囊 segmented，components.md §5） */
