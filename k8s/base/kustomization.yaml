@@ -1,4 +1,4 @@
-# base kustomization — openlair 公共资源
+# base kustomization — openlair 公共资源（不含监控，监控见 ../monitoring 按需引用）
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -10,7 +10,6 @@ resources:
   - backend.yaml
   - web.yaml
   - ingress.yaml
-  - servicemonitor.yaml
 
 # 公共镜像 tag（overlay 可覆盖）
 images:

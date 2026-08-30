@@ -4,6 +4,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - ../../monitoring   # test 集群已装 Prometheus Operator，启用监控
 
 # 环境标签（官方推荐 labels 字段，只加 label 不动 selector）
 labels:
