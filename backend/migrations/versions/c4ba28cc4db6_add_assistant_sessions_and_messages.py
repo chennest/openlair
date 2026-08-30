@@ -40,8 +40,9 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_assistant_sessions_user_id'), 'assistant_sessions', ['user_id'], unique=False)
-    op.create_index(op.f('ix_revoked_tokens_jti'), 'revoked_tokens', ['jti'], unique=True)
-    op.create_index(op.f('ix_revoked_tokens_user_id'), 'revoked_tokens', ['user_id'], unique=False)
+    # 注：revoked_tokens 的 ix_revoked_tokens_jti / ix_revoked_tokens_user_id 已在
+    # a19886b0a614（initial_schema）创建，此处不得重复创建，否则 MySQL 报
+    # "Duplicate key name"；且 DDL 隐式提交不可回滚，会留下半迁移状态。
     # ### end Alembic commands ###
 
 
