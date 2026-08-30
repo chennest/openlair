@@ -30,7 +30,8 @@ variables:
 # ============================================================
 backend-test:
   stage: test
-  tags: [k8s]
+  # 构建/测试 job 固定在 test 集群 runner（runner1: k8s+test），避免被 prod runner 接走
+  tags: [k8s, test]
   image: ${IMAGE_PYTHON}
   # 可选:测试失败仅标记流水线 warning,不影响打包与部署
   allow_failure: true
@@ -61,7 +62,7 @@ backend-test:
 # ============================================================
 backend-package:
   stage: package
-  tags: [k8s]
+  tags: [k8s, test]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
   # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
   needs: []
@@ -95,7 +96,7 @@ backend-package:
 # ============================================================
 web-package:
   stage: package
-  tags: [k8s]
+  tags: [k8s, test]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
   # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
   needs: []
