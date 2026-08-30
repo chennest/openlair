@@ -150,8 +150,6 @@ async function submit() {
           {{ loading ? '请稍候…' : isLogin ? '登录' : '注册并登录' }}
         </Button>
       </form>
-
-      <p v-if="isLogin" class="demo-hint">测试账号：test1@openlair.dev / test2@openlair.dev / test3@openlair.dev<br />密码统一 test123456</p>
     </div>
   </div>
 </template>
@@ -218,15 +216,6 @@ async function submit() {
   background: var(--surface);
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-/* 演示账号提示 */
-.demo-hint {
-  margin: 18px 0 0;
-  text-align: center;
-  color: var(--text-4);
-  font-size: 0.76rem;
-  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 640px) {
