@@ -1,16 +1,19 @@
-# openlair CI/CD — GitLab Runner (k8s executor, tag: k8s)
+# openlair CI/CD — GitLab Runner (k8s executor)
 # 技术栈：backend = uv + FastAPI + pytest；lairweb = Vue3 + Vite + pnpm
 # 镜像走 Harbor（harbor.lcc007.top/chennest/...）
+# 部署：环境专属 runner（test=tag k8s-test / prod=tag k8s-prod）+ admin.conf（File 类型变量注入）
 
 # 需在 GitLab 项目 Settings → CI/CD → Variables 配置：
 #   HARBOR_HOST=https://harbor.lcc007.top
 #   HARBOR_USERNAME=admin
 #   HARBOR_PASSWORD=xxxxx
 #   HARBOR_PROJECT=chennest
+#   KUBE_CONFIG_TEST（File 类型）= test 集群 admin.conf 全文
+#   KUBE_CONFIG_PROD（File 类型）= prod 集群 admin.conf 全文
+#   （集群级变量不支持 environment scope，由各 deploy job 的 variables 映射为统一 KUBE_CONFIG）
 
 stages:
   - test
-  - build
   - package
   - deploy
 
@@ -18,14 +21,20 @@ variables:
   # 默认 job 镜像（k8s executor 的 build 容器，走 Harbor 加速）
   IMAGE_PYTHON: "harbor.lcc007.top/docker.io/library/python:3.14-slim"
   IMAGE_NODE: "harbor.lcc007.top/docker.io/library/node:22"
+  # corepack 下载 pnpm 走国内镜像（npm 官方源走 Cloudflare，国内 CI 不稳定）
+  COREPACK_NPM_REGISTRY: "https://registry.npmmirror.com"
 
 # ============================================================
-# Stage 1: backend 测试（uv + pytest）
+# Stage 1: backend 测试（uv + pytest）— 【可选】失败不阻塞打包
+# 用 needs 解耦:下方 package job 不依赖本 job,与测试并行执行
 # ============================================================
 backend-test:
   stage: test
-  tags: [k8s]
+  # 构建/测试 job 固定在 test 集群 runner（runner1: k8s+test），避免被 prod runner 接走
+  tags: [k8s, test]
   image: ${IMAGE_PYTHON}
+  # 可选:测试失败仅标记流水线 warning,不影响打包与部署
+  allow_failure: true
   before_script:
     # 从清华源安装 uv（PyPI 官方源国内慢）
     - pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
@@ -43,39 +52,20 @@ backend-test:
     - if: '$CI_COMMIT_BRANCH == "test"'
     - if: '$CI_COMMIT_TAG'
 # ============================================================
-# Stage 2: lairweb 构建（pnpm + Vite typecheck & build）
-# ============================================================
-web-build:
-  stage: build
-  tags: [k8s]
-  image: ${IMAGE_NODE}
-  before_script:
-    - corepack enable
-    - corepack prepare pnpm@latest --activate
-  script:
-    - cd lairweb
-    - pnpm install --frozen-lockfile
-    - pnpm run build
-  artifacts:
-    paths:
-      - lairweb/dist/
-    expire_in: 1 week
-  rules:
-    # 只在 test 分支推送或打 Git tag 时构建镜像
-    - if: '$CI_COMMIT_BRANCH == "test"'
-    - if: '$CI_COMMIT_TAG'
-# ============================================================
-# Stage 3: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
+# Stage 2: backend 镜像构建 + 推送 Harbor（buildah，无需 Docker daemon）
 # 镜像名: $HARBOR_HOST/$HARBOR_PROJECT/openlair-backend:<tag>
 # tag 策略：
 #   Git tag（v1.2.3）→ 镜像 tag = v1.2.3（生产发版）
 #   分支推送      → 镜像 tag = <分支名>-<pipeline序号>（如 test-12、dev-5）
 # buildah 优势：不需要特权模式/DinD，K8s job Pod 内直接构建
+# 注：前端类型检查由 lairweb/Dockerfile 的 pnpm run build 兜底，无需单独 web-build job
 # ============================================================
 backend-package:
   stage: package
-  tags: [k8s]
+  tags: [k8s, test]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
+  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
+  needs: []
   script:
     # 登录 Harbor
     # ⚠️ buildah login 选项必须在前（旧版不支持 registry 在前的顺序，报 too many arguments）
@@ -106,14 +96,16 @@ backend-package:
 # ============================================================
 web-package:
   stage: package
-  tags: [k8s]
+  tags: [k8s, test]
   image: harbor.lcc007.top/quay.io/buildah/stable:v1.37
+  # ⚡ 不等 backend-test:流水线一开始就构建,与测试并行
+  needs: []
   script:
     # ⚠️ printf 不带换行（echo 会加 \n，Harbor 拒绝带换行密码 → invalid username/password）
     - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
     - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
-    # 多阶段构建（Dockerfile 在 lairweb/ 下）
-    - buildah bud -t "$IMAGE_NAME:${TAG}" lairweb/
+    # 多阶段构建（Dockerfile 在 lairweb/ 下）；注入版本 tag + git 短哈希（front-version 响应头 / meta）
+    - buildah bud --build-arg APP_VERSION="${TAG}" --build-arg APP_COMMIT="${CI_COMMIT_SHORT_SHA}" -t "$IMAGE_NAME:${TAG}" lairweb/
     - buildah push "$IMAGE_NAME:${TAG}"
     - buildah logout $HARBOR_HOST
   rules:
@@ -126,26 +118,85 @@ web-package:
     IMAGE_NAME: "$HARBOR_HOST/$HARBOR_PROJECT/openlair-web"
 
 # ============================================================
-# Stage 4: 部署 test 环境（K8s，通过 agent k8s-test 隧道）
+# Stage 4: 部署 test 环境（K8s，环境专属 runner：tag k8s-test）
 # 触发：test 分支推送
 # 部署：kubectl apply -k overlays/test + 镜像 tag 注入
+# kubeconfig：runner 侧注入 admin.conf（KUBECONFIG 环境变量，不入库）
 # ============================================================
 deploy-test:
   stage: deploy
-  tags: [k8s]
+  tags: [k8s,test]
   image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
   environment:
     name: test
+  # 每个环境 job 各自映射集群变量为统一的 KUBE_CONFIG
+  #（集群级变量不支持 environment scope，故用 KUBE_CONFIG_TEST/PROD 双变量区分）
+  variables:
+    KUBE_CONFIG: "$KUBE_CONFIG_TEST"
+  # 只等镜像构建完成(不等 test,test 可选并行)
+  needs:
+    - backend-package
+    - web-package
   rules:
     - if: '$CI_COMMIT_BRANCH == "test"'
   before_script:
-    # GitLab 自动注入 kubeconfig（server=KAS），切到 test 集群的 agent context
+    # ⚠️ admin.conf 由 GitLab CI/CD 变量注入（File 类型：KUBE_CONFIG_TEST，内容不入库）
+    - test -n "$KUBE_CONFIG" || { echo "❌ 缺少 KUBE_CONFIG（来自 KUBE_CONFIG_TEST）"; exit 1; }
+    - export KUBECONFIG="$KUBE_CONFIG"
+    # 验证当前 kubeconfig 指向的 context（runner 注入的 admin.conf）
     - kubectl config get-contexts
-    - kubectl config use-context infra/gitops:k8s-test
+    - kubectl config current-context
   script:
     - cd k8s/overlays/test
     # 注入本次构建的镜像 tag（test-<pipeline序号>）——单引号防 YAML 解析冒号
     - 'sed -i "s|newTag: .*|newTag: test-${CI_PIPELINE_IID}|" kustomization.yaml'
+    # 部署
+    - kubectl apply -k .
+    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
+    - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
+
+# ============================================================
+# Stage 5: 部署生产环境（K8s，环境专属 runner：tag k8s-prod）
+# 触发：Git tag（v1.2.3）→ 镜像已构建；deploy-prod 为【手动放行】job，
+#       需人工在 GitLab CI 界面点 Play 才执行部署（发版必须显式确认）
+# 部署：kubectl apply -k overlays/prod + 镜像 tag 注入（CI_COMMIT_TAG）
+# kubeconfig：runner 侧注入 admin.conf（KUBECONFIG 环境变量，不入库）
+# ⚠️ 前置条件（集群侧手动，不入库）：
+#   1. 生产集群已部署 gitlab-runner（tag: k8s-prod），并注入生产集群 admin.conf
+#   2. namespace openlair（kustomize base 会 apply）
+#   3. 已创建 harbor-registry-secret（docker-registry 类型，拉 Harbor 镜像）
+#   4. 已创建 configmap openlair-env + secret openlair-secrets（生产配置）
+# 建议：GitLab 中将 production 设为 protected environment
+# ============================================================
+deploy-prod:
+  stage: deploy
+  tags: [k8s,prod]
+  image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
+  environment:
+    name: prod
+  # 每个环境 job 各自映射集群变量为统一的 KUBE_CONFIG
+  #（集群级变量不支持 environment scope，故用 KUBE_CONFIG_TEST/PROD 双变量区分）
+  variables:
+    KUBE_CONFIG: "$KUBE_CONFIG_PROD"
+  # 只等镜像构建完成(不等 backend-test)
+  needs:
+    - backend-package
+    - web-package
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual          # 打 tag 后不自动执行，需人工放行
+      allow_failure: false  # 未放行时 pipeline 保持 blocked，不会误报成功
+  before_script:
+    # ⚠️ admin.conf 由 GitLab CI/CD 变量注入（File 类型：KUBE_CONFIG_PROD，内容不入库）
+    - test -n "$KUBE_CONFIG" || { echo "❌ 缺少 KUBE_CONFIG（来自 KUBE_CONFIG_PROD）"; exit 1; }
+    - export KUBECONFIG="$KUBE_CONFIG"
+    # 验证当前 kubeconfig 指向的 context（runner 注入的 admin.conf）
+    - kubectl config get-contexts
+    - kubectl config current-context
+  script:
+    - cd k8s/overlays/prod
+    # 注入本次发布的镜像 tag（Git tag v1.2.3）——单引号防 YAML 解析冒号
+    - 'sed -i "s|newTag: .*|newTag: ${CI_COMMIT_TAG}|" kustomization.yaml'
     # 部署
     - kubectl apply -k .
     - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m

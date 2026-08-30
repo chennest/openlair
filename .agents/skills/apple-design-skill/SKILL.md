@@ -48,6 +48,10 @@ You are designing in the **latest Apple visual language**: calm, premium, restra
 
 > Portable: these files assume **no framework**. In React/Vue/etc., translate the CSS to your styling system but keep the *exact* token values, the panel-not-cards pattern, and the glass-only-on-overlap rule. Match the visual output; don't copy structure that doesn't fit.
 
+> ## OpenLair project (`lairweb/`) — shadcn + Apple fusion
+>
+> The stack is **Vue 3 + Tailwind v4 + shadcn-vue**. Tokens stay Apple (`style.css` `:root`), shadcn vars in `tailwind.css` are mapped to them, and **interaction components come from `src/components/ui/` (shadcn)** — do not hand-write buttons/inputs/selects/calendar. Layout panels keep the Apple classes (`.card-grid/.card/.row-list/.row`). Before building anything in `lairweb/`, **read `openlair-shadcn.md`** (fusion model, CLI usage, known pitfalls like the `--accent` collision and scoped-style misses on shadcn roots).
+
 ## Anti-slop — what makes it NOT Apple (avoid every one)
 
 - ❌ **Fragmented cards**: each item with its own border + tint + colored left-bar. → one panel + hairlines.

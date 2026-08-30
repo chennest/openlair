@@ -14,11 +14,19 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine A
 
 WORKDIR /app
 
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 版本信息（CI 经 --build-arg 传入：APP_VERSION=镜像 tag、APP_COMMIT=git 短哈希）
+ARG APP_VERSION=dev
+ARG APP_COMMIT=unknown
+ENV APP_VERSION=${APP_VERSION} \
+    APP_COMMIT=${APP_COMMIT}
 
-# 先拷依赖清单，利用缓存层
-COPY package.json pnpm-lock.yaml ./
+# 安装 pnpm（国内镜像下载，固定版本避免 latest 解析波动；与 CI web-build 的 pnpm@9.15.0 一致）
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# 先拷依赖清单（含 .npmrc 镜像源配置），利用缓存层
+COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # 拷贝源码并构建（vue-tsc 类型检查 + vite build）
@@ -32,10 +40,14 @@ FROM harbor.lcc007.top/docker.io/library/nginx:1.27-alpine
 # 部署时可用 env 覆盖：BACKEND_URL=http://xxx
 ENV BACKEND_URL=http://openlair-backend:8000
 
+# 前端版本（构建期经 --build-arg 注入，entrypoint envsubst 渲染进 front-version 响应头）
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 # 拷贝构建产物
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# nginx 配置模板（官方镜像自动 envsubst 渲染 BACKEND_URL）
+# nginx 配置模板（官方镜像自动 envsubst 渲染 BACKEND_URL / APP_VERSION）
 # 放 templates 目录，entrypoint 会自动渲染成 /etc/nginx/conf.d/default.conf
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 

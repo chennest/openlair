@@ -48,6 +48,7 @@ Backend architecture details are documented in [`docs/backend-architecture.md`](
 ## Current implementation status
 
 - `backend/` contains the FastAPI backend: unified `{code, message, data}` envelope API, JWT auth, and ledger/books/todo/calendar/notes/habits business modules over SQLAlchemy repositories + services, with Alembic migrations.
+- `backend/` also hosts an AI assistant (`/api/assistant` + `/api/transcribe`): natural-language bookkeeping via pydantic-ai (LLM), voice transcription via DashScope/OpenAI-compatible STT, a single persistent thread per user with multi-turn memory and automatic context compaction.
 - `lairweb/` contains the Vue + TypeScript web console; in dev it runs against the in-memory mock layer (`lairweb/mock/`) that mirrors the backend API contract exactly.
 - Product modules are being built out module by module; the API contract between `lairweb/mock/` and the real backend on port 8001 is identical, so switching the Vite proxy target connects the console to the real backend.
 

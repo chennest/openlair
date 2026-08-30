@@ -28,7 +28,7 @@ backend/
 │   ├── db/
 │   │   ├── base.py           # Base(DeclarativeBase)
 │   │   └── session.py        # engine / session_factory 工厂
-│   ├── models/               # 11 张 ORM 表，一表一文件
+│   ├── models/               # 14 张 ORM 表，一表一文件
 │   ├── repositories/         # SQLAlchemy 持久化（唯一数据访问路径）
 │   └── services/             # 业务逻辑 + DTO（auth / books / ledger / modules）
 ├── migrations/               # Alembic（versions/ 下每变更一个迁移文件）
@@ -74,13 +74,13 @@ HTTP 请求
 - **密钥来源**：`OPENLAIR_JWT_SECRET`（进程环境 → `backend/.env` → 开发默认值），HS256 要求 ≥ 32 字节；生产必须显式配置。
 - 鉴权依赖 `get_current_user`（api/v1/deps.py）执行：验签 → 过期检查 → 黑名单检查 → 用户存在性检查，任一失败统一 401。
 
-## 数据模型（11 张表，models/）
+## 数据模型（14 张表，models/）
 
 | 表 | 说明 |
 |---|---|
 | `users` | 用户：id（自增 int）、name、email（唯一）、password_hash |
-| `books` | 账本：name、type（personal/shared）、owner_id |
-| `book_members` | 账本成员：book_id + user_id，多对多 |
+| `books` | 账本：name、type（personal/shared）、invite_code（共享账本邀请码，NULL=未生成，重置即覆盖失效） |
+| `book_members` | 账本成员：book_id + user_id，多对多，role（owner/editor） |
 | `categories` | 分类：16 个固定项——支出 id 1-10（餐饮/交通/购物/居住/娱乐/医疗/学习/人情/通讯/其他），收入 id 11-16（工资/奖金/理财/礼金/退款/其他） |
 | `transactions` | 流水：book_id、type（expense/income）、category、amount、date、note |
 | `budgets` | 月预算：book_id + amount（每月一条） |
@@ -89,6 +89,9 @@ HTTP 请求
 | `notes` | 笔记：title、summary、tags（JSON） |
 | `habits` | 习惯打卡：name、streak、week（7 天布尔数组） |
 | `revoked_tokens` | JWT 登出黑名单：jti |
+| `assistant_sessions` | AI 助手会话（每用户单持久线程）：title、summary（压缩检查点）、summary_through_id |
+| `assistant_messages` | AI 助手消息（transcript）：role(user/assistant)、type(text/confirm_request/tool_result)、content、meta |
+| `assistant_plans` | AI 记账计划执行日志：plan_id、args、status(pending/executed/cancelled/failed) |
 
 ## API 端点清单（全部挂 `/api`，除 auth 均需 Bearer token）
 
@@ -115,10 +118,22 @@ HTTP 请求
 ### /api/books
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | / | 我的账本列表 |
+| GET | / | 我的账本列表（邀请码不下发，防成员转分享） |
 | POST | / | 创建账本（name/type） |
-| POST | /{book_id}/members | 添加成员（userId 或 name 查找） |
+| POST | /join | 输入邀请码加入共享账本（任意登录用户，成为 editor） |
+| GET | /{book_id}/invite | 查看邀请码（仅 owner；null=未生成） |
+| POST | /{book_id}/invite | 生成/重置邀请码（仅 owner；旧码立即失效） |
+| DELETE | /{book_id}/invite | 关闭邀请（仅 owner；置空码，停止新成员加入） |
+| POST | /{book_id}/leave | 成员自助退出（owner 不可） |
+| POST | /{book_id}/members | 添加成员（userId 或 name 查找，兼容旧契约） |
 | DELETE | /{book_id}/members/{user_id} | 移除成员 |
+| POST | /{book_id}/convert | 个人账本 → 共享（单向，自动生成邀请码） |
+| GET | /trash | 回收站列表 |
+| DELETE | /{book_id} | 删除账本 → 回收站（软删除） |
+| POST | /{book_id}/restore | 从回收站恢复 |
+| DELETE | /{book_id}/purge | 彻底删除（级联清流水/预算/成员/邀请码） |
+
+> 邀请码为 8 位大写字母数字（剔除易混字符 `0/O/1/I/L`，约 8.5e11 组合），长期有效、靠「重置」失效；码只经 `/invite` 接口对 owner 下发，不出现在账本列表 DTO 中。
 
 ### /api/todo · /api/calendar · /api/notes · /api/habits
 统一模式：`GET ""` 列表、`POST ""` 创建、`PUT /{id}` 更新、`DELETE /{id}` 删除（数据按用户隔离）。
@@ -127,6 +142,20 @@ HTTP 请求
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | / | 首页总览：流水/待办/日程/习惯聚合数据 |
+
+### /api/assistant · /api/transcribe
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | /assistant/sessions | 创建会话（幂等：每用户单持久线程，已存在则返回） |
+| GET | /assistant/sessions | 会话列表（有消息才返回，单线程通常至多一条） |
+| GET | /assistant/sessions/{id}/messages | 会话消息（transcript，含 tool_result） |
+| DELETE | /assistant/sessions/{id} | 删除会话 |
+| POST | /assistant/chat | SSE 流式对话：多轮历史 + 结构化记账计划 → confirm_request |
+| POST | /assistant/confirm | 确认/取消记账计划（approved 落库，追加 tool_result 消息） |
+| POST | /assistant/transcribe | 语音转写（DashScope / OpenAI 兼容） |
+
+- **聊天流转框架**：对话是一条平铺有序的 transcript，每轮 = `user → assistant → tool_result`；tool_result（工具执行结果）是聊天流的一等公民，既持久化也回放进模型上下文（带 `[工具结果]` 前缀）。
+- **多轮记忆 + 自动压缩（compaction）**：每轮把近期 transcript（含 tool_result）喂给 LLM；当历史 token 估算超过 `LLM_COMPACT_THRESHOLD_TOKENS`（默认 4000）时，把较早轮次摘要成检查点写入 `assistant_sessions.summary`，近期原文（`LLM_COMPACT_RETAIN_TOKENS`，默认 1200）保留，原始消息仍在 DB 可回放。压缩失败降级、不阻塞本轮。
 
 ## 配置（pydantic-settings，core/config.py）
 
@@ -145,8 +174,9 @@ HTTP 请求
 
 ## 测试
 
-- `backend/tests/`，命令 `uv run pytest`（当前 20 项全绿）。
-- `test_business_api.py`（17 项）：全链路业务测试——注册/登录/登出、账本创建与成员、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
+- `backend/tests/`，命令 `uv run pytest`（当前 49 项全绿）。
+- `test_business_api.py`（23 项）：全链路业务测试——注册/登录/登出、账本创建与成员、邀请码生成/重置/关闭、邀请码加入/退出、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
+- `test_assistant.py`（23 项）：AI 助手多轮/压缩/计划确认/取消/转写。
 - `test_security.py`（3 项）：JWT 密钥解析优先级（环境变量 > .env > 默认）与 `.env.example` 键完整性。
 - 手工验收：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001` 后按契约调 `/api/auth/login` 等端点核对信封格式。
 

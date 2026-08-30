@@ -169,7 +169,16 @@ export default {
           meta: { planId: String(planId), kind: 'cancelled', summary: '已取消本次记账' },
           createdAt: nowISO(),
         })
-        return ok({ ok: true, message: '已取消本次记账' })
+        const followUp = '好的，没记这笔。想改金额或分类的话直接说；记账工具会把它变成一条流水、方便月底统计。'
+        store.assistantMessages.push({
+          id: nextId(store.assistantMessages),
+          sessionId: sid,
+          role: 'assistant',
+          type: 'text',
+          content: followUp,
+          createdAt: nowISO(),
+        })
+        return ok({ ok: true, message: '已取消本次记账', followUp })
       }),
     ),
   }),

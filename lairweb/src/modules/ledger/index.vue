@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 记账模块页：账本切换 + 摘要/预算/趋势/统计/筛选/流水/弹窗，负责数据加载与查询状态
 import { computed, onMounted, ref } from 'vue'
+import { Check, Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import {
   ledgerApi,
   bookApi,
@@ -12,6 +14,7 @@ import {
 import BookSwitcher from './BookSwitcher.vue'
 import BookManage from './BookManage.vue'
 import BookCreate from './BookCreate.vue'
+import BookJoin from './BookJoin.vue'
 import BookTrash from './BookTrash.vue'
 import LedgerSummary from './LedgerSummary.vue'
 import LedgerBudget from './LedgerBudget.vue'
@@ -33,21 +36,15 @@ const currentBookId = ref(0)
 const currentBook = computed(() => books.value.find((b) => b.id === currentBookId.value) ?? null)
 const showManage = ref(false)
 const showCreate = ref(false)
+const showJoin = ref(false)
+const joinSubmitting = ref(false)
+const joinError = ref('')
+const inviteCode = ref<string | null>(null)
 
 /** 无账本空态 */
 const noBooks = computed(() => books.value.length === 0)
 const showTrash = ref(false)
 const trashBooks = ref<Book[]>([])
-
-// 成员管理：可添加候选（非当前成员的用户）
-const manageCandidates = computed(() => {
-  const memberIds = new Set(currentBook.value?.members.map((m) => m.userId) ?? [])
-  return books.value
-    .flatMap((b) => b.members)
-    .map((m) => m.user)
-    .filter((u): u is NonNullable<typeof u> => !!u && !memberIds.has(u.id))
-    .filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i)
-})
 
 const showDialog = ref(false)
 const savedTip = ref(false)
@@ -74,7 +71,9 @@ async function load() {
     loading.value = false
     return
   }
-  loading.value = true
+  // 初次加载才全屏 loading;切换筛选/账本时静默刷新(保留页面内容,避免闪烁)
+  const isInitial = !data.value
+  if (isInitial) loading.value = true
   try {
     const q: LedgerQuery = { ...query.value, bookId: currentBookId.value }
     const [d, t] = await Promise.all([ledgerApi.list(q), ledgerApi.trend(currentBookId.value)])
@@ -132,18 +131,6 @@ async function handleBookCreate(input: { name: string; type: 'personal' | 'share
   }
 }
 
-async function handleMemberAdd(userId: number) {
-  const r = await bookApi.addMember(currentBookId.value, { userId })
-  if (r.book) await loadBooks()
-  showManage.value = false
-}
-
-async function handleMemberAddByName(name: string) {
-  const r = await bookApi.addMember(currentBookId.value, { name })
-  if (r.book) await loadBooks()
-  showManage.value = false
-}
-
 async function handleMemberRemove(userId: number) {
   const r = await bookApi.removeMember(currentBookId.value, userId)
   if (r.book) await loadBooks()
@@ -155,6 +142,63 @@ async function handleBookConvert() {
   if (r.book) {
     showManage.value = false
     await loadBooks()
+  }
+}
+
+// 邀请码 / 加入 / 退出
+
+async function openManage() {
+  inviteCode.value = null
+  if (currentBookId.value) {
+    try {
+      inviteCode.value = (await bookApi.getInvite(currentBookId.value)).code
+    } catch {
+      inviteCode.value = null
+    }
+  }
+  showManage.value = true
+}
+
+async function handleResetInvite() {
+  if (!currentBookId.value) return
+  try {
+    inviteCode.value = (await bookApi.resetInvite(currentBookId.value)).code
+  } catch {
+    /* 错误已在信封层统一抛出提示 */
+  }
+}
+
+async function handleDisableInvite() {
+  if (!currentBookId.value) return
+  await bookApi.disableInvite(currentBookId.value)
+  inviteCode.value = null
+}
+
+async function handleLeave() {
+  if (!currentBookId.value) return
+  await bookApi.leave(currentBookId.value)
+  showManage.value = false
+  await loadBooks()
+  const active = books.value.filter((b) => !b.deletedAt)
+  if (!active.find((b) => b.id === currentBookId.value)) {
+    currentBookId.value = active[0]?.id ?? 0
+  }
+  await load()
+}
+
+async function handleJoin(code: string) {
+  joinSubmitting.value = true
+  joinError.value = ''
+  try {
+    const r = await bookApi.joinByCode(code)
+    showJoin.value = false
+    await loadBooks()
+    currentBookId.value = r.book.id
+    await load()
+  } catch (e) {
+    joinError.value = e instanceof Error ? e.message : '加入失败'
+  } finally {
+    joinSubmitting.value = false
   }
 }
 
@@ -215,8 +259,17 @@ onMounted(async () => {
   <div v-else-if="noBooks" class="empty-state">
     <p class="empty-symbol">📒</p>
     <p class="empty-title">还没有账本</p>
-    <p class="empty-desc">创建一个账本开始记账，或邀请家人朋友共享账本</p>
-    <button class="empty-btn" @click="showCreate = true">＋ 新建账本</button>
+    <p class="empty-desc">创建一个账本开始记账，或输入邀请码加入家人朋友的共享账本</p>
+    <div class="empty-actions">
+      <Button @click="showCreate = true">
+        <Plus class="size-4" />
+        新建账本
+      </Button>
+      <Button variant="outline" @click="showJoin = true">
+        <Plus class="size-4" />
+        加入共享账本
+      </Button>
+    </div>
   </div>
 
   <div v-else class="ledger">
@@ -226,7 +279,8 @@ onMounted(async () => {
         :current="currentBook"
         @switch="switchBook"
         @create="showCreate = true"
-        @manage="showManage = true"
+        @manage="openManage"
+        @join="showJoin = true"
         @trash="openTrash"
       />
     </div>
@@ -234,9 +288,21 @@ onMounted(async () => {
     <LedgerSummary :summary="data!.summary">
       <template #action>
         <div class="hero-actions">
-          <button class="add-btn" :disabled="books.length === 0" :title="books.length === 0 ? '请先创建账本' : ''" @click="showDialog = true">＋ 记一笔</button>
+          <Button
+            variant="ghost"
+            class="h-10 pl-5 pr-5 rounded-full! bg-[rgba(255,255,255,0.16)] border border-white/22 backdrop-blur-[8px] text-white font-semibold text-[0.92rem] cursor-pointer transition-all duration-[160ms] ease-[var(--ease-out-quart)] hover:bg-white/26 hover:text-white disabled:opacity-[0.45] disabled:cursor-not-allowed"
+            :disabled="books.length === 0"
+            :title="books.length === 0 ? '请先创建账本' : ''"
+            @click="showDialog = true"
+          >
+            <Plus class="size-4" />
+            记一笔
+          </Button>
           <Transition name="fade">
-            <span v-if="savedTip" class="saved-tip">✓ 已记录</span>
+            <span v-if="savedTip" class="saved-tip">
+              <Check class="size-3.5" />
+              已记录
+            </span>
           </Transition>
         </div>
       </template>
@@ -269,13 +335,14 @@ onMounted(async () => {
     <BookManage
       :open="showManage"
       :book="currentBook"
-      :candidates="manageCandidates"
+      :invite-code="inviteCode"
       @close="showManage = false"
-      @add="handleMemberAdd"
-      @add-by-name="handleMemberAddByName"
       @remove="handleMemberRemove"
       @delete="handleBookDelete"
       @convert="handleBookConvert"
+      @reset-invite="handleResetInvite"
+      @disable-invite="handleDisableInvite"
+      @leave="handleLeave"
     />
 
     <BookTrash
@@ -289,6 +356,15 @@ onMounted(async () => {
 
   <!-- 新建账本弹窗（空态/正常态共用） -->
   <BookCreate :open="showCreate" @close="showCreate = false" @create="handleBookCreate" />
+
+  <!-- 加入共享账本弹窗（空态/正常态共用，新用户无账本时也能加入） -->
+  <BookJoin
+    :open="showJoin"
+    :submitting="joinSubmitting"
+    :error="joinError"
+    @close="showJoin = false"
+    @join="handleJoin"
+  />
 </template>
 
 <style scoped>
@@ -307,35 +383,10 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
 }
-/* 渐变 hero 上的玻璃 chip（components.md §8：glass-chip 配方） */
-.add-btn {
+.saved-tip {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 20px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), background 160ms ease;
-}
-.add-btn:hover {
-  background: rgba(255, 255, 255, 0.26);
-}
-.add-btn:active {
-  transform: scale(0.97);
-}
-.add-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-}
-.saved-tip {
+  gap: 4px;
   color: rgba(255, 255, 255, 0.92);
   font-weight: 600;
   font-size: 0.88rem;
@@ -402,22 +453,18 @@ onMounted(async () => {
   font-size: 0.9rem;
   color: var(--text-3);
 }
-.empty-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  padding: 0 22px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.92rem;
-  cursor: pointer;
-  transition: opacity 160ms ease;
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
-.empty-btn:hover {
-  opacity: 0.88;
+.empty-actions :deep(button) {
+  height: 44px;
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 @media (max-width: 960px) {
   .lower-grid {

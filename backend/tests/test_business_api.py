@@ -390,6 +390,94 @@ def test_books_list_isolated_per_user(tmp_path) -> None:
     # test4 不是 test1 账本的 owner，不能删除
     assert client.delete("/api/books/1", headers=h4).status_code == 403
 
+def test_book_invite_code_generate_reset_disable(tmp_path) -> None:
+    """邀请码：转共享自动生成、owner 查看/重置/关闭、非 owner 拒绝。"""
+    client = make_client(tmp_path)
+    token, _ = login(client)  # test1 = owner
+    headers = auth_headers(token)
+
+    # 新建个人账本 → 转为共享：自动生成邀请码
+    r = client.post("/api/books", json={"name": "出游账", "type": "personal"}, headers=headers)
+    book_id = r.json()["data"]["book"]["id"]
+    client.post(f"/api/books/{book_id}/convert", headers=headers)
+    code = client.get(f"/api/books/{book_id}/invite", headers=headers).json()["data"]["code"]
+    assert isinstance(code, str) and len(code) == 8
+
+    # seed 共享账本 2 未生成码 → GET 返回 null
+    assert client.get("/api/books/2/invite", headers=headers).json()["data"]["code"] is None
+
+    # 生成码（seed 共享账本 2）
+    r = client.post("/api/books/2/invite", headers=headers)
+    assert r.json()["code"] == 200
+    code2 = r.json()["data"]["code"]
+    assert len(code2) == 8
+    assert client.get("/api/books/2/invite", headers=headers).json()["data"]["code"] == code2
+
+    # 非 owner 不能看码/重置码
+    token2, _ = login(client, email="test2@openlair.dev")
+    h2 = auth_headers(token2)
+    assert client.get("/api/books/2/invite", headers=h2).status_code == 403
+    assert client.post("/api/books/2/invite", headers=h2).status_code == 403
+    assert client.delete("/api/books/2/invite", headers=h2).status_code == 403
+
+    # 个人账本不能生成码
+    r = client.post("/api/books/1/invite", headers=headers)
+    assert r.status_code == 400
+
+    # 重置：新码 != 旧码
+    r = client.post("/api/books/2/invite", headers=headers)
+    code2b = r.json()["data"]["code"]
+    assert code2b != code2
+
+    # 关闭邀请：置空码
+    assert client.delete("/api/books/2/invite", headers=headers).json()["data"]["ok"] is True
+    assert client.get("/api/books/2/invite", headers=headers).json()["data"]["code"] is None
+
+
+def test_book_join_and_leave(tmp_path) -> None:
+    """邀请码加入：成功加入、旧码失效、已在账本 409、无效码 404、退出。"""
+    client = make_client(tmp_path)
+    token, _ = login(client)  # test1 = owner
+    headers = auth_headers(token)
+
+    # owner 为 seed 共享账本 2 生成码
+    code = client.post("/api/books/2/invite", headers=headers).json()["data"]["code"]
+
+    # 注册一个全新用户 joiner 并登录
+    client.post("/api/auth/register", json={"name": "join", "email": "joiner@test.dev", "password": "test123456"})
+    jt, ju = login(client, email="joiner@test.dev")
+
+    # 加入成功（码带连字符 + 小写也应被识别）
+    r = client.post("/api/books/join", json={"code": f"{code[:4]}-{code[4:].lower()}"}, headers=auth_headers(jt))
+    assert r.status_code == 200
+    book = r.json()["data"]["book"]
+    assert book["id"] == 2
+    assert any(m["userId"] == ju["id"] and m["role"] == "editor" for m in book["members"])
+
+    # 已在账本中 → 409
+    r = client.post("/api/books/join", json={"code": code}, headers=auth_headers(jt))
+    assert r.status_code == 409
+
+    # 无效码 → 404
+    r = client.post("/api/books/join", json={"code": "ZZZZZZZZ"}, headers=auth_headers(jt))
+    assert r.status_code == 404
+
+    # 重置后旧码失效：新用户用旧码加入 → 404
+    code_new = client.post("/api/books/2/invite", headers=headers).json()["data"]["code"]
+    client.post("/api/auth/register", json={"name": "join2", "email": "joiner2@test.dev", "password": "test123456"})
+    j2t, _ = login(client, email="joiner2@test.dev")
+    assert client.post("/api/books/join", json={"code": code}, headers=auth_headers(j2t)).status_code == 404
+    assert client.post("/api/books/join", json={"code": code_new}, headers=auth_headers(j2t)).status_code == 200
+
+    # 成员自助退出：editor 可退，owner 不可退
+    r = client.post("/api/books/2/leave", headers=auth_headers(jt))
+    assert r.json()["data"]["ok"] is True
+    r = client.post("/api/books/2/leave", headers=headers)
+    assert r.status_code == 400
+    # 退出后不再是成员，再退 → 404
+    assert client.post("/api/books/2/leave", headers=auth_headers(jt)).status_code == 404
+
+
 def test_book_convert_to_shared_one_way(tmp_path) -> None:
     """个人账本 → 共享（单向）：转成功、已是共享拒绝、共享不可转回、非 owner 拒绝。"""
     client = make_client(tmp_path)

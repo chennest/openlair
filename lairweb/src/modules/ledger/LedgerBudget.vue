@@ -2,6 +2,8 @@
 // 预算卡：本月预算 + 已用 + 剩余 + meter（灰轨道 + accent 填充，超支转 heat）
 // 内联编辑：点「调整」切换输入框
 import { computed, ref } from 'vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 const props = defineProps<{
   budget: number
@@ -39,22 +41,22 @@ function cancel() {
   <article class="card">
     <div class="card-title">
       <span>本月预算</span>
-      <button v-if="!editing" class="edit-btn" @click="startEdit">调整</button>
+      <Button v-if="!editing" variant="ghost" size="sm" class="h-auto text-[12px] font-semibold text-primary bg-transparent py-1 pl-2 pr-2 rounded-full! hover:bg-primary/6" @click="startEdit">调整</Button>
     </div>
 
     <div v-if="editing" class="editor">
-      <input
+      <Input
         v-model="draft"
         type="number"
         min="0"
         step="100"
-        class="input num"
+        class="flex-1 min-w-0 h-9 px-3 py-[9px] border-[var(--hairline)]! rounded-[var(--r-thumb)]! text-foreground bg-white shadow-none! text-[1rem] md:text-[1rem]"
         autofocus
         @keyup.enter="save"
         @keyup.esc="cancel"
       />
-      <button class="save-btn" @click="save">保存</button>
-      <button class="cancel-btn" @click="cancel">取消</button>
+      <Button size="sm" @click="save">保存</Button>
+      <Button variant="outline" size="sm" @click="cancel">取消</Button>
     </div>
 
     <template v-else>
@@ -90,19 +92,6 @@ function cancel() {
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-.edit-btn {
-  border: 0;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  background: transparent;
-  padding: 4px 8px;
-  border-radius: var(--r-pill);
-}
-.edit-btn:hover {
-  background: rgba(0, 113, 227, 0.06);
 }
 .top {
   display: flex;
@@ -150,38 +139,5 @@ function cancel() {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-.input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  padding: 9px 12px;
-  font-size: 1rem;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
-.save-btn,
-.cancel-btn {
-  border: 0;
-  border-radius: var(--r-pill);
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.save-btn {
-  color: #fff;
-  background: var(--accent);
-}
-.cancel-btn {
-  color: var(--text-2);
-  background: rgba(0, 0, 0, 0.05);
 }
 </style>

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     )
     llm_api_key: str = Field(default="", validation_alias="LLM_API_KEY")
     llm_model: str = Field(default="deepseek-v4-flash", validation_alias="LLM_MODEL")
+    # 截图识别（视觉多模态模型）：OpenAI 兼容；留空回退 LLM_BASE_URL/LLM_API_KEY
+    snap_base_url: str = Field(default="", validation_alias="SNAP_BASE_URL")
+    snap_api_key: str = Field(default="", validation_alias="SNAP_API_KEY")
+    snap_model: str = Field(default="qwen-vl-max", validation_alias="SNAP_MODEL")
     # 语音转写：引擎切换 + 双实现
     # engine: dashscope（默认）| openai-compatible（自建 whisper / 兼容网关）
     transcribe_engine: str = Field(
@@ -51,6 +55,13 @@ class Settings(BaseSettings):
     )
     transcribe_openai_api_key: str = Field(
         default="", validation_alias="TRANSCRIBE_OPENAI_API_KEY"
+    )
+    # AI 助手上下文压缩：历史 token 估算阈值与保留近期原文的 token 预算（估算值）。
+    llm_compact_threshold_tokens: int = Field(
+        default=4000, validation_alias="LLM_COMPACT_THRESHOLD_TOKENS"
+    )
+    llm_compact_retain_tokens: int = Field(
+        default=1200, validation_alias="LLM_COMPACT_RETAIN_TOKENS"
     )
 
     model_config = SettingsConfigDict(

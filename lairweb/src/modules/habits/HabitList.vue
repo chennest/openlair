@@ -1,5 +1,8 @@
 <script setup lang="ts">
 // 习惯列表（纯展示 + 打卡/删除）
+import { Check, Flame, RotateCcw, Trash2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import type { Habit } from './api'
 
 defineProps<{ habits: Habit[] }>()
@@ -18,15 +21,44 @@ const emit = defineEmits<{
     </div>
     <div class="row-list">
       <div v-for="h in habits" :key="h.id" class="row habit-row">
-        <span class="main">
-          <span class="streak">🔥 {{ h.streak }}</span>
+        <div class="main">
+          <span class="streak" :title="`已连续打卡 ${h.streak} 天`">
+            <Flame class="size-4" aria-hidden="true" />
+            <span>{{ h.streak }}</span>
+          </span>
           <span class="text">{{ h.name }}</span>
-        </span>
-        <span class="week-dots" aria-label="最近七天">
-          <span v-for="(d, i) in h.week" :key="i" class="day-dot" :class="{ on: d }"></span>
-        </span>
-        <button class="mini gold" @click="emit('toggle', h)">{{ h.done ? '取消' : '打卡' }}</button>
-        <button class="mini ghost" @click="emit('remove', h.id)">✕</button>
+        </div>
+
+        <div class="progress-wrap">
+          <span class="progress-label">{{ h.week.filter((d) => d).length }}/7 天</span>
+          <Progress
+            :model-value="(h.week.filter((d) => d).length / 7) * 100"
+            class="w-[96px] bg-[var(--track)] max-[860px]:w-full"
+            aria-label="本周完成度"
+          />
+        </div>
+
+        <Button
+          size="sm"
+          class="min-h-9 min-w-[76px] rounded-full px-4 max-[860px]:min-h-11"
+          :class="h.done ? 'bg-[var(--live)] text-white hover:bg-[var(--live)]/85' : ''"
+          @click="emit('toggle', h)"
+        >
+          <Check v-if="!h.done" class="size-4" />
+          <RotateCcw v-else class="size-4" />
+          {{ h.done ? '取消' : '打卡' }}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          class="rounded-full text-[var(--text-3)] hover:bg-destructive/10 hover:text-destructive max-[860px]:size-11"
+          :title="`删除「${h.name}」`"
+          aria-label="删除习惯"
+          @click="emit('remove', h.id)"
+        >
+          <Trash2 class="size-4" />
+        </Button>
       </div>
     </div>
   </article>
@@ -86,53 +118,50 @@ const emit = defineEmits<{
   flex: 1;
 }
 .streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-2);
   font-weight: 700;
   font-size: 0.86rem;
   flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.streak svg {
+  color: var(--heat);
 }
 .text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.week-dots {
+.progress-wrap {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 5px;
-  align-items: center;
   flex: 0 0 auto;
+  min-width: 96px;
 }
-.day-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--track);
-  transition: background 160ms ease;
-}
-.day-dot.on {
-  background: var(--accent);
-}
-.mini {
-  min-width: 0;
-  padding: 6px 12px;
-  border-radius: var(--r-pill);
-  border: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.mini.gold {
-  color: #fff;
-  background: var(--accent);
-}
-.mini.gold:hover {
-  box-shadow: var(--sh-cta);
-}
-.mini.ghost {
+.progress-label {
   color: var(--text-3);
-  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-.mini.ghost:hover {
-  color: var(--heat);
+
+@media (max-width: 860px) {
+  .habit-row {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .main {
+    flex: 1 1 100%;
+  }
+  .progress-wrap {
+    flex: 1;
+    align-items: stretch;
+    min-width: 0;
+  }
 }
 </style>

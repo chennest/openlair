@@ -3,6 +3,11 @@
 // 登录成功后写入 token + 用户信息到 localStorage，跳转 redirect 或首页
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Eye, EyeOff, CircleAlert, Loader2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { authApi, type LoginInput, type RegisterInput } from './api'
 import { setToken, setUser, ApiError } from '../../api/request'
 
@@ -17,18 +22,12 @@ const showPw = ref(false)
 const loading = ref(false)
 const error = ref('')
 
+// 注册开关：与后端 settings.allow_register 一致（生产默认禁止，开放时改 true）
+const allowRegister = false
+
 const isLogin = computed(() => mode.value === 'login')
 const title = computed(() => (isLogin.value ? '欢迎回来' : '创建账号'))
 const subtitle = computed(() => (isLogin.value ? '登录你的 OpenLair 工作台' : '注册后即可开始记账与日程管理'))
-
-const iconProps = {
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  'stroke-width': 1.75,
-  'stroke-linecap': 'round' as const,
-  'stroke-linejoin': 'round' as const,
-}
 
 function switchMode(m: 'login' | 'register') {
   mode.value = m
@@ -71,33 +70,41 @@ async function submit() {
 </script>
 
 <template>
-  <div class="auth-page">
+  <div class="relative grid min-h-dvh place-items-center overflow-hidden bg-background px-4 py-6">
     <!-- 氛围光斑（克制：仅背景，不参与内容层级） -->
     <div class="glow glow-a" aria-hidden="true"></div>
     <div class="glow glow-b" aria-hidden="true"></div>
 
-    <div class="auth-card">
-      <div class="brand">
+    <div class="relative z-10 w-full max-w-[400px] rounded-[var(--r-hero)] bg-card p-6 shadow-[var(--sh-panel)] sm:p-8">
+      <div class="mb-6 flex flex-col items-center gap-1.5">
         <span class="brand-mark">L</span>
-        <h1>OpenLair</h1>
-        <p>个人 AI 生活工作台</p>
+        <h1 class="mt-2 text-2xl font-bold tracking-tight">OpenLair</h1>
+        <p class="text-[13px] text-muted-foreground">个人 AI 生活工作台</p>
       </div>
 
-      <div class="seg" role="tablist">
+      <div class="seg mb-6 grid grid-cols-2 gap-1 p-1" role="tablist">
         <button class="seg-btn" :class="{ on: isLogin }" @click="switchMode('login')">登录</button>
-        <button class="seg-btn" :class="{ on: !isLogin }" @click="switchMode('register')">注册</button>
+        <button
+          class="seg-btn"
+          :class="{ on: !isLogin }"
+          :disabled="!allowRegister"
+          :title="allowRegister ? '' : '系统暂未开放注册'"
+          @click="allowRegister && switchMode('register')"
+        >
+          注册<span v-if="!allowRegister" class="ml-1 text-[10px] opacity-60">未开放</span>
+        </button>
       </div>
 
-      <h2 class="page-title">{{ title }}</h2>
-      <p class="page-sub">{{ subtitle }}</p>
+      <h2 class="text-2xl font-bold tracking-tight">{{ title }}</h2>
+      <p class="mt-1 text-sm text-muted-foreground">{{ subtitle }}</p>
 
-      <form class="form" @submit.prevent="submit">
+      <form class="mt-4" @submit.prevent="submit">
         <template v-if="!isLogin">
-          <label class="field-label" for="auth-name">昵称</label>
-          <input
+          <Label for="auth-name" class="mb-1.5 mt-4 block text-xs font-medium text-muted-foreground">昵称</Label>
+          <Input
             id="auth-name"
             v-model="name"
-            class="input"
+            class="h-11"
             type="text"
             placeholder="你的昵称"
             maxlength="20"
@@ -105,70 +112,64 @@ async function submit() {
           />
         </template>
 
-        <label class="field-label" for="auth-email">邮箱</label>
-        <input
+        <Label for="auth-email" class="mb-1.5 mt-4 block text-xs font-medium text-muted-foreground">邮箱</Label>
+        <Input
           id="auth-email"
           v-model="email"
-          class="input"
+          class="h-11"
           type="email"
           placeholder="you@example.com"
           autocomplete="email"
           :autofocus="true"
         />
 
-        <label class="field-label" for="auth-password">密码</label>
-        <div class="pw-box">
-          <input
+        <Label for="auth-password" class="mb-1.5 mt-4 block text-xs font-medium text-muted-foreground">密码</Label>
+        <div class="relative">
+          <Input
             id="auth-password"
             v-model="password"
-            class="input pw-input"
+            class="h-11 pr-12"
             :type="showPw ? 'text' : 'password'"
             :placeholder="isLogin ? '输入密码' : '至少 6 位'"
             :autocomplete="isLogin ? 'current-password' : 'new-password'"
           />
-          <button
+          <Button
             type="button"
-            class="pw-toggle"
+            variant="ghost"
+            size="icon"
+            class="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             :title="showPw ? '隐藏密码' : '显示密码'"
             :aria-label="showPw ? '隐藏密码' : '显示密码'"
             @click="showPw = !showPw"
           >
-            <svg v-if="showPw" v-bind="iconProps" aria-hidden="true">
-              <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
-              <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
-              <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
-              <path d="m2 2 20 20" />
-            </svg>
-            <svg v-else v-bind="iconProps" aria-hidden="true">
-              <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-              <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0" />
-            </svg>
-          </button>
+            <EyeOff v-if="showPw" class="size-4" />
+            <Eye v-else class="size-4" />
+          </Button>
         </div>
 
-        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <Alert v-if="error" variant="destructive" class="mt-4">
+          <CircleAlert class="size-4" />
+          <AlertDescription>{{ error }}</AlertDescription>
+        </Alert>
 
-        <button class="cta" type="submit" :disabled="loading">
+        <Button
+          type="submit"
+          class="cta-btn mt-5 h-12 w-full rounded-[var(--r-pill)] text-[0.98rem] font-bold shadow-[var(--sh-cta)] hover:shadow-[0_22px_60px_rgba(0,113,227,0.3)]"
+          :disabled="loading"
+        >
+          <Loader2 v-if="loading" class="size-4 animate-spin" />
           {{ loading ? '请稍候…' : isLogin ? '登录' : '注册并登录' }}
-        </button>
+        </Button>
       </form>
-
-      <p v-if="isLogin" class="demo-hint">测试账号：test1@openlair.dev / test2@openlair.dev / test3@openlair.dev<br />密码统一 test123456</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.auth-page {
-  position: relative;
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 24px 18px;
-  overflow: hidden;
-  background: var(--bg);
-}
+/* ════════════════════════════════════════════════════════════
+   auth page — shadcn 组件 + Apple Liquid Glass token
+   仅保留无法用 Tailwind utility 表达的部分（光斑 / 品牌标记 / 分段控件 / CTA 渐变）
+   ════════════════════════════════════════════════════════════ */
 
 /* 氛围光斑：非常淡的蓝紫渐变，克制 */
 .glow {
@@ -192,23 +193,7 @@ async function submit() {
   background: rgba(94, 92, 230, 0.14);
 }
 
-.auth-card {
-  position: relative;
-  z-index: 1;
-  width: min(400px, 100%);
-  padding: 34px 32px 28px;
-  border-radius: var(--r-hero);
-  background: var(--surface);
-  box-shadow: var(--sh-panel);
-}
-
-.brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 26px;
-}
+/* 品牌标记（渐变 + CTA 玻璃阴影） */
 .brand-mark {
   width: 56px;
   height: 56px;
@@ -221,24 +206,20 @@ async function submit() {
   font-size: 1.35rem;
   box-shadow: var(--sh-cta);
 }
-.brand h1 {
-  margin: 8px 0 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+
+/* CTA 渐变按钮：渐变是 background-image 不是 color，
+   走 Tailwind 任意值会落到 background-color 而失效（invalid at computed-value time → 透明），
+   必须用原生 background 简写，同 brand-mark */
+.cta-btn {
+  background: var(--grad-cta);
+  color: #fff;
 }
-.brand p {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 0.82rem;
+.cta-btn:hover {
+  background: var(--grad-cta);
 }
 
 /* 分段控件（白胶囊 segmented，components.md §5） */
 .seg {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
   border-radius: var(--r-pill);
   background: rgba(0, 0, 0, 0.05);
 }
@@ -258,124 +239,13 @@ async function submit() {
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
-
-.page-title {
-  margin: 24px 0 4px;
-  font-size: 1.45rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.page-sub {
-  margin: 0 0 6px;
+.seg-btn:disabled {
   color: var(--text-3);
-  font-size: 0.84rem;
-}
-
-.field-label {
-  display: block;
-  margin: 16px 0 7px;
-  color: var(--text-3);
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.input {
-  width: 100%;
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  outline: none;
-  color: var(--text);
-  background: var(--surface);
-  font: inherit;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.18);
-}
-.input::placeholder {
-  color: var(--text-4);
-}
-
-.pw-box {
-  position: relative;
-}
-.pw-input {
-  padding-right: 48px;
-}
-.pw-toggle {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--r-thumb);
-  color: var(--text-3);
-  background: transparent;
-  cursor: pointer;
-  transition: color 160ms ease, background 160ms ease;
-}
-.pw-toggle:hover {
-  color: var(--text);
-  background: var(--hover);
-}
-.pw-toggle svg {
-  width: 20px;
-  height: 20px;
-}
-
-.error {
-  margin: 14px 0 0;
-  color: var(--heat);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.cta {
-  width: 100%;
-  height: 48px;
-  margin-top: 22px;
-  border: 0;
-  border-radius: var(--r-pill);
-  color: #fff;
-  background: var(--grad-cta);
-  font-size: 0.98rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: var(--sh-cta);
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart), opacity 160ms ease;
-}
-.cta:hover {
-  box-shadow: 0 22px 60px rgba(0, 113, 227, 0.3);
-}
-.cta:active {
-  transform: scale(0.97);
-}
-.cta:disabled {
-  opacity: 0.55;
   cursor: not-allowed;
-}
-
-.demo-hint {
-  margin: 18px 0 0;
-  text-align: center;
-  color: var(--text-4);
-  font-size: 0.76rem;
-  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 
 @media (max-width: 640px) {
-  .auth-card {
-    padding: 28px 22px 22px;
-    border-radius: var(--r-panel);
-  }
   .brand-mark {
     width: 50px;
     height: 50px;

@@ -42,13 +42,13 @@ spec:
               memory: "512Mi"
           readinessProbe:
             httpGet:
-              path: /health
+              path: /healthz/ready
               port: 8001
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz/live
               port: 8001
             initialDelaySeconds: 20
             periodSeconds: 20
@@ -62,5 +62,6 @@ spec:
   selector:
     app: openlair-backend
   ports:
-    - port: 8001
+    - name: backend
+      port: 8001
       targetPort: 8001

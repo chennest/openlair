@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.core.envelope import ApiError
 from app.main import create_app
-from app.models.assistant import AssistantPlan
+from app.models.assistant import AssistantPlan, AssistantSession
 from app.services.assistant.loop.base import LoopEvent
 from app.services.assistant.transcribe import (
     DashScopeTranscriber,
@@ -18,20 +18,44 @@ from app.services.assistant.transcribe import (
 
 
 class FakeLoopEngine:
-    """模拟 LLM 推理循环：按脚本产出事件。
+    """模拟 LLM 推理循环：按脚本产出事件，并记录每次调用的 history/prompt。
 
     steps: list of (kind, payload)
       ('text', '回复文本')          → 产出文本 delta
       ('tool', 'tool_name|{json}')  → 调用查询工具
       ('plan', '{json}')            → 结构化输出记账计划（LedgerPlan）
+
+    output_schema=None 时视为「无结构化输出调用」：按 system_prompt 区分
+    自动压缩摘要（含「压缩」）与取消追问（含「取消」）。
     """
 
     name = "fake"
 
-    def __init__(self, steps: list[tuple[str, str]]) -> None:
+    def __init__(
+        self,
+        steps: list[tuple[str, str]],
+        *,
+        summary: str = "压缩摘要",
+        cancel_followup: str = "好的，没记这笔。要改吗？",
+    ) -> None:
         self.steps = steps
+        self.summary = summary
+        self.cancel_followup = cancel_followup
+        self.calls: list[dict] = []
 
     async def stream(self, *, system_prompt, tools, history, prompt, output_schema=None):
+        self.calls.append({
+            "system_prompt": system_prompt,
+            "history": [(m.role, m.content) for m in history],
+            "prompt": prompt,
+            "output_schema": output_schema,
+        })
+        if output_schema is None:
+            # 摘要调用 vs 取消追问：靠 system_prompt 是否含「取消」区分
+            text = self.cancel_followup if "取消" in (system_prompt or "") else self.summary
+            yield LoopEvent(kind="delta", text=text)
+            yield LoopEvent(kind="done", output=None)
+            return
         output = None
         for kind, payload in self.steps:
             if kind == "text":
@@ -313,7 +337,7 @@ def test_message_type_and_meta(tmp_path, monkeypatch) -> None:
 
 
 def test_cancel_plan_status(tmp_path, monkeypatch) -> None:
-    """approved=False → 计划 status='cancelled'，追加 tool_result 消息。"""
+    """approved=False → 计划 status='cancelled'，追加 tool_result + 取消追问消息。"""
     client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
     runtime = client.app.state.assistant_runtime
     runtime._engine = FakeLoopEngine(
@@ -336,12 +360,44 @@ def test_cancel_plan_status(tmp_path, monkeypatch) -> None:
     assert plan["status"] == "cancelled"
     assert plan["executed_at"] is not None
 
-    # 消息 type=tool_result, kind=cancelled
+    # 消息：tool_result(kind=cancelled) 之后追加一条取消追问文本
     msgs = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(token)).json()["data"]
-    tool_msg = msgs[-1]
+    tool_msg = msgs[-2]
     assert tool_msg["type"] == "tool_result"
     assert tool_msg["meta"]["kind"] == "cancelled"
     assert "已取消" in tool_msg["content"]
+    follow_msg = msgs[-1]
+    assert follow_msg["role"] == "assistant"
+    assert follow_msg["type"] == "text"
+    assert "没记" in follow_msg["content"]
+
+
+def test_cancel_confirm_response_includes_followup(tmp_path, monkeypatch) -> None:
+    """取消时 confirm 响应带 followUp，且 followUp 追加为 assistant text 消息。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._engine = FakeLoopEngine(
+        [("plan", '{"action": "record", "type": "支出", "amount": 30.0, "category": "餐饮", "book": "AI测试账本"}')],
+        cancel_followup="好的，没记这笔「支出 30 元 · 餐饮」。要改金额吗？",
+    )
+    token, _ = login(client)
+    client.post("/api/books", headers=ah(token), json={"name": "AI测试账本", "type": "personal"})
+    sess = new_session(client, token)
+
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "午饭30"}
+    )
+    plan_id = re.search(r'"planId": "([0-9a-f]+)"', r.text).group(1)
+
+    r = client.post("/api/assistant/confirm", headers=ah(token), json={"planId": plan_id, "approved": False})
+    data = r.json()["data"]
+    assert data["ok"] is True
+    assert data["message"] == "已取消"
+    assert data["followUp"] == "好的，没记这笔「支出 30 元 · 餐饮」。要改金额吗？"
+
+    msgs = client.get(f"/api/assistant/sessions/{sess['id']}/messages", headers=ah(token)).json()["data"]
+    assert msgs[-1]["type"] == "text"
+    assert msgs[-1]["content"] == data["followUp"]
 
 
 def test_plan_isolation(tmp_path, monkeypatch) -> None:
@@ -652,3 +708,77 @@ def test_create_transcriber_engine_switch() -> None:
         )
     assert exc.value.status == 503
     assert "TRANSCRIBE_OPENAI_BASE_URL" in exc.value.message
+
+
+# ---------- 多轮记忆 + 自动压缩 + 单一持久线程 ----------
+
+
+def test_chat_feeds_history_to_llm(tmp_path, monkeypatch) -> None:
+    """多轮：第二轮 LLM 调用应带上第一轮流转（user + assistant + tool 结果）。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    engine = FakeLoopEngine([("text", "好的，收到"), ("plan", '{"action": "skip"}')])
+    runtime._engine = engine
+    token, _ = login(client)
+    sess = new_session(client, token)
+
+    # 第一轮：用户消息 + 助手回复
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token),
+        json={"sessionId": sess["id"], "message": "午饭68"},
+    )
+    assert r.status_code == 200
+    # 模拟确认后追加工具执行结果（聊天流转框架里的 tool 段）
+    runtime._append(sess["id"], "已记账：支出 68 元 · 餐饮", role="assistant", type="tool_result")
+
+    # 第二轮
+    r = client.post(
+        "/api/assistant/chat", headers=ah(token),
+        json={"sessionId": sess["id"], "message": "地铁6元"},
+    )
+    assert r.status_code == 200
+
+    chat_calls = [c for c in engine.calls if c["output_schema"] is not None]
+    assert len(chat_calls) == 2
+    history = chat_calls[1]["history"]
+    contents = [h[1] for h in history]
+    assert history[0][0] == "user" and "午饭68" in contents[0]
+    assert any(h[0] == "assistant" and h[1].startswith("[工具结果] 已记账") for h in history)
+
+
+def test_compaction_summarizes_old_history(tmp_path, monkeypatch) -> None:
+    """历史超预算 → 自动压缩：较早轮次摘要成检查点，summary/summary_through_id 落库。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    runtime = client.app.state.assistant_runtime
+    runtime._compact_threshold = 5  # 压低阈值强制触发
+    runtime._retain_tokens = 2
+    engine = FakeLoopEngine(
+        [("text", "好的，收到"), ("plan", '{"action": "skip"}')],
+        summary="压缩摘要：用户记过午饭68",
+    )
+    runtime._engine = engine
+    token, _ = login(client)
+    sess = new_session(client, token)
+
+    client.post("/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "午饭68"})
+    client.post("/api/assistant/chat", headers=ah(token), json={"sessionId": sess["id"], "message": "地铁6元"})
+
+    with runtime._sf() as s:
+        sess_row = s.get(AssistantSession, sess["id"])
+        assert sess_row.summary is not None
+        assert "压缩摘要" in sess_row.summary
+        assert sess_row.summary_through_id is not None and sess_row.summary_through_id > 0
+
+    # 摘要调用确实发生过（output_schema=None）
+    summarize_calls = [c for c in engine.calls if c["output_schema"] is None]
+    assert summarize_calls
+
+
+def test_create_session_idempotent(tmp_path, monkeypatch) -> None:
+    """单一持久线程：连续两次 create_session 返回同一个会话。"""
+    client = make_client(tmp_path, monkeypatch, llm_key="sk-fake")
+    token, _ = login(client)
+    r1 = client.post("/api/assistant/sessions", headers=ah(token))
+    r2 = client.post("/api/assistant/sessions", headers=ah(token))
+    assert r1.json()["code"] == 200 and r2.json()["code"] == 200
+    assert r1.json()["data"]["id"] == r2.json()["data"]["id"]

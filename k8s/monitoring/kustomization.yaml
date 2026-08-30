@@ -1,0 +1,7 @@
+# monitoring kustomization — Prometheus 监控资源（独立目录，按需引用）
+# test 等已装 Prometheus Operator 的环境引用此目录；生产未装监控则不引用
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - servicemonitor.yaml

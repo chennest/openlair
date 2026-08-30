@@ -1,9 +1,29 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Mic, Send, Square, Check, X, Loader2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+} from '@/components/ui/message'
+import { Bubble } from '@/components/ui/bubble'
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller'
 import {
   assistantApi,
   streamChat,
-  type AssistantSession,
   type ChatEvent,
 } from './api'
 import { ApiError, getToken } from '../../api/request'
@@ -23,8 +43,7 @@ interface UIMessage {
   confirmResult?: { state: 'executed' | 'cancelled' | 'failed'; message: string }
 }
 
-// ---------- 状态 ----------
-const sessions = ref<AssistantSession[]>([])
+// ---------- 状态（单一持久线程） ----------
 const currentSessionId = ref<number | null>(null)
 const messages = ref<UIMessage[]>([])
 const inputText = ref('')
@@ -32,11 +51,7 @@ const loading = ref(true)
 const sending = ref(false)
 const confirming = ref<string | null>(null) // 正在确认的 planId
 const error = ref('')
-const msgContainer = ref<HTMLElement | null>(null)
 const aborter = ref<AbortController | null>(null)
-const drawerOpen = ref(false)
-const inputEl = ref<HTMLElement | null>(null)
-const delConfirmId = ref<number | null>(null)
 
 // ---------- 语音输入状态 ----------
 const isRecording = ref(false)
@@ -55,7 +70,7 @@ const AUDIO_MIME =
 // 是否为空态（无会话或无消息）
 const isWelcome = computed(() => !currentSessionId.value || messages.value.length === 0)
 
-// 欢迎态建议示例（emoji 为分类信号，informational）
+// 欢迎态建议示例
 const examples = [
   { emoji: '💰', text: '记一笔：午饭 68 元' },
   { emoji: '🚕', text: '昨天打车花了 30 元' },
@@ -65,7 +80,7 @@ const examples = [
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
-  await loadSessions()
+  await loadThread()
 })
 
 onBeforeUnmount(() => {
@@ -74,32 +89,17 @@ onBeforeUnmount(() => {
   mediaRecorder.value?.stop()
   mediaStream.value?.getTracks().forEach((t) => t.stop())
   window.clearTimeout(recordTimer)
-  // 清理 body 滚动锁（以防卸载时 drawer 开着）
-  document.body.style.overflow = ''
 })
 
-// ---------- 移动端 drawer 开关 + body 滚动锁 ----------
-function toggleDrawer() {
-  drawerOpen.value = !drawerOpen.value
-}
-
-function closeDrawer() {
-  drawerOpen.value = false
-}
-
-watch(drawerOpen, (open) => {
-  document.body.style.overflow = open ? 'hidden' : ''
-})
-
-// ---------- 会话 ----------
-async function loadSessions() {
+// ---------- 线程（单一持久线程） ----------
+async function loadThread() {
   loading.value = true
   error.value = ''
   try {
-    sessions.value = await assistantApi.sessions()
-    // 如果有历史会话，默认选最近一个；否则进入欢迎态
-    if (sessions.value.length > 0 && !currentSessionId.value) {
-      currentSessionId.value = sessions.value[0].id
+    const sessions = await assistantApi.sessions()
+    // 取最近会话；无则进入欢迎态，首条消息发送时后端自动创建
+    if (sessions.length > 0) {
+      currentSessionId.value = sessions[0].id
       await loadMessages()
     }
   } catch (e) {
@@ -107,26 +107,6 @@ async function loadSessions() {
   } finally {
     loading.value = false
   }
-}
-
-async function selectSession(id: number) {
-  if (id === currentSessionId.value) return
-  aborter.value?.abort()
-  currentSessionId.value = id
-  messages.value = []
-  closeDrawer()
-  await loadMessages()
-  scrollToBottom()
-}
-
-/** 进入本地草稿态（不调 API，首条消息发送时后端原子创建） */
-function newDraft() {
-  aborter.value?.abort()
-  currentSessionId.value = null
-  messages.value = []
-  inputText.value = ''
-  closeDrawer()
-  void nextTick(() => inputEl.value?.focus())
 }
 
 async function loadMessages() {
@@ -159,7 +139,6 @@ async function loadMessages() {
         }
         return um
       })
-    await nextTick(() => scrollToBottom())
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载消息失败'
   }
@@ -188,7 +167,6 @@ async function sendMessage() {
     streaming: true,
   })
   const aiMsg = messages.value[messages.value.length - 1]!
-  await nextTick(() => scrollToBottom())
 
   const controller = new AbortController()
   aborter.value = controller
@@ -213,14 +191,7 @@ async function sendMessage() {
         case 'done':
           streamDone = true
           aiMsg.streaming = false
-          if (wasDraft) {
-            const created = evt.sessionId
-            if (!sessions.value.some((s) => s.id === created)) {
-              sessions.value.unshift({ id: created, title: text.slice(0, 20), updatedAt: new Date().toISOString() })
-            }
-            if (currentSessionId.value === null) currentSessionId.value = created
-          }
-          refreshSessionsSilent()
+          if (wasDraft) currentSessionId.value = evt.sessionId
           break
         case 'error':
           aiMsg.content += aiMsg.content ? `\n\n⚠️ ${evt.message}` : `⚠️ ${evt.message}`
@@ -228,7 +199,6 @@ async function sendMessage() {
           streamDone = true
           break
       }
-      void nextTick(() => scrollToBottom())
     },
     // onError
     (msg: string) => {
@@ -264,7 +234,10 @@ async function handleConfirm(planId: string, approved: boolean) {
       target.pendingPlan = undefined
       target.confirmResult = { state, message: result.message }
     }
-    refreshSessionsSilent()
+    // 取消时后端会追加一条 AI 追问（复述 + 工具用途 + 问要不要改）
+    if (!approved && result.followUp) {
+      messages.value.push({ id: `ai-${Date.now()}`, role: 'assistant', content: result.followUp })
+    }
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       const target = messages.value.find((m) => m.pendingPlan?.planId === planId)
@@ -277,15 +250,6 @@ async function handleConfirm(planId: string, approved: boolean) {
     }
   } finally {
     confirming.value = null
-  }
-}
-
-/** 静默刷新会话列表（更新标题/时间，不显示 loading） */
-async function refreshSessionsSilent() {
-  try {
-    sessions.value = await assistantApi.sessions()
-  } catch {
-    // 静默失败
   }
 }
 
@@ -357,36 +321,7 @@ async function uploadRecording() {
   }
 }
 
-/** 删除会话（两段式确认） */
-async function onDeleteSession(s: AssistantSession) {
-  if (delConfirmId.value !== s.id) {
-    delConfirmId.value = s.id
-    window.setTimeout(() => {
-      if (delConfirmId.value === s.id) delConfirmId.value = null
-    }, 3000)
-    return
-  }
-  delConfirmId.value = null
-  try {
-    await assistantApi.deleteSession(s.id)
-    sessions.value = sessions.value.filter((x) => x.id !== s.id)
-    if (currentSessionId.value === s.id) {
-      aborter.value?.abort()
-      currentSessionId.value = null
-      messages.value = []
-    }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '删除会话失败'
-  }
-}
-
 // ---------- 工具方法 ----------
-function scrollToBottom() {
-  if (msgContainer.value) {
-    msgContainer.value.scrollTop = msgContainer.value.scrollHeight
-  }
-}
-
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -400,283 +335,217 @@ function onExample(text: string) {
   void sendMessage()
 }
 
-// ---------- 会话标题裁剪 ----------
-function sessionLabel(s: AssistantSession): string {
-  return s.title.length > 12 ? s.title.slice(0, 12) + '…' : s.title
+// 消息时间格式化（footer 展示）
+function formatTime(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
-
-// ---------- 时间格式化 ----------
-function formatTime(dateStr: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) {
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-  if (diffDays === 1) return '昨天'
-  if (diffDays < 7) return `${diffDays}天前`
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
-}
-
-// ---------- watch 会话变化 → 刷新会话列表（标题实时更新） ----------
-watch(currentSessionId, () => {
-  void refreshSessionsSilent()
-})
 </script>
 
 <template>
-  <div class="assistant-page">
-    <div class="chat-layout">
-      <!-- ═══ 左侧会话栏（桌面端 flex 子项，手机端 fixed 抽屉） ═══ -->
-      <aside class="session-sidebar" :class="{ 'is-open': drawerOpen }">
-        <div class="sidebar-inner">
-          <!-- 新对话按钮 -->
-          <button
-            class="new-session-btn"
-            :class="{ 'is-active': !loading && currentSessionId === null }"
-            @click="newDraft"
-            title="新对话"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                 class="new-session-icon">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span>新对话</span>
-          </button>
-
-          <!-- 会话分组标题 -->
-          <div class="session-section-label">会话</div>
-
-          <!-- 会话列表 -->
-          <div class="session-list">
-            <button
-              v-for="s in sessions"
-              :key="s.id"
-              class="session-item"
-              :class="{ 'is-active': s.id === currentSessionId }"
-              @click="selectSession(s.id)"
-            >
-              <span class="session-title">{{ sessionLabel(s) }}</span>
-              <span class="session-time">{{ formatTime(s.updatedAt) }}</span>
-              <span
-                class="session-del"
-                role="button"
-                tabindex="0"
-                :class="{ 'is-confirm': delConfirmId === s.id }"
-                @click.stop="onDeleteSession(s)"
-                @keydown.enter.stop="onDeleteSession(s)"
-                aria-label="删除会话"
-              >
-                <svg
-                  v-if="delConfirmId !== s.id"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="session-del-icon"
-                >
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-                <span v-else class="session-del-confirm">确认？</span>
-              </span>
-            </button>
-
-            <!-- 空会话提示 -->
-            <div v-if="!loading && sessions.length === 0" class="session-empty">
-              暂无会话，点击上方按钮开始
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- ═══ 抽屉遮罩（仅手机端） ═══ -->
-      <Transition name="backdrop">
-        <div v-if="drawerOpen" class="drawer-backdrop" @click="closeDrawer" aria-label="关闭会话列表"></div>
-      </Transition>
-
-      <!-- ═══ 右侧聊天区 ═══ -->
-      <div class="chat-area">
-        <!-- 手机端顶部栏（汉堡按钮） -->
-        <div class="mobile-top-bar">
-          <button class="hamburger-btn" @click="toggleDrawer" aria-label="会话列表">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                 class="hamburger-icon">
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          </button>
-          <span class="mobile-title">AI 助手</span>
-        </div>
-
-        <!-- 消息区 -->
-        <div ref="msgContainer" class="msg-area">
-          <div v-if="loading" class="placeholder"><div><p>正在加载…</p></div></div>
-
-          <div v-else-if="error && !currentSessionId" class="placeholder">
-            <div><p class="symbol">!</p><p>{{ error }}</p></div>
-          </div>
-
-          <!-- 欢迎态 -->
-          <div v-else-if="isWelcome" class="welcome">
-            <div class="welcome-inner">
-              <div class="welcome-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  <path d="M8 10h8M8 13h5" />
-                </svg>
-              </div>
-              <h1 class="welcome-title">你好，我来帮你记账</h1>
-              <p class="welcome-sub">用一句话记账、查账，AI 自动识别分类与金额</p>
-              <div class="welcome-examples">
-                <button
-                  v-for="q in examples"
-                  :key="q.text"
-                  class="example-card"
-                  @click="onExample(q.text)"
-                >
-                  <span class="example-emoji" aria-hidden="true">{{ q.emoji }}</span>
-                  <span class="example-text">{{ q.text }}</span>
-                </button>
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <MessageScrollerProvider auto-scroll default-scroll-position="last-anchor">
+      <MessageScroller class="flex min-h-0 flex-1 flex-col">
+        <MessageScrollerViewport class="flex-1 overflow-y-auto">
+          <div class="mx-auto flex h-full w-full max-w-2xl flex-col px-4 py-6 sm:px-6">
+            <!-- 加载中 -->
+            <div v-if="loading" class="grid flex-1 place-items-center">
+              <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 class="size-4 animate-spin" />
+                正在加载…
               </div>
             </div>
-          </div>
 
-          <!-- 消息列表 -->
-          <template v-else>
-            <TransitionGroup name="msg" tag="div" class="msg-list">
-              <div
+            <!-- 加载失败 -->
+            <div v-else-if="error && !currentSessionId" class="grid flex-1 place-items-center">
+              <Card class="w-full max-w-sm">
+                <CardContent class="flex flex-col items-center gap-2 pt-6 text-center">
+                  <p class="text-sm font-medium text-destructive">{{ error }}</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <!-- 欢迎态 -->
+            <div v-else-if="isWelcome" class="grid flex-1 place-items-center">
+              <div class="w-full max-w-lg text-center">
+                <div class="mx-auto mb-6 grid size-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="size-8">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    <path d="M8 10h8M8 13h5" />
+                  </svg>
+                </div>
+                <h1 class="text-2xl font-bold tracking-tight sm:text-3xl">你好，我来帮你记账</h1>
+                <p class="mt-2 text-sm text-muted-foreground">用一句话记账、查账，AI 自动识别分类与金额</p>
+                <div class="mt-8 grid gap-3 sm:grid-cols-2">
+                  <Button
+                    v-for="q in examples"
+                    :key="q.text"
+                    variant="outline"
+                    class="h-auto justify-start gap-3 px-4 py-3.5 text-left text-sm font-medium"
+                    @click="onExample(q.text)"
+                  >
+                    <span class="text-base" aria-hidden="true">{{ q.emoji }}</span>
+                    <span class="truncate">{{ q.text }}</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 消息列表 -->
+            <MessageScrollerContent v-else class="flex flex-col gap-5 pb-2">
+              <MessageScrollerItem
                 v-for="m in messages"
                 :key="m.id"
-                class="msg-row"
-                :class="m.role"
+                :message-id="String(m.id)"
+                :scroll-anchor="m.role === 'user'"
               >
-                <!-- 用户消息：右对齐蓝色气泡 -->
-                <div v-if="m.role === 'user'" class="msg-bubble user">
-                  {{ m.content }}
-                </div>
+                <Message :align="m.role === 'user' ? 'end' : 'start'">
+                  <MessageAvatar>
+                    <Avatar v-if="m.role === 'assistant'" class="size-8">
+                      <AvatarFallback class="bg-primary text-primary-foreground text-xs font-semibold">AI</AvatarFallback>
+                    </Avatar>
+                  </MessageAvatar>
 
-                <!-- AI 消息：无框正文（直接铺在阅读列上，不套卡片） -->
-                <div v-else class="msg-ai">
-                  <div v-if="m.content" class="msg-text">{{ m.content }}</div>
-                  <span
-                    v-if="m.streaming"
-                    class="stream-cursor"
-                    aria-label="AI 正在输入"
-                  >|</span>
+                  <MessageContent>
+                    <MessageHeader class="text-xs text-muted-foreground">
+                      <template v-if="m.role === 'user'">我</template>
+                      <template v-else>OpenLair 助手</template>
+                      <span v-if="formatTime(m.createdAt)" class="font-normal opacity-70">{{ formatTime(m.createdAt) }}</span>
+                    </MessageHeader>
 
-                  <!-- 确认卡片 -->
-                  <div
-                    v-if="m.pendingPlan"
-                    class="confirm-card"
-                  >
-                    <div class="confirm-title">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                           class="confirm-icon">
-                        <path d="M9 12l2 2 4-4" />
-                        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-2a2 2 0 0 1 0-4 10 10 0 0 0 0-14h0z" />
-                      </svg>
-                      <span>确认记账</span>
-                    </div>
-                    <p class="confirm-summary">{{ m.pendingPlan.summary }}</p>
-                    <div class="confirm-actions">
-                      <button
-                        class="confirm-btn is-outline"
-                        :disabled="confirming === m.pendingPlan.planId"
-                        @click="handleConfirm(m.pendingPlan!.planId, false)"
-                      >
-                        {{ confirming === m.pendingPlan.planId ? '…' : '取消' }}
-                      </button>
-                      <button
-                        class="confirm-btn is-accent"
-                        :disabled="confirming === m.pendingPlan.planId"
-                        @click="handleConfirm(m.pendingPlan!.planId, true)"
-                      >
-                        {{ confirming === m.pendingPlan.planId ? '处理中…' : '确认' }}
-                      </button>
-                    </div>
-                  </div>
+                    <!-- 用户消息：primary 气泡右对齐 -->
+                    <Bubble
+                      v-if="m.role === 'user'"
+                      :align="'end'"
+                      variant="default"
+                      class="bg-primary text-primary-foreground rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+                    >
+                      <span class="whitespace-pre-wrap break-words">{{ m.content }}</span>
+                    </Bubble>
 
-                  <!-- 执行结果卡片 -->
-                  <div v-else-if="m.confirmResult" class="confirm-result" :class="'is-' + m.confirmResult.state">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="confirm-result-icon">
-                      <path v-if="m.confirmResult.state === 'executed'" d="M20 6 9 17l-5-5" />
-                      <path v-else-if="m.confirmResult.state === 'cancelled'" d="M9 9l6 6M15 9l-6 6" />
-                      <path v-else d="M12 9v4M12 17h.01" />
-                    </svg>
-                    <span class="confirm-result-text">{{ m.confirmResult.message }}</span>
-                  </div>
-                </div>
-              </div>
-            </TransitionGroup>
+                    <!-- AI 消息：ghost 无框正文 -->
+                    <Bubble v-else :align="'start'" variant="ghost" class="rounded-2xl px-1 py-0.5 text-sm leading-relaxed">
+                      <span class="whitespace-pre-wrap break-words text-foreground">{{ m.content }}</span>
+                      <span v-if="m.streaming" class="stream-cursor ml-0.5 inline-block" aria-label="AI 正在输入">|</span>
+                    </Bubble>
 
-            <!-- 流式发送中提示（无 assistant 消息时） -->
-            <div v-if="sending && messages.length === 0" class="placeholder">
-              <div><p>AI 正在思考…</p></div>
-            </div>
-          </template>
-        </div>
+                    <!-- 确认卡片 -->
+                    <Card v-if="m.pendingPlan" class="mt-3 w-fit max-w-full">
+                      <CardHeader class="gap-1.5 p-4 pb-0">
+                        <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                          <Loader2 class="size-4 text-primary" />
+                          确认记账
+                        </CardTitle>
+                        <CardDescription class="text-xs leading-relaxed">{{ m.pendingPlan.summary }}</CardDescription>
+                      </CardHeader>
+                      <CardContent class="flex gap-2 p-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          class="flex-1"
+                          :disabled="confirming === m.pendingPlan.planId"
+                          @click="handleConfirm(m.pendingPlan!.planId, false)"
+                        >
+                          <X class="size-3.5" />
+                          {{ confirming === m.pendingPlan.planId ? '处理中…' : '取消' }}
+                        </Button>
+                        <Button
+                          size="sm"
+                          class="flex-1"
+                          :disabled="confirming === m.pendingPlan.planId"
+                          @click="handleConfirm(m.pendingPlan!.planId, true)"
+                        >
+                          <Check class="size-3.5" />
+                          {{ confirming === m.pendingPlan.planId ? '处理中…' : '确认' }}
+                        </Button>
+                      </CardContent>
+                    </Card>
 
-        <!-- 底部输入区 -->
-        <div class="input-bar">
-          <div class="composer">
-            <div class="input-row">
-            <textarea
-              ref="inputEl"
-              v-model="inputText"
-              class="input-field"
-              placeholder="用一句话记账，比如：昨天午饭花了 68"
-              :disabled="sending"
-              rows="1"
-              @keydown="onKeydown"
-            ></textarea>
-            <button
-              class="mic-btn"
-              :class="{ 'is-recording': isRecording }"
-              :disabled="transcribing || sending"
-              @click="toggleRecording"
-              :title="isRecording ? '停止录音' : '语音输入'"
-              aria-label="语音输入"
-            >
-              <svg v-if="!isRecording" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mic-icon">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="22" />
-              </svg>
-              <span v-else class="mic-rec-dot"></span>
-            </button>
-            <button
-              v-if="!sending"
-              class="send-btn"
-              :disabled="!inputText.trim()"
-              @click="sendMessage"
-              aria-label="发送消息"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"
-                   class="send-icon">
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-            </button>
-            <button
-              v-else
-              class="send-btn is-stop"
-              @click="stopGeneration"
-              aria-label="停止生成"
-              title="停止生成"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" class="stop-icon">
-                <rect x="6" y="6" width="12" height="12" rx="2.5" />
-              </svg>
-            </button>
-            </div>
-            <p class="composer-hint">Enter 发送 · Shift + Enter 换行</p>
+                    <!-- 执行结果卡片 -->
+                    <Card v-else-if="m.confirmResult" class="mt-3 w-fit max-w-full" :class="{
+                      'border-green-200 bg-green-50': m.confirmResult.state === 'executed',
+                      'border-red-200 bg-red-50': m.confirmResult.state === 'failed',
+                    }">
+                      <CardContent class="flex items-center gap-2 p-3.5 text-sm font-medium"
+                        :class="{
+                          'text-green-700': m.confirmResult.state === 'executed',
+                          'text-muted-foreground': m.confirmResult.state === 'cancelled',
+                          'text-red-600': m.confirmResult.state === 'failed',
+                        }">
+                        <Check v-if="m.confirmResult.state === 'executed'" class="size-4 shrink-0" />
+                        <X v-else-if="m.confirmResult.state === 'cancelled'" class="size-4 shrink-0" />
+                        <span v-else class="text-destructive">!</span>
+                        <span class="break-words">{{ m.confirmResult.message }}</span>
+                      </CardContent>
+                    </Card>
+
+                    <MessageFooter class="mt-1 text-xs text-muted-foreground">
+                      <span v-if="m.streaming" class="flex items-center gap-1.5">
+                        <Loader2 class="size-3 animate-spin" />
+                        正在生成…
+                      </span>
+                    </MessageFooter>
+                  </MessageContent>
+                </Message>
+              </MessageScrollerItem>
+            </MessageScrollerContent>
           </div>
+        </MessageScrollerViewport>
+        <MessageScrollerButton direction="end" />
+      </MessageScroller>
+    </MessageScrollerProvider>
+
+    <!-- 底部输入区 -->
+    <div class="flex-0 border-t bg-background px-4 py-3 sm:px-6">
+      <div class="mx-auto w-full max-w-2xl">
+        <div class="flex items-end gap-2 rounded-2xl border bg-card p-2 shadow-sm transition-shadow focus-within:ring-2 focus-within:ring-ring/30">
+          <Textarea
+            v-model="inputText"
+            class="max-h-32 min-h-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm leading-relaxed shadow-none focus-visible:ring-0"
+            placeholder="用一句话记账，比如：昨天午饭花了 68"
+            :disabled="sending"
+            rows="1"
+            @keydown="onKeydown"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            class="shrink-0 rounded-full text-muted-foreground"
+            :class="{ 'text-red-500': isRecording }"
+            :disabled="transcribing || sending"
+            :title="isRecording ? '停止录音' : '语音输入'"
+            aria-label="语音输入"
+            @click="toggleRecording"
+          >
+            <span v-if="!isRecording" class="relative grid place-items-center">
+              <Mic class="size-4" />
+            </span>
+            <span v-else class="mic-rec-dot" aria-hidden="true"></span>
+          </Button>
+          <Button
+            v-if="!sending"
+            size="icon"
+            class="size-9 shrink-0 rounded-full"
+            :disabled="!inputText.trim()"
+            aria-label="发送消息"
+            @click="sendMessage"
+          >
+            <Send class="size-4" />
+          </Button>
+          <Button
+            v-else
+            size="icon"
+            variant="secondary"
+            class="size-9 shrink-0 rounded-full"
+            aria-label="停止生成"
+            title="停止生成"
+            @click="stopGeneration"
+          >
+            <Square class="size-3.5 fill-current" />
+          </Button>
         </div>
+        <p class="mt-1.5 text-center text-xs text-muted-foreground/70">Enter 发送 · Shift + Enter 换行</p>
       </div>
     </div>
   </div>
@@ -684,452 +553,15 @@ watch(currentSessionId, () => {
 
 <style scoped>
 /* ════════════════════════════════════════════════════════════
-   assistant page — Apple Liquid Glass 两栏布局
+   assistant page — shadcn-vue demo（vega 风格）
+   滚动行为由 MessageScroller 接管（流式跟随 / 上滑释放 / 回合锚定）
    ════════════════════════════════════════════════════════════ */
-
-/* ── 页面容器：桌面端作为 .content flex 子项填满剩余空间，移动端自适应 ── */
-.assistant-page {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* ── 两栏布局 ── */
-.chat-layout {
-  display: flex;
-  height: 100%;
-  position: relative;
-}
-
-/* ═══ 左侧会话栏 ═══ */
-.session-sidebar {
-  flex: 0 0 250px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--hairline);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.sidebar-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 16px 10px 10px;
-}
-
-/* ── 新对话按钮 ── */
-.new-session-btn {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  margin: 0 4px 10px;
-  padding: 10px 16px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--grad-cta);
-  color: #fff;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 113, 227, 0.28);
-  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart), opacity 160ms ease;
-}
-
-.new-session-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 26px rgba(0, 113, 227, 0.34);
-}
-
-.session-section-label {
-  padding: 8px 12px 6px;
-  color: var(--text-4);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.new-session-btn:active {
-  opacity: 0.88;
-}
-
-.new-session-btn.is-active {
-  background: var(--grad-cta);
-  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2), 0 8px 20px rgba(0, 113, 227, 0.28);
-}
-
-.new-session-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-}
-
-/* ── 会话列表 ── */
-.session-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text);
-  font-size: 0.86rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background 160ms ease, color 160ms ease;
-  position: relative;
-}
-
-.session-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 0;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  transition: height 200ms var(--ease-out-quart);
-}
-
-.session-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.session-item.is-active {
-  color: var(--accent);
-  background: rgba(0, 113, 227, 0.07);
-}
-
-.session-item.is-active::before {
-  height: 18px;
-}
-
-.session-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  transition: color 160ms ease;
-}
-
-.session-time {
-  flex: 0 0 auto;
-  color: var(--text-4);
-  font-size: 0.72rem;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.session-item.is-active .session-time {
-  color: var(--accent);
-  opacity: 0.7;
-}
-
-/* ── 会话删除按钮 ── */
-.session-del {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 4px;
-  border-radius: var(--r-thumb);
-  color: var(--text-4);
-  opacity: 0.65;
-  cursor: pointer;
-  transition: opacity 160ms ease, color 160ms ease, background 160ms ease;
-}
-
-/* 触屏（无 hover）常显删除按钮；仅悬停设备默认隐藏、hover 会话项时显示 */
-@media (hover: hover) {
-  .session-del {
-    opacity: 0;
-  }
-
-  .session-item:hover .session-del {
-    opacity: 0.65;
-  }
-}
-
-.session-del:hover {
-  opacity: 1 !important;
-  color: var(--text-2);
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.session-del-icon {
-  width: 13px;
-  height: 13px;
-}
-
-.session-del.is-confirm {
-  opacity: 1 !important;
-  color: var(--heat);
-  background: rgba(255, 107, 0, 0.08);
-}
-
-.session-del-confirm {
-  font-size: 0.65rem;
-  font-weight: 600;
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.session-empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--text-4);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-/* ═══ 抽屉遮罩（仅手机端显示） ═══ */
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-  background: rgba(0, 0, 0, 0.32);
-  /* backdrop-filter 由 Vue Transition 控制 */
-}
-
-.backdrop-enter-active {
-  transition: opacity 280ms ease;
-}
-
-.backdrop-leave-active {
-  transition: opacity 220ms ease;
-}
-
-.backdrop-enter-from,
-.backdrop-leave-to {
-  opacity: 0;
-}
-
-/* ═══ 右侧聊天区 ═══ */
-.chat-area {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ── 手机端顶部栏（仅 ≤860px 显示） ── */
-.mobile-top-bar {
-  display: none;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--surface);
-}
-
-.hamburger-btn {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 160ms ease;
-}
-
-.hamburger-btn:hover {
-  background: var(--hover);
-}
-
-.hamburger-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.mobile-title {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-/* ═══ 消息区域 ═══ */
-.msg-area {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 24px var(--pad-x) 20px;
-}
-
-.msg-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-/* ═══ 欢迎态 ═══ */
-.welcome {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  text-align: center;
-  padding: 32px 0;
-}
-
-.welcome-inner {
-  width: 100%;
-  max-width: 560px;
-}
-
-.welcome-mark {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 18px;
-  color: #fff;
-  background: var(--grad-blue);
-  box-shadow: 0 14px 34px rgba(0, 113, 227, 0.28);
-}
-
-.welcome-mark svg {
-  width: 28px;
-  height: 28px;
-}
-
-.welcome-title {
-  margin: 0 0 10px;
-  font-size: clamp(1.7rem, 4vw, 2.4rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.12;
-  color: var(--text);
-}
-
-.welcome-sub {
-  margin: 0 0 32px;
-  color: var(--text-2);
-  font-size: 0.98rem;
-  line-height: 1.6;
-}
-
-.welcome-examples {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.example-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-card);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.88rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  box-shadow: var(--sh-card);
-  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart), border-color 160ms ease;
-}
-
-.example-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(0, 113, 227, 0.35);
-  box-shadow: var(--sh-lift);
-}
-
-.example-emoji {
-  flex: 0 0 auto;
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.example-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ═══ 消息气泡 ═══ */
-.msg-row {
-  display: flex;
-}
-
-.msg-row.user {
-  justify-content: flex-end;
-}
-
-.msg-row.assistant {
-  justify-content: flex-start;
-}
-
-.msg-bubble {
-  max-width: 82%;
-  line-height: 1.58;
-}
-
-/* 用户气泡：蓝底白字，右对齐 */
-.msg-bubble.user {
-  padding: 11px 17px;
-  border-radius: var(--r-card);
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.92rem;
-  font-weight: 500;
-}
-
-/* AI 回复：无框正文 —— 直接铺在阅读列上，不套卡片（去 wrapper 感） */
-.msg-ai {
-  max-width: 100%;
-  font-size: 0.96rem;
-  line-height: 1.7;
-  color: var(--text-body);
-}
-
-.msg-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
 
 /* 流式光标 */
 .stream-cursor {
   animation: blink 800ms steps(1, end) infinite;
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 300;
-  margin-left: 1px;
 }
 
 @keyframes blink {
@@ -1137,268 +569,13 @@ watch(currentSessionId, () => {
   50% { opacity: 0; }
 }
 
-/* ═══ 确认卡片 ═══ */
-.confirm-card {
-  margin-top: 14px;
-  padding: 16px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  background: var(--surface);
-  box-shadow: var(--sh-card);
-}
-
-.confirm-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.confirm-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--accent);
-}
-
-.confirm-summary {
-  margin: 0 0 16px;
-  color: var(--text-2);
-  font-size: 0.85rem;
-  line-height: 1.55;
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.confirm-btn {
-  flex: 1;
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: var(--r-pill);
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: opacity 160ms ease;
-}
-
-.confirm-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.confirm-btn.is-accent {
-  background: var(--accent);
-  color: #fff;
-}
-
-.confirm-btn.is-outline {
-  background: transparent;
-  color: var(--text-2);
-  border-color: var(--hairline);
-}
-
-.confirm-btn.is-outline:hover:not(:disabled) {
-  color: var(--text);
-  border-color: rgba(0,0,0,0.18);
-}
-
-/* ── 确认结果卡片（确认/取消后原地显示） ── */
-.confirm-result {
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  background: var(--surface);
-  box-shadow: var(--sh-card);
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.confirm-result-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-
-.confirm-result-text {
-  font-size: 0.88rem;
-  font-weight: 500;
-  line-height: 1.55;
-  color: var(--text);
-  word-break: break-word;
-}
-
-.confirm-result.is-executed .confirm-result-icon,
-.confirm-result.is-executed .confirm-result-text {
-  color: var(--live);
-}
-
-.confirm-result.is-cancelled .confirm-result-icon,
-.confirm-result.is-cancelled .confirm-result-text {
-  color: var(--text-3);
-}
-
-.confirm-result.is-failed .confirm-result-icon,
-.confirm-result.is-failed .confirm-result-text {
-  color: var(--heat);
-}
-
-/* ═══ 底部输入区 ═══ */
-.input-bar {
-  flex: 0 0 auto;
-  padding: 12px var(--pad-x) calc(10px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--hairline);
-  background: var(--bg);
-}
-
-.composer {
-  width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-.composer-hint {
-  margin: 8px 0 0;
-  text-align: center;
-  color: var(--text-4);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 8px 8px 8px 18px;
-  border: 1px solid var(--hairline);
-  /* Apple：输入容器用 card 级圆角矩形（r-pill 大胶囊 + spread 光晕会渲染出矩形撕裂感） */
-  border-radius: var(--r-card);
-  background: var(--surface);
-  box-shadow: var(--sh-card);
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-}
-
-.input-row:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
-}
-
-.input-field {
-  flex: 1;
-  min-height: 24px;
-  max-height: 120px;
-  padding: 3px 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.92rem;
-  line-height: 1.55;
-  resize: none;
-  outline: none;
-  font-family: inherit;
-}
-
-/* 覆盖全局 textarea:focus 的 4px 直角光晕（style.css 焦点环）：
-   聚焦反馈由容器 .input-row:focus-within 提供（贴合圆角，无矩形撕裂感） */
-.input-field:focus {
-  box-shadow: none;
-}
-
-.input-field::placeholder {
-  color: var(--text-4);
-}
-
-.input-field:disabled {
-  opacity: 0.5;
-}
-
-.send-btn {
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  transition: opacity 160ms ease, transform 100ms ease;
-}
-
-.send-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.send-btn.is-stop {
-  background: var(--text);
-}
-
-.send-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.stop-icon {
-  width: 14px;
-  height: 14px;
-}
-
-/* ── 麦克风按钮 ── */
-.mic-btn {
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color 160ms ease, background 160ms ease;
-}
-
-.mic-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--hover);
-}
-
-.mic-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.mic-icon {
-  width: 18px;
-  height: 18px;
-}
-
 /* 录音中：红色脉冲 */
-.mic-btn.is-recording {
-  color: var(--heat);
-  background: transparent;
-}
-
-.mic-btn.is-recording:hover:not(:disabled) {
-  background: rgba(255, 107, 0, 0.08);
-}
-
 .mic-rec-dot {
-  width: 14px;
-  height: 14px;
+  display: block;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--heat);
+  background: var(--destructive);
   animation: mic-pulse 1s ease-in-out infinite;
 }
 
@@ -1407,96 +584,8 @@ watch(currentSessionId, () => {
   50%      { opacity: .5; transform: scale(.8); }
 }
 
-/* ═══ 消息入场动效（轻量淡入） ═══ */
-.msg-enter-active {
-  transition: opacity 280ms var(--ease-out-quart), transform 280ms var(--ease-out-quart);
-}
-
-.msg-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-/* ════════════════════════════════════════════════════════════
-   响应式 — 手机端 ≤860px
-   ════════════════════════════════════════════════════════════ */
-
-@media (max-width: 860px) {
-  .assistant-page {
-    height: 100%;
-  }
-
-  .chat-layout {
-    flex-direction: column;
-  }
-
-  /* 侧栏变为固定抽屉 */
-  .session-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 200;
-    width: 280px;
-    flex: none;
-    border-right: 1px solid var(--hairline);
-    box-shadow: var(--sh-overlay);
-    transform: translateX(-100%);
-    transition: transform 300ms var(--ease-spring);
-  }
-
-  .session-sidebar.is-open {
-    transform: translateX(0);
-  }
-
-  /* 显示手机端顶部栏 */
-  .mobile-top-bar {
-    display: flex;
-  }
-
-  /* 聊天区撑满 */
-  .chat-area {
-    flex: 1 1 auto;
-  }
-
-  .msg-area {
-    padding: 16px 12px;
-  }
-
-  .input-bar {
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .msg-bubble {
-    max-width: 90%;
-  }
-
-  .welcome-examples {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ════════════════════════════════════════════════════════════
-   可访问性：减少动效 / 透明度 / 对比度
-   ════════════════════════════════════════════════════════════ */
-
 @media (prefers-reduced-motion: reduce) {
   .stream-cursor { animation: none; }
-  .msg-enter-active { transition: opacity 150ms ease; }
-  .msg-enter-from { transform: none; }
-  .session-sidebar { transition: opacity 200ms ease; }
-  .session-sidebar:not(.is-open) { opacity: 0; }
-  .session-item::before { transition: none; }
   .mic-rec-dot { animation: none; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .drawer-backdrop { background: rgba(0, 0, 0, 0.48); }
-}
-
-@media (prefers-contrast: more) {
-  .input-row { border-color: rgba(0,0,0,0.35); }
-  .confirm-card { border-color: rgba(0,0,0,0.25); }
-  .session-sidebar { border-right-color: rgba(0,0,0,0.18); }
 }
 </style>

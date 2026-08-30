@@ -1,0 +1,19 @@
+# openlair-backend ServiceMonitor — Prometheus 抓取 /metrics（kube-prometheus-stack）
+# Prometheus 通过 label release: kube-prometheus-stack 选择 ServiceMonitor（见 cluster Prometheus CR）
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: openlair-backend
+  labels:
+    release: kube-prometheus-stack
+spec:
+  endpoints:
+    - path: /metrics
+      port: backend
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - openlair
+  selector:
+    matchLabels:
+      app: openlair-backend

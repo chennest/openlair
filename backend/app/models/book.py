@@ -17,6 +17,8 @@ class Book(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     # 软删除：NULL = 正常；非 NULL = 在回收站（删除时间）
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
+    # 邀请码（仅共享账本）：NULL = 未生成；非 NULL = 当前有效码。重置即覆盖旧码使其失效。
+    invite_code: Mapped[str | None] = mapped_column(String(12), nullable=True, default=None, unique=True, index=True)
 
 
 class BookMember(Base):

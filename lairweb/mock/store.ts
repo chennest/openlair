@@ -4,7 +4,7 @@
 // - 运行中增删改查直接改内存，重启即恢复初始数据
 // - 通过 globalThis 共享：vite-plugin-mock-dev-server 对每个 mock 文件单独 esbuild
 //   bundle，若用模块级变量，每个文件会得到独立实例（id 冲突 + 数据不互通）
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 // ---------- seedable 伪随机 (mulberry32) ----------
 function mulberry32(seed: number) {
@@ -63,6 +63,13 @@ export interface BookMember {
   userId: number
   role: 'owner' | 'editor'
   joinedAt: string
+}
+
+/** book 邀请码（独立于 book DTO，避免下发到账本列表泄漏给成员） */
+export interface BookInvite {
+  bookId: number
+  /** 8 位大写字母数字（剔除 0/O/1/I/L） */
+  code: string
 }
 
 /** transactions 表：交易流水（categoryId → categories.id，bookId → books.id，userId → users.id） */
@@ -150,6 +157,18 @@ export interface AssistantMessage {
   createdAt: string
 }
 
+/** api_keys 表：用户 API Key（只存哈希，明文仅创建时返回一次；撤销即置 revokedAt） */
+export interface ApiKey {
+  id: number
+  userId: number
+  name: string
+  keyHash: string
+  prefix: string
+  createdAt: string
+  lastUsedAt?: string
+  revokedAt?: string
+}
+
 // ---------- 常量 ----------
 export const QUADRANTS = ['重要紧急', '重要不紧急', '紧急不重要', '不重要不紧急']
 export const MONTH = () => {
@@ -172,12 +191,14 @@ export interface StoreShape {
   users: User[]
   books: Book[]
   bookMembers: BookMember[]
+  bookInvites: BookInvite[]
   todos: TodoItem[]
   events: CalendarEvent[]
   notes: Note[]
   habits: Habit[]
   assistantSessions: AssistantSession[]
   assistantMessages: AssistantMessage[]
+  apiKeys: ApiKey[]
 }
 
 const g = globalThis as unknown as { __openlair_mock__?: SharedRuntime }
@@ -274,6 +295,15 @@ export function revokeToken(jti: string) {
   rt.revokedJtis.add(jti)
 }
 
+/** API Key：生成明文（ol_ + 32 字节随机串），哈希用 SHA-256（与后端一致：只存哈希） */
+export function generateMockApiKey(): string {
+  return `ol_${randomBytes(32).toString('base64url')}`
+}
+
+export function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
+}
+
 /** 密码哈希（模拟 bcrypt）：scrypt$salt$hash */
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex')
@@ -336,6 +366,9 @@ function seed(): StoreShape {
     { bookId: 2, userId: 3, role: 'editor', joinedAt: t },
   ]
 
+  // 共享账本 2 预置邀请码（演示 owner 分享界面）
+  const bookInvites: BookInvite[] = [{ bookId: 2, code: 'KD7F2GQW' }]
+
   // 近 90 天交易：个人账本 85 + 共享账本 15（收入 ~25%）
   let txId = 0
   const makeTx = (bookId: number, userId: number): Transaction => {
@@ -367,6 +400,7 @@ function seed(): StoreShape {
     users,
     books,
     bookMembers,
+    bookInvites,
     todos: Array.from({ length: 8 }, (_, i) => {
       const c = nowISO()
       return {
@@ -417,6 +451,7 @@ function seed(): StoreShape {
     }),
     assistantSessions: [],
     assistantMessages: [],
+    apiKeys: [],
   }
 }
 
@@ -559,6 +594,36 @@ export function membersOf(bookId: number): BookMember[] {
   return store.bookMembers.filter((m) => m.bookId === bookId)
 }
 
+/** 邀请码字母表（与后端一致：剔除 0/O/1/I/L） */
+const INVITE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+
+/** 生成 8 位随机邀请码 */
+export function generateInviteCode(): string {
+  let code = ''
+  for (let i = 0; i < 8; i++) code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)]
+  return code
+}
+
+/** 查账本的邀请码（未生成 = undefined） */
+export function inviteOf(bookId: number): string | undefined {
+  return store.bookInvites.find((i) => i.bookId === bookId)?.code
+}
+
+/** 设置/清除邀请码（code = null 时关闭邀请） */
+export function setInvite(bookId: number, code: string | null): void {
+  store.bookInvites = store.bookInvites.filter((i) => i.bookId !== bookId)
+  if (code) store.bookInvites.push({ bookId, code })
+}
+
+/** 按邀请码查账本（仅未删除） */
+export function bookByInvite(code: string): Book | undefined {
+  const normalized = code.toUpperCase().replace(/[^0-9A-Z]/g, '')
+  const invite = store.bookInvites.find((i) => i.code === normalized)
+  if (!invite) return undefined
+  const book = bookOf(invite.bookId)
+  return book && !book.deletedAt ? book : undefined
+}
+
 export function userOf(id: number): User | undefined {
   return store.users.find((u) => u.id === id)
 }
@@ -629,8 +694,19 @@ export interface AuthContext {
   jti: string
 }
 
-/** 从请求头解析并验签 Bearer token（模拟后端 OAuth2PasswordBearer 依赖） */
+/** 从请求头解析并验签凭证（模拟后端 OAuth2PasswordBearer + API Key 依赖）：
+ * - X-API-Key: <ol_xxx>：哈希比对 store.apiKeys，未撤销则以其 userId 通过（jti 为空串）
+ * - Authorization: Bearer <jwt>：JWT 验签 */
 export function requireAuth(req: MockReq): AuthContext | null {
+  const apiKeyHeader = req.headers?.['x-api-key']
+  if (typeof apiKeyHeader === 'string' && apiKeyHeader.trim()) {
+    const found = store.apiKeys.find(
+      (k) => k.keyHash === hashApiKey(apiKeyHeader.trim()) && !k.revokedAt,
+    )
+    if (!found) return null
+    found.lastUsedAt = new Date().toISOString()
+    return { userId: String(found.userId), jti: '' }
+  }
   const header = req.headers?.authorization
   if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null
   const result = verifyToken(header.slice(7).trim())

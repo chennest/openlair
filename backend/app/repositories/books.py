@@ -40,6 +40,24 @@ class BookRepository:
         with self._session_factory() as session:
             return session.get(Book, book_id)
 
+    def by_invite_code(self, code: str) -> Book | None:
+        """按邀请码查账本（仅未删除的共享账本）。"""
+        with self._session_factory() as session:
+            return session.scalar(
+                select(Book).where(Book.invite_code == code, Book.deleted_at.is_(None))
+            )
+
+    def set_invite_code(self, book_id: int, code: str | None) -> Book | None:
+        """设置/清除邀请码（NULL = 关闭邀请）。"""
+        with self._session_factory() as session:
+            book = session.get(Book, book_id)
+            if book is None:
+                return None
+            book.invite_code = code
+            session.commit()
+            session.refresh(book)
+            return book
+
     def create(self, *, name: str, type: str) -> Book:
         with self._session_factory() as session:
             book = Book(name=name, type=type)

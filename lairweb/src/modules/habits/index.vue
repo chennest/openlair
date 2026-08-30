@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 习惯模块页：新增 + 列表 + 打卡/删除
 import { onMounted, ref } from 'vue'
+import { Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { habitApi, type Habit } from './api'
 import HabitList from './HabitList.vue'
 
@@ -59,8 +62,15 @@ onMounted(load)
 
   <div v-else class="habits">
     <form class="composer" @submit.prevent="createHabit">
-      <input v-model="newName" placeholder="新习惯名称，如：喝水 8 杯" />
-      <button type="submit" :disabled="saving">{{ saving ? '添加中…' : '添加习惯' }}</button>
+      <Input
+        v-model="newName"
+        class="h-11 min-w-0 flex-1 rounded-[var(--r-thumb)]"
+        placeholder="新习惯名称，如：喝水 8 杯"
+      />
+      <Button type="submit" :disabled="saving" class="h-11 min-w-[120px] rounded-full px-[18px] font-semibold max-[860px]:w-full">
+        <Plus class="size-4" />
+        {{ saving ? '添加中…' : '添加习惯' }}
+      </Button>
     </form>
 
     <HabitList :habits="habits" @toggle="toggleDone" @remove="removeHabit" />
@@ -77,34 +87,6 @@ onMounted(load)
   background: var(--surface);
   box-shadow: var(--sh-panel);
 }
-.composer input {
-  flex: 1;
-  min-width: 0;
-}
-.composer button {
-  display: inline-flex;
-  align-items: center;
-  min-width: 120px;
-  height: 44px;
-  padding: 0 16px;
-  border-radius: var(--r-pill);
-  border: 0;
-  color: #fff;
-  background: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 160ms var(--ease-out-quart), box-shadow 160ms var(--ease-out-quart);
-}
-.composer button:hover {
-  box-shadow: var(--sh-cta);
-}
-.composer button:active {
-  transform: scale(0.97);
-}
-.composer button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .placeholder {
   display: grid;
   place-items: center;
@@ -120,18 +102,10 @@ onMounted(load)
   margin-bottom: 12px;
   color: var(--accent);
 }
-input {
-  width: 100%;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  color: var(--text);
-  outline: none;
-  background: var(--surface);
-  padding: 10px 12px;
-  font: inherit;
-  transition: border-color 160ms ease;
-}
-input:focus {
-  border-color: var(--accent);
+
+@media (max-width: 860px) {
+  .composer {
+    flex-direction: column;
+  }
 }
 </style>

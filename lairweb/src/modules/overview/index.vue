@@ -1,6 +1,21 @@
 <script setup lang="ts">
 // 总览模块页：本月支出 / 待办 / 日程 / 习惯 四卡聚合
 import { computed, onMounted, ref } from 'vue'
+import {
+  Loader2,
+  ArrowUpRight,
+  Wallet,
+  ListTodo,
+  CalendarDays,
+  Flame,
+  TrendingUp,
+  TrendingDown,
+  CircleAlert,
+} from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import { overviewApi, type OverviewData } from './api'
 
 const loading = ref(true)
@@ -24,34 +39,84 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+/** 标签配色：tagClass → shadcn Badge 自定义 Tailwind utility（覆盖 secondary 默认灰）
+    ⚠ Badge 根是 reka Primitive，父组件 scoped 类不穿透，配色必须走 utility */
+const TAG_TONES: Record<string, string> = {
+  red: 'text-[var(--heat)] bg-[var(--heat-bg)]',
+  green: 'text-[#0a5a2c] bg-[rgba(48,209,88,0.16)]',
+  gold: 'text-white bg-[var(--accent)]',
+  gray: 'text-[var(--text-2)] bg-[rgba(0,0,0,0.05)]',
+}
+function badgeTone(tagClass: string): string {
+  return TAG_TONES[tagClass] ?? 'badge-gray'
+}
 </script>
 
 <template>
-  <div v-if="loading" class="placeholder"><div><p>正在加载总览…</p></div></div>
-  <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p><small>请确认 mock server 已启用</small></div></div>
+  <div v-if="loading" class="empty-state">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
+      <CardContent class="flex flex-col items-center gap-3 py-10">
+        <Loader2 class="size-6 animate-spin text-[var(--accent)]" />
+        <p class="empty-title">正在加载总览…</p>
+      </CardContent>
+    </Card>
+  </div>
+
+  <div v-else-if="error" class="empty-state">
+    <Card class="w-full max-w-sm border border-dashed border-[var(--faint)] ring-0 shadow-none">
+      <CardContent class="flex flex-col items-center gap-3 py-10">
+        <CircleAlert class="size-6 text-[var(--heat)]" />
+        <p class="empty-title">{{ error }}</p>
+        <small class="empty-sub">请确认 mock server 已启用</small>
+      </CardContent>
+    </Card>
+  </div>
 
   <section v-else class="card-grid" aria-label="今日概览">
     <article class="card">
-      <div class="card-title"><span>本月支出</span><span class="more">查看明细 →</span></div>
-      <div class="big-num">¥{{ Number(data?.monthExpense.amount).toFixed(2) }}<small>预算 ¥{{ Number(data?.monthExpense.budget).toFixed(0) }}</small></div>
-      <div class="budget-track" role="progressbar" :aria-valuenow="budgetPercent" aria-valuemin="0" aria-valuemax="100" aria-label="预算使用率">
-        <div class="budget-fill" :style="{ width: budgetPercent + '%' }"></div>
+      <div class="card-title">
+        <span class="title-label"><Wallet class="size-4" />本月支出</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]"
+        >
+          查看明细 <ArrowUpRight class="size-3.5" />
+        </Button>
       </div>
-      <p class="hint">较上月同期 {{ Number(data?.monthExpense.trend) > 0 ? '↑' : '↓' }} {{ Math.abs(Number(data?.monthExpense.trend)) }}%</p>
+      <div class="big-num">¥{{ Number(data?.monthExpense.amount).toFixed(2) }}<small>预算 ¥{{ Number(data?.monthExpense.budget).toFixed(0) }}</small></div>
+      <Progress :model-value="budgetPercent" class="mt-3.5 h-1.5" aria-label="预算使用率" />
+      <p class="hint">
+        <TrendingUp v-if="Number(data?.monthExpense.trend) > 0" class="size-3.5 hint-up" />
+        <TrendingDown v-else class="size-3.5 hint-down" />
+        <span>较上月同期 {{ Math.abs(Number(data?.monthExpense.trend)) }}%</span>
+      </p>
     </article>
 
     <article class="card">
-      <div class="card-title"><span>待办事项</span><span class="more">全部待办 →</span></div>
+      <div class="card-title">
+        <span class="title-label"><ListTodo class="size-4" />待办事项</span>
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
+          全部待办 <ArrowUpRight class="size-3.5" />
+        </Button>
+      </div>
       <div class="row-list">
         <div v-for="item in data?.todos" :key="item.text" class="row">
           <span class="main text">{{ item.text }}</span>
-          <span class="tag" :class="item.tagClass">{{ item.tag }}</span>
+          <Badge variant="secondary" :class="badgeTone(item.tagClass)">{{ item.tag }}</Badge>
         </div>
       </div>
     </article>
 
     <article class="card">
-      <div class="card-title"><span>今日日程</span><span class="more">查看日历 →</span></div>
+      <div class="card-title">
+        <span class="title-label"><CalendarDays class="size-4" />今日日程</span>
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
+          查看日历 <ArrowUpRight class="size-3.5" />
+        </Button>
+      </div>
       <div class="row-list">
         <div v-for="item in data?.upcoming" :key="item.text" class="row">
           <span class="main text">{{ item.text }}</span>
@@ -61,11 +126,18 @@ onMounted(async () => {
     </article>
 
     <article class="card">
-      <div class="card-title"><span>习惯打卡</span><span class="more">全部习惯 →</span></div>
+      <div class="card-title">
+        <span class="title-label"><Flame class="size-4" />习惯打卡</span>
+        <Button type="button" variant="ghost" size="sm" class="h-7 gap-1 px-2 text-xs font-medium text-[var(--text-3)] hover:bg-transparent hover:text-[var(--accent)]">
+          全部习惯 <ArrowUpRight class="size-3.5" />
+        </Button>
+      </div>
       <div class="row-list">
         <div v-for="item in data?.habits" :key="item.name" class="row">
           <span class="main text">{{ item.name }}</span>
-          <span class="tag" :class="item.done ? 'green' : 'gray'">{{ item.done ? '已完成' : '待打卡' }}</span>
+          <Badge variant="secondary" :class="badgeTone(item.done ? 'green' : 'gray')">
+            {{ item.done ? '已完成' : '待打卡' }}
+          </Badge>
         </div>
       </div>
     </article>
@@ -100,15 +172,13 @@ onMounted(async () => {
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-.more {
-  color: var(--text-3);
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 160ms ease;
+.title-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
-.more:hover {
-  color: var(--accent);
+.title-label svg {
+  color: var(--text-3);
 }
 .big-num {
   font-size: 2.1rem;
@@ -124,24 +194,20 @@ onMounted(async () => {
   color: var(--text-3);
   letter-spacing: 0;
 }
-.budget-track {
-  margin: 14px 0 0;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--track);
-  overflow: hidden;
-}
-.budget-fill {
-  height: 100%;
-  border-radius: var(--r-pill);
-  background: var(--grad-blue);
-  transition: width 400ms var(--ease-out-quart);
-}
 .hint {
   margin: 6px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--text-2);
   font-size: 0.82rem;
   line-height: 1.6;
+}
+.hint-up {
+  color: var(--heat);
+}
+.hint-down {
+  color: var(--live);
 }
 .row-list {
   display: flex;
@@ -176,45 +242,19 @@ onMounted(async () => {
   font-size: 0.78rem;
   white-space: nowrap;
 }
-.tag {
-  flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-.gold {
-  color: #fff;
-  background: var(--accent);
-}
-.green {
-  color: #0a5a2c;
-  background: rgba(48, 209, 88, 0.16);
-}
-.gray {
-  color: var(--text-2);
-  background: rgba(0, 0, 0, 0.05);
-}
-.red {
-  color: var(--heat);
-  background: var(--heat-bg);
-}
-.placeholder {
+
+/* 空状态 / 占位（Card + 图标） */
+.empty-state {
   display: grid;
   place-items: center;
   min-height: 46vh;
-  text-align: center;
-  border: 1px dashed var(--faint);
-  border-radius: var(--r-panel);
-  background: var(--surface);
+}
+.empty-title {
   color: var(--text-3);
+  font-size: 0.9rem;
 }
-.placeholder .symbol {
-  font-size: 2.4rem;
-  margin-bottom: 12px;
-  color: var(--accent);
-}
-.placeholder small {
+.empty-sub {
   color: var(--text-4);
+  font-size: 0.82rem;
 }
 </style>

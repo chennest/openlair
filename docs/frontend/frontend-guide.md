@@ -2,11 +2,14 @@
 
 > 本文件是 OpenLair 前端开发的**唯一权威规范**。任何前端改动、新增页面/组件、调整样式、修改 mock，都必须先通读本文件，再动手。所有 AI 代理与协作者默认遵守本规范。
 
-## 〇、设计语言：Apple Liquid Glass
+## 〇、设计语言：Apple Liquid Glass × shadcn-vue 融合
 
 - `lairweb/` 使用 **Apple Liquid Glass** 视觉语言（apple.com / Apple Newsroom / 最新 macOS 的冷静、高级、克制的质感）。
-- **权威设计系统 = agent skill**：`.agents/skills/apple-design-skill/`（来源 [`naplesblue/apple-design-skill`](https://github.com/naplesblue/apple-design-skill)，MIT，已克隆进仓库）。**风格规则、token、组件、动效规范就是 skill 文件本身**，本文件只做索引与要点浓缩，不维护平行副本；前端工作必须加载并遵循该 skill。
+- **权威设计系统 = agent skill**：`.agents/skills/apple-design-skill/`（来源 [`naplesblue/apple-design-skill`](https://github.com/naplesblue/apple-design-skill)，MIT，已克隆进仓库）。**风格规则、token、动效规范就是 skill 文件本身**，本文件只做索引与要点浓缩，不维护平行副本；前端工作必须加载并遵循该 skill。
+- **组件层 = shadcn-vue**（源码复制模式）：交互控件（按钮/输入/下拉/开关/日历/弹窗等）一律用 `src/components/ui/` 下的 shadcn 组件，**禁止手写**；图标用 `@lucide/vue`。
+- **融合细则必读**：`.agents/skills/apple-design-skill/openlair-shadcn.md`（三层融合模型、CLI 用法、已知坑：`--accent` 撞名、scoped 样式命中不了 shadcn 根、CLI 塞 Google Fonts 等）。
 - Skill 是框架无关的：在 Vue 中把 CSS 翻译成 SFC scoped 样式 / 全局 token，但保留**精确 token 值**、panel-not-cards 模式、glass-only-on-overlap 规则。
+- **Token 层**：`src/style.css` `:root` = Apple token 唯一来源；`src/assets/tailwind.css` = shadcn 语义变量 `var()` 映射（`--primary→--accent`、`--border→--hairline`…）。颜色/圆角/阴影只用 shadcn 语义类或 `var(--…)`，禁止硬编码。
 
 ### Skill 文件索引（实际风格规范）
 
@@ -52,8 +55,10 @@ lairweb/
 │   ├── api/
 │   │   └── request.ts           # 公共 fetch 封装（request/get/post/put/del），所有请求必须走这里
 │   ├── components/              # 跨模块通用组件
-│   │   ├── BaseModal.vue        # 通用弹窗（Teleport + 遮罩 + 动画）
-│   │   └── Tag.vue              # 通用标签（gold/green/gray/red）
+│   │   ├── BaseModal.vue        # 通用弹窗（Teleport + 遮罩 + 动画；弹窗基座，内部控件用 shadcn）
+│   │   ├── Tag.vue              # 通用标签（gold/green/gray/red；也可用 shadcn Badge）
+│   │   └── ui/                  # ★ shadcn-vue 组件（源码复制模式）button/input/select/tabs/switch/
+│   │                            #   progress/table/calendar/dialog/popover/badge/alert/... 交互控件一律从这里取
 │   ├── modules/                 # ★ 业务模块（一个模块一个目录）
 │   │   ├── <模块>/
 │   │   │   ├── api.ts           # 该模块的类型定义 + API 函数（基于 src/api/request）

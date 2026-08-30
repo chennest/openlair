@@ -6,7 +6,6 @@ import { authApi, type AuthUser } from './modules/auth/api'
 
 const route = useRoute()
 const router = useRouter()
-const pageTitle = computed(() => (route.meta.title as string) || '总览')
 
 // ---------- 登录态：路由变化时从 localStorage 刷新（登录/登出后生效） ----------
 const user = ref<AuthUser | null>(getUser() as AuthUser | null)
@@ -31,8 +30,7 @@ async function logout() {
 
 /** /login 独立全屏页（无侧边导航与底栏） */
 const isAuthPage = computed(() => route.path === '/login')
-
-/** /assistant 纯聊天页（无 content-header / m-header，由页面自控顶栏） */
+/** AI 助手是正式页面（不是抽屉），路由 /assistant */
 const isAssistantPage = computed(() => route.path === '/assistant')
 
 const navItems: { path: string; label: string; icon: string[]; mobile?: boolean }[] = [
@@ -42,7 +40,8 @@ const navItems: { path: string; label: string; icon: string[]; mobile?: boolean 
   { path: '/todo', label: '待办', icon: ['m9 11 3 3L22 4', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'] },
   { path: '/notes', label: '笔记', icon: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'] },
   { path: '/habits', label: '习惯', icon: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'] },
-  { path: '/assistant', label: 'AI 助手', icon: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'] },
+  { path: '/assistant', label: 'AI 助手', mobile: false, icon: ['M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'] },
+  { path: '/api-keys', label: 'API Keys', mobile: false, icon: ['M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4'] },
 ]
 
 // Lucide 线性图标：24 网格、单笔画 1.75、currentColor（icons.md）
@@ -148,6 +147,11 @@ function goProfile() {
   router.push('/profile')
 }
 
+function goApiKeys() {
+  closeMenu()
+  router.push('/api-keys')
+}
+
 // 菜单外点击关闭
 function onDocClick(e: MouseEvent) {
   if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
@@ -223,9 +227,8 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </aside>
 
-    <main class="content" :class="{ 'is-assistant': route.path === '/assistant' }">
-      <header v-if="!isAssistantPage" class="content-header">
-        <h1>{{ pageTitle }}</h1>
+    <main class="content" :class="{ 'content-chat': isAssistantPage }">
+      <header class="content-header">
         <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
       </header>
       <RouterView />
@@ -234,9 +237,30 @@ function onKeydown(e: KeyboardEvent) {
 
   <!-- ============ 手机布局（≤860px） ============ -->
   <div v-else class="m-workspace" @touchstart="onTouchStart" @touchend="onTouchEnd">
-    <header v-if="!isAssistantPage" class="m-header" ref="mHeaderEl">
-        <span class="m-brand">L</span>
-      <strong>{{ pageTitle }}</strong>
+    <header class="m-header" ref="mHeaderEl">
+      <button
+        class="m-assistant-entry"
+        type="button"
+        @click="router.push('/assistant')"
+        aria-label="打开 AI 助手"
+        title="AI 助手"
+      >
+        <span class="ai-sparkle" aria-hidden="true">
+          <svg class="ai-sparkle-svg" viewBox="0 0 24 24">
+            <defs>
+              <linearGradient id="ai-spark-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0a84ff" />
+                <stop offset="100%" stop-color="#5e5ce6" />
+              </linearGradient>
+            </defs>
+            <path
+              fill="url(#ai-spark-grad)"
+              d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"
+            />
+          </svg>
+          <span class="ai-sheen"></span>
+        </span>
+      </button>
       <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
       <button
         v-if="user"
@@ -253,6 +277,12 @@ function onKeydown(e: KeyboardEvent) {
             </svg>
             <span>个人信息</span>
           </button>
+          <button class="m-menu-item" @click="goApiKeys">
+            <svg class="m-menu-icon" v-bind="iconProps" aria-hidden="true">
+              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+            </svg>
+            <span>API Keys</span>
+          </button>
           <div class="m-menu-divider"></div>
           <button class="m-menu-item is-heat" @click="logout">
             <svg class="m-menu-icon" v-bind="iconProps" aria-hidden="true">
@@ -266,7 +296,7 @@ function onKeydown(e: KeyboardEvent) {
       </Transition>
     </header>
 
-    <main class="m-content" @scroll="onMScroll">
+    <main class="m-content" :class="{ 'm-content-chat': isAssistantPage }" @scroll="onMScroll">
       <Transition :name="swipeDirection === 'forward' ? 'slide-fwd' : 'slide-back'" mode="out-in">
         <RouterView :key="route.path" />
       </Transition>
@@ -287,6 +317,20 @@ function onKeydown(e: KeyboardEvent) {
       </button>
     </nav>
   </div>
+
+  <!-- ═══ AI 助手：左上角悬浮入口（点击进入 /assistant 全屏页面） ═══ -->
+  <button
+    v-if="!isAuthPage && !isAssistantPage"
+    type="button"
+    class="assistant-fab"
+    @click="router.push('/assistant')"
+    aria-label="打开 AI 助手"
+    title="AI 助手"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="assistant-fab-icon">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  </button>
 </template>
 
 <style scoped>
@@ -353,7 +397,7 @@ function onKeydown(e: KeyboardEvent) {
   padding: 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-card);
-  background: rgba(245, 245, 247, 0.72);
+  background: rgba(var(--bg-rgb), 0.72);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: var(--sh-overlay);
@@ -445,15 +489,122 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 /* ════════════════════════════════════════════
-   /assistant 页面：约束 .content 至视口，消除浏览器级纵向滚动
+   AI 助手：左上角悬浮入口（点击进入 /assistant 页面）
    ════════════════════════════════════════════ */
-.content.is-assistant {
-  height: 100dvh;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  /* 纯聊天界面：去 header 后 padding 全归零，由 chat-layout 自控边距 */
+.assistant-fab {
+  position: fixed;
+  top: 18px;
+  left: 252px; /* 桌面：侧栏(236px)右侧，位于内容区左上角 */
+  z-index: 360;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart);
+}
+
+.assistant-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.assistant-fab:active {
+  transform: translateY(0);
+}
+
+.assistant-fab-icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* 手机顶栏：AI 助手入口（渐变流光 ✨，仅图标，无文字） */
+.m-assistant-entry {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
   padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ai-sparkle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  animation: ai-float 3.2s ease-in-out infinite;
+}
+
+.ai-sparkle-svg {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 0 6px rgba(94, 92, 230, 0.45));
+}
+
+/* 流光：一道白色高光扫过图标 */
+.ai-sheen {
+  position: absolute;
+  top: -50%;
+  bottom: -50%;
+  width: 36%;
+  left: -50%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  transform: rotate(22deg);
+  animation: ai-sheen 2.8s ease-in-out infinite;
+}
+
+@keyframes ai-sheen {
+  0% {
+    left: -50%;
+  }
+  55%,
+  100% {
+    left: 140%;
+  }
+}
+
+/* 轻微浮动 + 呼吸感 */
+@keyframes ai-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-sparkle,
+  .ai-sheen {
+    animation: none;
+  }
+}
+
+/* 手机端：入口已进顶栏，隐藏悬浮圆按钮 */
+@media (max-width: 860px) {
+  .assistant-fab {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-fab {
+    transition: none;
+  }
 }
 </style>

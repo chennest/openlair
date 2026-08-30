@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 账本切换器：当前账本下拉（个人/共享），共享账本显示成员头像；含新建账本入口
 import { ref } from 'vue'
+import { ChevronDown, Plus, Trash2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import type { Book } from './api'
 
 const props = defineProps<{
@@ -12,6 +14,7 @@ const emit = defineEmits<{
   (e: 'switch', bookId: number): void
   (e: 'create'): void
   (e: 'manage', book: Book): void
+  (e: 'join'): void
   (e: 'trash'): void
 }>()
 
@@ -29,20 +32,32 @@ function pick(bookId: number) {
 
 <template>
   <div class="switcher">
-    <button class="trigger" @click="open = !open" aria-haspopup="listbox" :aria-expanded="open">
+    <Button
+      variant="outline"
+      class="justify-start gap-2.5 h-11 pl-[14px] pr-[14px] rounded-full! bg-white text-foreground text-[0.92rem] font-semibold cursor-pointer hover:border-primary"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
       <span class="avatar" :class="{ shared: current?.type === 'shared' }" aria-hidden="true">
         {{ current ? initials(current.name) : '账' }}
       </span>
       <span class="name">{{ current?.name ?? '选择账本' }}</span>
-      <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M6 9l6 6 6-6" />
-      </svg>
-    </button>
+      <ChevronDown class="chev" :class="open ? 'rotate-180' : 'rotate-0'" :size="16" aria-hidden="true" />
+    </Button>
 
     <Transition name="pop">
       <div v-if="open" class="menu" role="listbox">
         <div class="menu-label">账本</div>
-        <button v-for="b in books" :key="b.id" class="item" :class="{ on: b.id === current?.id }" role="option" @click="pick(b.id)">
+        <Button
+          v-for="b in books"
+          :key="b.id"
+          variant="ghost"
+          class="justify-start gap-2.5 w-full py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-foreground text-[0.9rem] font-semibold cursor-pointer text-left transition-colors"
+          :class="b.id === current?.id ? 'bg-[rgba(0,113,227,0.08)] hover:bg-primary/8' : ''"
+          role="option"
+          @click="pick(b.id)"
+        >
           <span class="avatar" :class="{ shared: b.type === 'shared' }" aria-hidden="true">{{ initials(b.name) }}</span>
           <span class="item-name">
             <span>{{ b.name }}</span>
@@ -58,23 +73,24 @@ function pick(bookId: number) {
               :style="{ background: m.user?.avatarColor ?? '#aeaeb2' }"
             >{{ m.user ? m.user.name.slice(0, 1) : '?' }}</span>
           </span>
-        </button>
+        </Button>
 
         <div class="menu-actions">
-          <button class="act" @click="open = false; emit('create')">＋ 新建账本</button>
-          <button v-if="current" class="act" @click="open = false; emit('manage', current)">
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('create')">
+            <Plus class="size-4" />
+            新建账本
+          </Button>
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('join')">
+            <Plus class="size-4" />
+            加入共享账本
+          </Button>
+          <Button v-if="current" variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-primary text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-primary/6 hover:text-primary" @click="open = false; emit('manage', current)">
             管理账本
-          </button>
-          <button class="act act-trash" @click="open = false; emit('trash')">
-            <svg class="act-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 6h18" />
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              <path d="M19 6l-.867 12.142A2 2 0 0 1 16.138 20H7.862a2 2 0 0 1-1.995-1.858L5 6" />
-              <path d="M10 11v6" />
-              <path d="M14 11v6" />
-            </svg>
+          </Button>
+          <Button variant="ghost" class="justify-start gap-1.5 py-[9px] pl-[10px] pr-[10px] rounded-[var(--r-thumb)]! text-[var(--text-3)] text-[0.86rem] font-semibold cursor-pointer text-left hover:bg-[var(--heat-bg)]! hover:text-[var(--heat)]!" @click="open = false; emit('trash')">
+            <Trash2 class="size-4" />
             回收站
-          </button>
+          </Button>
         </div>
       </div>
     </Transition>
@@ -85,30 +101,9 @@ function pick(bookId: number) {
 .switcher {
   position: relative;
 }
-.trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.trigger:hover {
-  border-color: var(--accent);
-}
 .chev {
   color: var(--text-3);
   transition: transform 200ms var(--ease-out-quart);
-}
-.trigger[aria-expanded='true'] .chev {
-  transform: rotate(180deg);
 }
 .avatar {
   width: 24px;
@@ -141,28 +136,6 @@ function pick(bookId: number) {
   font-weight: 600;
   color: var(--text-3);
   letter-spacing: 0.04em;
-}
-.item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 150ms ease;
-}
-.item:hover {
-  background: var(--hover);
-}
-.item.on {
-  background: rgba(0, 113, 227, 0.08);
 }
 .item-name {
   flex: 1;
@@ -202,37 +175,6 @@ function pick(bookId: number) {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--hairline);
-}
-.act {
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: transparent;
-  color: var(--accent);
-  font-size: 0.86rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 150ms ease;
-}
-.act:hover {
-  background: rgba(0, 113, 227, 0.06);
-}
-.act-trash {
-  color: var(--text-3);
-}
-.act-trash:hover {
-  color: var(--heat);
-  background: var(--heat-bg);
-}
-.act-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  margin-right: 4px;
-  vertical-align: middle;
-  position: relative;
-  top: -1px;
 }
 .pop-enter-active,
 .pop-leave-active {
