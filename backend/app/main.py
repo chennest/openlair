@@ -74,6 +74,7 @@ def create_app(
     note_repo = NoteRepository(session_factory)
     habit_repo = HabitRepository(session_factory)
     setting_repo = SettingRepository(session_factory)
+    app.state.setting_repo = setting_repo
 
     # ---------- 服务（业务逻辑层） ----------
     app.state.auth_service = AuthService(user_repo, token_repo, setting_repo)

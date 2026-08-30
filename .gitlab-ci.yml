@@ -41,7 +41,8 @@ backend-test:
   script:
     - cd backend
     - uv sync --extra dev
-    - uv run pytest -v
+    # junitxml 落在 backend/ 下，对应 artifacts 的 backend/test-results.xml
+    - uv run pytest -v --junitxml=test-results.xml
   artifacts:
     when: always
     reports:

@@ -6,7 +6,10 @@ from app.main import create_app
 
 
 def make_client(tmp_path) -> TestClient:
-    return TestClient(create_app(database_url=f"sqlite+pysqlite:///{tmp_path}/lair-biz.db"))
+    app = create_app(database_url=f"sqlite+pysqlite:///{tmp_path}/lair-biz.db")
+    # 测试环境开放注册（生产默认禁止，由 settings.allow_register 控制，见 test_register_closed_by_default）
+    app.state.setting_repo.set("allow_register", "1")
+    return TestClient(app)
 
 
 def login(client: TestClient, email: str = "test1@openlair.dev") -> tuple[str, dict]:
@@ -33,6 +36,19 @@ def test_seed_accounts_can_login(tmp_path) -> None:
         assert user["email"] == f"test{i}@openlair.dev"
         assert "passwordHash" not in user
         assert len(token.split(".")) == 3
+
+
+def test_register_closed_by_default(tmp_path) -> None:
+    """生产默认禁止注册（settings.allow_register 缺省 "0"），开放需显式置 "1"。"""
+    app = create_app(database_url=f"sqlite+pysqlite:///{tmp_path}/lair-closed.db")
+    client = TestClient(app)
+    r = client.post(
+        "/api/auth/register",
+        json={"name": "路人", "email": "walkin@openlair.dev", "password": "abc12345"},
+    )
+    assert r.status_code == 403
+    assert r.json()["code"] == 403
+    assert r.json()["data"] is None
 
 
 def test_register_then_login(tmp_path) -> None:
