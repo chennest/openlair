@@ -1,9 +1,18 @@
 # 生产环境 overlay — 域名 + 环境标签 + 镜像 tag
+# ⚠️ 生产暂不监控：不引用 base 的 servicemonitor.yaml（生产集群未装 Prometheus Operator，
+#    ServiceMonitor CRD 不存在会导致 kubectl apply 失败）。等生产部署监控后恢复引用。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 逐个引用 base 资源文件（排除 servicemonitor.yaml）
 resources:
-  - ../../base
+  - ../../base/namespace.yaml
+  - ../../base/backend.yaml
+  - ../../base/web.yaml
+  - ../../base/ingress.yaml
+
+# 统一注入 namespace（与 base 一致，kustomize 在 overlay 层重新应用）
+namespace: openlair
 
 # 环境标签（官方推荐 labels 字段，只加 label 不动 selector）
 labels:

@@ -65,3 +65,7 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# kubeconfig（含集群证书，不入库）
+*admin*.conf
+*admin*.yaml
