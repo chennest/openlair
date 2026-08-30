@@ -141,3 +141,43 @@ deploy-test:
     - kubectl apply -k .
     - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
     - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
+
+# ============================================================
+# Stage 5: 部署生产环境（K8s，通过 agent k8s-prod 隧道）
+# 触发：Git tag（v1.2.3）→ 镜像已构建；deploy-prod 为【手动放行】job，
+#       需人工在 GitLab CI 界面点 Play 才执行部署（发版必须显式确认）
+# 部署：kubectl apply -k overlays/prod + 镜像 tag 注入（CI_COMMIT_TAG）
+# ⚠️ 前置条件（集群侧手动，不入库）：
+#   1. 生产集群已安装 GitLab Agent k8s-prod（配置在 infra/gitops 仓库 .gitlab/agents/k8s-prod/，
+#      已存在并授权 chennest 群组；若未安装，需在 GitLab UI 注册拿 token 后 helm 安装）
+#   2. namespace openlair（kustomize base 会 apply）
+#   3. 已创建 harbor-registry-secret（docker-registry 类型，拉 Harbor 镜像）
+#   4. 已创建 configmap openlair-env + secret openlair-secrets（生产配置）
+# 建议：GitLab 中将 production 设为 protected environment
+# ============================================================
+deploy-prod:
+  stage: deploy
+  tags: [k8s]
+  image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
+  environment:
+    name: production
+  # 只等镜像构建完成(不等 backend-test)
+  needs:
+    - backend-package
+    - web-package
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual          # 打 tag 后不自动执行，需人工放行
+      allow_failure: false  # 未放行时 pipeline 保持 blocked，不会误报成功
+  before_script:
+    # GitLab 自动注入 kubeconfig（server=KAS），切到生产集群的 agent context
+    - kubectl config get-contexts
+    - kubectl config use-context infra/gitops:k8s-prod
+  script:
+    - cd k8s/overlays/prod
+    # 注入本次发布的镜像 tag（Git tag v1.2.3）——单引号防 YAML 解析冒号
+    - 'sed -i "s|newTag: .*|newTag: ${CI_COMMIT_TAG}|" kustomization.yaml'
+    # 部署
+    - kubectl apply -k .
+    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
+    - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
