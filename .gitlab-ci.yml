@@ -124,7 +124,7 @@ web-package:
 # ============================================================
 deploy-test:
   stage: deploy
-  tags: [k8s-test]
+  tags: [k8s,test]
   image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
   environment:
     name: test
@@ -169,7 +169,7 @@ deploy-test:
 # ============================================================
 deploy-prod:
   stage: deploy
-  tags: [k8s-prod]
+  tags: [k8s,prod]
   image: harbor.lcc007.top/docker.io/bitnami/kubectl:latest
   environment:
     name: prod
