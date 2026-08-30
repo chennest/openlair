@@ -29,7 +29,8 @@ replicas:
   - name: openlair-web
     count: 1
 
-# 域名覆盖：JSON6902 精确替换 host（避开 strategic merge 列表合并坑 #5713）
+# 域名 + IngressClass 覆盖：JSON6902 精确替换（避开 strategic merge 列表合并坑 #5713）
+# ⚠️ 生产集群是 k3s 默认 Traefik，test 集群是 APISIX——IngressClass 必须按环境区分
 patches:
   - target:
       group: networking.k8s.io
@@ -37,6 +38,9 @@ patches:
       kind: Ingress
       name: openlair
     patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: traefik
       - op: replace
         path: /spec/rules/0/host
         value: lair.lcc007.top
