@@ -36,7 +36,7 @@
 
 - `backend/` 是 FastAPI 后端：统一 `{code, message, data}` 信封、JWT 认证（register/login/logout/me）、基于 SQLAlchemy 仓储层 + 服务层的 ledger/books/todo/calendar/notes/habits/overview 业务模块。源码在 `backend/app/`（扁平布局，包名 `app`），参照官方 full-stack-fastapi-template 结构。
 - `lairweb/` 是 Vue + TypeScript 管理台。开发模式下跑在内存 mock 层（`lairweb/mock/`）上；真实后端在 8001 端口提供完全一致的 API 契约，切换 Vite 代理目标即可连上真后端。
-- `laircli/` 是命令行客户端（可执行命令 `lair`，Python + typer + httpx，src-layout，独立 uv 项目）。它复用后端既有的 `X-API-Key` 凭证通道（`api/v1/deps.py`，与 JWT 等价），**后端为此零改动**；API Key 由用户手动粘贴，首次落盘到 `~/.laircli/config.toml`。用法与契约要点见 `docs/cli/cli-guide.md`。
+- `laircli/` 是命令行客户端（可执行命令 `lair`，**Go 实现**，单二进制、唯一外部依赖 `golang.org/x/term`，`internal/` 分包）。它复用后端既有的 `X-API-Key` 凭证通道（`api/v1/deps.py`，与 JWT 等价），**后端为此零改动**；API Key 由用户从 Web 端手动粘贴，首次校验通过后才落盘到 `~/.laircli/config.json`。命令面只做「读 + 高频写」，**不签发/不撤销凭证、不做不可逆删除、不留 `api` 逃生口**。用法与契约要点见 `docs/cli/cli-guide.md`。
 - 目前没有 CI 工作流、格式化配置、lint 配置或代码生成配置。不要发明本文件之外的新命令。
 - 当前经过验证的权威来源是 `README.md` 和 `docs/backend-architecture.md`。
 
@@ -57,16 +57,17 @@
 - 构建并做类型检查：`pnpm run build`
 - 本地预览生产构建产物：`pnpm run preview`
 
-在 `laircli/` 下执行（独立 uv 项目，`requires-python >= 3.11`，Python 版本由本机 `uv` 决定）：
+在 `laircli/` 下执行（独立 Go 模块 `module laircli`，`go.mod` 要求 Go ≥ 1.26，唯一外部依赖 `golang.org/x/term`）：
 
-- 安装 CLI 依赖（含测试依赖）：`uv sync --extra dev`
-- 运行 CLI 测试（httpx.MockTransport 假后端，不需要起服务）：`uv run pytest`
-- 本地直跑：`uv run lair --help`
-- 全局安装为 `lair` 命令：`uv tool install ./laircli`（在仓库根执行）
-- 首次配置（校验通过才写 `~/.laircli/config.toml`）：`lair init --base-url http://127.0.0.1:8001`
-- Windows 注意：非 ASCII 参数（中文分类名/备注）需前置 `PYTHONUTF8=1`，否则 Git Bash 传参会被 GBK 解码坏掉；`lair api` 的 path 需 `MSYS2_ARG_CONV_EXCL='*'` 防止路径改写。
-- 端到端联调本地后端：先起 8001，用种子账号换 JWT 再建 Key（注册开关默认关闭，无需注册）：
-  `curl -s -X POST http://127.0.0.1:8001/api/auth/login -H 'Content-Type: application/json' -d '{"email":"test1@openlair.dev","password":"test123456"}'`
+- 编译全部包：`go build ./...`
+- 运行 CLI 测试（httptest 假后端，不需要起服务）：`go test ./...`（83 项）
+- 静态检查 + 格式化：`go vet ./...`、`gofmt -l .`（提交前应无输出）
+- 本地直跑：`go build -o lair . && ./lair --help`
+- 全局安装为 `lair` 命令：`go install ./laircli`（在仓库根执行，落到 `$GOPATH/bin`）
+- 首次配置（拿 `/api/auth/me` 校验通过才写 `~/.laircli/config.json`）：`lair --api-key ol_xxx --base-url http://127.0.0.1:8001 init`，或 `lair init` 交互式粘贴（输入不回显）
+- Windows 编码：**不再是坑**。Go 的 argv 走 UTF-16→UTF-8，中文参数在 Git Bash/cmd/PowerShell 下原样送达；进程启动时还会把控制台代码页切到 UTF-8（`console_windows.go`）。Python 版需要的 `PYTHONUTF8=1` 与 `MSYS2_ARG_CONV_EXCL='*'` 都不再需要（后者服务于已移除的 `lair api`）。
+- 端到端联调本地后端（用 SQLite 起服务，别让 `backend/.env` 把请求打到生产库）：先 `DATABASE_URL='sqlite+pysqlite:///./data/go-e2e.db' uv run uvicorn app.main:app --host 127.0.0.1 --port 8002`，用种子账号换 JWT 再建 Key（注册开关默认关闭，无需注册）：
+  `curl -s -X POST http://127.0.0.1:8002/api/auth/login -H 'Content-Type: application/json' -d '{"email":"test1@openlair.dev","password":"test123456"}'`
   → 取 `data.token` → `POST /api/keys` 带 `Authorization: Bearer <token>` 与 `{"name":"..."}` → 取 `data.apiKey`（明文仅一次）
 
 环境说明：
@@ -79,7 +80,7 @@
 - `backend/`：Python/FastAPI 后端，核心大脑。
 - `lairapp/`：Flutter 客户端，覆盖 iOS、Android、macOS、Windows。
 - `lairweb/`：Vue + TypeScript web 管理台（Vite 构建）。浏览器侧 API 地址由 `.env`/`.env.local` 中的 `VITE_API_BASE_URL` 配置；本地同源代理时留空。Vite dev proxy 读取 `LAIRWEB_API_PROXY_TARGET` → `VITE_API_BASE_URL` → 默认 `http://127.0.0.1:8001`（环境配置详见顶部「开工前必读」）。
-- `laircli/`：Python 命令行客户端（命令名 `lair`），后端 `/api` 的纯 HTTP 消费者，只通过 `X-API-Key` 鉴权。禁止为它单独开后端分支或专用端点——需要新能力时优先扩命令面，实在低频就用 `lair api` 逃生口。
+- `laircli/`：Go 命令行客户端（命令名 `lair`），后端 `/api` 的纯 HTTP 消费者，只通过 `X-API-Key` 鉴权。禁止为它单独开后端分支或专用端点——需要新能力时扩命令面。**不要重新引入"直连任意接口"的逃生口**，也不要在 CLI 上做凭证签发/撤销、账本删除、成员管理、邀请码重置：这些刻意留在 Web 端，加了就把「精简命令面」的安全边界整体击穿。
 - `docs/`：项目文档。
 
 ## README 中的产品模块
