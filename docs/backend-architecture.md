@@ -63,7 +63,8 @@ HTTP 请求
 - 失败：`code` = HTTP 状态码（401/403/404/409/422/500...），`message` 为人类可读错误，`data=null`。
 - **HTTP 状态码与 `code` 保持一致**。
 - 错误处理链（`core/envelope.py`）：`ApiError(status, message)` 业务错误（401 自动带 `WWW-Authenticate: Bearer`）→ `HTTPException` 转换 → 未捕获异常兜底 500「服务器内部错误」。
-- 鉴权：`Authorization: Bearer <token>`；未登录 / token 无效 / 过期 / 已登出 → 401「未登录或登录已过期，请重新登录」。
+- **唯一的例外**：参数校验失败（422）走 FastAPI 默认的裸 `{"detail": [...]}`，不带信封——`envelope.py` 只注册了 `ApiError`/`HTTPException`/`Exception` 三个 handler，没有 `RequestValidationError`。客户端（`laircli/`）必须同时处理两种形状。
+- 鉴权：两类等价凭证，任一即可（`api/v1/deps.py`）：`Authorization: Bearer <token>`（登录态，7 天，可登出撤销）与 `X-API-Key: ol_xxx`（用户级长效凭证，可独立撤销）。`X-API-Key` 优先，且它无效时**不会**回退去解 Bearer。未登录 / token 无效 / 过期 / 已登出 / Key 已撤销 → 401「未登录或登录已过期，请重新登录」。
 - 字段命名 camelCase（`bookId`、`categoryId`、`pageSize`），与 mock 层逐字段对齐。
 
 ## 认证与安全（core/security.py）
@@ -71,18 +72,21 @@ HTTP 请求
 - **JWT HS256**（PyJWT，RFC 7519）：签发 claims `{ sub: 用户id, iat, exp: now+7天, jti }`；验签 `jwt.decode(token, secret, algorithms=["HS256"])`。
 - **登出黑名单**：登出时把 `jti` 写入 `revoked_tokens` 表（等价于 Redis 黑名单方案），后续携带该 token 的请求一律 401。
 - **密码哈希**：`hashlib.scrypt`（n=2^14, r=8, p=1, dklen=64），存储格式 `scrypt$salt$hash`，比较用 `hmac.compare_digest`。
+- **API Key**（`core/security.py` + `services/api_keys.py`）：明文 `ol_` + `secrets.token_urlsafe(32)`（共 46 字符，256bit 熵）；库中只存 SHA-256 十六进制，明文仅在 `POST /api/keys` 响应里下发一次；列表 DTO 只给 `prefix`（前 12 字符）供识别。每人最多 20 把有效 Key，撤销是软删（`revoked_at`）且立即生效；每次用 Key 认证成功都会刷 `last_used_at`。注意登出（`/api/auth/logout`）只拉黑 JWT，**不会**撤销 API Key。
 - **密钥来源**：`OPENLAIR_JWT_SECRET`（进程环境 → `backend/.env` → 开发默认值），HS256 要求 ≥ 32 字节；生产必须显式配置。
 - 鉴权依赖 `get_current_user`（api/v1/deps.py）执行：验签 → 过期检查 → 黑名单检查 → 用户存在性检查，任一失败统一 401。
 
-## 数据模型（14 张表，models/）
+## 数据模型（16 张表，models/）
 
 | 表 | 说明 |
 |---|---|
 | `users` | 用户：id（自增 int）、name、email（唯一）、password_hash |
+| `api_keys` | 用户级 API Key：user_id、name、key_hash（SHA-256）、prefix（前 12 字符）、last_used_at、revoked_at（软删即撤销） |
+| `settings` | 系统设置 KV：key、value（如 `allow_register`，缺省按 `"0"` 处理） |
 | `books` | 账本：name、type（personal/shared）、invite_code（共享账本邀请码，NULL=未生成，重置即覆盖失效） |
 | `book_members` | 账本成员：book_id + user_id，多对多，role（owner/editor） |
 | `categories` | 分类：16 个固定项——支出 id 1-10（餐饮/交通/购物/居住/娱乐/医疗/学习/人情/通讯/其他），收入 id 11-16（工资/奖金/理财/礼金/退款/其他） |
-| `transactions` | 流水：book_id、type（expense/income）、category、amount、date、note |
+| `transactions` | 流水：book_id、type（**中文枚举 `收入`/`支出`**，写入时任何非「收入」的值都归一为「支出」）、category、amount、date、note |
 | `budgets` | 月预算：book_id + amount（每月一条） |
 | `todos` | 待办：text、quadrant（四象限）、done、due |
 | `events` | 日历日程：title、date、time、location、done |
@@ -93,7 +97,7 @@ HTTP 请求
 | `assistant_messages` | AI 助手消息（transcript）：role(user/assistant)、type(text/confirm_request/tool_result)、content、meta |
 | `assistant_plans` | AI 记账计划执行日志：plan_id、args、status(pending/executed/cancelled/failed) |
 
-## API 端点清单（全部挂 `/api`，除 auth 均需 Bearer token）
+## API 端点清单（全部挂 `/api`；除 `/api/auth/register|login` 外均需凭证，`Bearer` 与 `X-API-Key` 等价）
 
 ### /api/auth
 | 方法 | 路径 | 说明 |
@@ -102,6 +106,13 @@ HTTP 请求
 | POST | /login | 登录，返回 `{ token, user }` |
 | POST | /logout | 登出，撤销当前 token（jti 入黑名单） |
 | GET | /me | 当前用户信息 |
+
+### /api/keys（API Key 管理，仅本人）
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | / | 有效 Key 列表，返回 `{ keys: [{ id, name, prefix, createdAt, lastUsedAt }] }` |
+| POST | / | 创建（`{ name }`，1-30 字），返回 `{ apiKey（明文，仅此一次）, item }`；有效 Key 达 20 把 → 400 |
+| DELETE | /{key_id} | 撤销（软删，立即失效）；非本人或不存在的 id → 404 |
 
 ### /api/ledger
 | 方法 | 路径 | 说明 |
