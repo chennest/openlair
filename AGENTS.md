@@ -62,8 +62,8 @@
 - 编译全部包：`go build ./...`
 - 运行 CLI 测试（httptest 假后端，不需要起服务）：`go test ./...`（83 项）
 - 静态检查 + 格式化：`go vet ./...`、`gofmt -l .`（提交前应无输出）
-- 本地直跑：`go build -o lair . && ./lair --help`
-- 全局安装为 `lair` 命令：`go install ./laircli`（在仓库根执行，落到 `$GOPATH/bin`）
+- 本地直跑：`go build -o lair ./cmd/lair && ./lair --help`
+- 全局安装为 `lair` 命令：`go install ./cmd/lair`（`main` 包在 `laircli/cmd/lair/`，产物名才是 `lair`；仓库根不是 Go 模块，安装命令必须在 `laircli/` 下执行）
 - 首次配置（拿 `/api/auth/me` 校验通过才写 `~/.laircli/config.json`）：`lair --api-key ol_xxx --base-url http://127.0.0.1:8001 init`，或 `lair init` 交互式粘贴（输入不回显）
 - Windows 编码：**不再是坑**。Go 的 argv 走 UTF-16→UTF-8，中文参数在 Git Bash/cmd/PowerShell 下原样送达；进程启动时还会把控制台代码页切到 UTF-8（`console_windows.go`）。Python 版需要的 `PYTHONUTF8=1` 与 `MSYS2_ARG_CONV_EXCL='*'` 都不再需要（后者服务于已移除的 `lair api`）。
 - 端到端联调本地后端（用 SQLite 起服务，别让 `backend/.env` 把请求打到生产库）：先 `DATABASE_URL='sqlite+pysqlite:///./data/go-e2e.db' uv run uvicorn app.main:app --host 127.0.0.1 --port 8002`，用种子账号换 JWT 再建 Key（注册开关默认关闭，无需注册）：

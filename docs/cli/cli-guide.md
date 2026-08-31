@@ -17,12 +17,15 @@
 ## 二、安装
 
 ```bash
-go install ./laircli           # 装到 $GOPATH/bin/lair(.exe)
+cd laircli && go install ./cmd/lair     # 装到 $GOPATH/bin/lair(.exe)
 lair --help
 
 # 或不安装直接跑：
-cd laircli && go build -o lair . && ./lair --help
+cd laircli && go build -o lair ./cmd/lair && ./lair --help
 ```
+
+`main` 包在 `cmd/lair/` 下（不是仓库根 Go 模块，安装命令必须在 `laircli/` 里执行），
+这样 `go install` 产出的二进制就叫 `lair`。
 
 `go.mod` 只要求 Go 1.26，唯一外部依赖是 `golang.org/x/term`（隐藏输入用）。子命令解析、
 信封解包、CJK 表格对齐都是本仓库内的小实现，没有引 cobra/urfave 之类的框架。

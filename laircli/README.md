@@ -7,11 +7,11 @@ OpenLair 命令行客户端：凭 **API Key** 在终端记账、看待办、查�
 ## 安装
 
 ```bash
-go install ./laircli     # 在仓库根执行，装到 $GOPATH/bin/lair(.exe)
+cd laircli && go install ./cmd/lair     # 装到 $GOPATH/bin/lair(.exe)
 lair --help
 ```
 
-免安装直接跑：`cd laircli && go build -o lair . && ./lair --help`
+免安装直接跑：`cd laircli && go build -o lair ./cmd/lair && ./lair --help`
 
 ## 上手三步
 
