@@ -102,9 +102,10 @@ type overviewDTO struct {
 		Budget float64 `json:"budget"`
 		Trend  float64 `json:"trend"`
 	} `json:"monthExpense"`
-	Todos    []overviewItemDTO `json:"todos"`
-	Upcoming []overviewItemDTO `json:"upcoming"`
-	Habits   []habitDTO        `json:"habits"`
+	RecentLedger []transactionDTO  `json:"recentLedger"`
+	Todos        []overviewItemDTO `json:"todos"`
+	Upcoming     []overviewItemDTO `json:"upcoming"`
+	Habits       []habitDTO        `json:"habits"`
 }
 
 type overviewItemDTO struct {

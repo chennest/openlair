@@ -62,7 +62,7 @@ laircli 是 OpenLair 的 Go 版命令行客户端，走后端 `/api`（`{code, m
 - `lair habit rm <id>`
 
 ### 总览 overview
-- `lair overview` — 收入/支出/结余/待办/习惯打卡/近期流水等一屏总览
+- `lair overview` — 一屏总览：本月支出+预算进度 / 最近 10 笔流水 / 待办 / 即将开始 / 习惯打卡
 
 ## 契约细节
 

@@ -39,7 +39,7 @@ agent_created: true
 | `lair cal list\|add\|done\|undo\|rm` | 日程 |
 | `lair note list\|show\|add\|rm` | 笔记 |
 | `lair habit list\|add\|check\|uncheck\|rm` | 习惯打卡 |
-| `lair overview` | 总览看板（收入/支出/结余/待办/打卡等） |
+| `lair overview` | 总览看板（本月支出/最近10笔流水/待办/即将开始/习惯） |
 
 ## 记账 SOP（AI 代记账必守流程）
 

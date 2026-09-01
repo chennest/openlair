@@ -602,6 +602,7 @@ func TestOverview(t *testing.T) {
 	code, out, errw := f.run(t, "overview")
 	mustCode(t, code, 0, out, errw)
 	mustContain(t, out, "本月支出 1,250.00 ↓12.5% （预算 3,000，已用 42%）", "交房租", "即将开始", "（无）", "✓ 早起")
+	mustContain(t, out, "最近流水", "餐饮", "38.50", "12,000.00", "工资到账")
 }
 
 // ---------- 刻意不做的能力 ----------

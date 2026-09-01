@@ -6,6 +6,7 @@ import (
 
 	"laircli/internal/cli"
 	"laircli/internal/parse"
+	"laircli/internal/render"
 )
 
 func overviewCmd() *cli.Command {
@@ -53,6 +54,26 @@ func runOverview(ctx *cli.Context, in *cli.Inv) error {
 	app.R.Log("")
 
 	log := app.R.Log
+	log("最近流水")
+	if len(data.RecentLedger) == 0 {
+		log("  （无）")
+	} else {
+		rows := make([][]string, 0, len(data.RecentLedger))
+		for _, tx := range data.RecentLedger {
+			rows = append(rows, []string{
+				tx.Date, tx.Type, tx.Category, parse.Money(tx.Amount), tx.Note,
+			})
+		}
+		app.R.Table([]render.Col{
+			{Title: "日期"},
+			{Title: "类型"},
+			{Title: "分类"},
+			{Title: "金额", Align: render.Right},
+			{Title: "备注"},
+		}, rows)
+	}
+	log("")
+
 	section(log, "待办", data.Todos, func(x overviewItemDTO) string {
 		return strings.TrimRight(x.Text+"  "+x.Time+" · "+x.Tag, " ·")
 	})

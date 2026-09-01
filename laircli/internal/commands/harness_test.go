@@ -215,6 +215,10 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 			Trend  float64 `json:"trend"`
 		}{Amount: 1250, Budget: 3000, Trend: -12.5}
 		data.Todos = []overviewItemDTO{{Text: "交房租", Time: "今天", Tag: "生活"}}
+		data.RecentLedger = []transactionDTO{
+			{ID: 3, Date: "2026-08-31", Type: "收入", Category: "工资", Amount: 12000, Note: "工资到账"},
+			{ID: 2, Date: "2026-08-30", Type: "支出", Category: "餐饮", Amount: 38.5, Note: "午饭"},
+		}
 		data.Habits = []habitDTO{{Name: "早起", Done: true}}
 		envelope(w, 200, data)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/books/join":

@@ -300,13 +300,33 @@ def test_calendar_notes_habits_crud(tmp_path) -> None:
 def test_overview_aggregates(tmp_path) -> None:
     client = make_client(tmp_path)
     token, _ = login(client)
-    r = client.get("/api/overview", headers=auth_headers(token))
+    headers = auth_headers(token)
+    r = client.get("/api/overview", headers=headers)
     data = r.json()["data"]
-    assert set(data) == {"monthExpense", "todos", "upcoming", "habits"}
+    assert set(data) == {"monthExpense", "recentLedger", "todos", "upcoming", "habits"}
     assert data["monthExpense"]["amount"] >= 0
     assert data["monthExpense"]["budget"] > 0
     assert len(data["todos"]) <= 4
     assert len(data["upcoming"]) <= 3
+    assert isinstance(data["recentLedger"], list)
+    assert len(data["recentLedger"]) <= 10
+
+    # 记两笔后，recentLedger 按日期+id 倒序返回，新记的两笔排最前（含分类名）
+    client.post(
+        "/api/ledger",
+        json={"type": "支出", "categoryId": 1, "amount": 38.5, "note": "午饭", "bookId": 1},
+        headers=headers,
+    )
+    client.post(
+        "/api/ledger",
+        json={"type": "收入", "categoryId": 2, "amount": 12000, "note": "工资", "bookId": 1},
+        headers=headers,
+    )
+    data = client.get("/api/overview", headers=headers).json()["data"]
+    assert [t["note"] for t in data["recentLedger"][:2]] == ["工资", "午饭"]
+    assert data["recentLedger"][1]["amount"] == 38.5
+    assert data["recentLedger"][1]["type"] == "支出"
+    assert data["recentLedger"][1]["category"]
 
 def test_books_trash_restore_purge(tmp_path) -> None:
     """回收站流程：软删 → 列表消失 → trash 可见 → 恢复 → 彻底删除级联清数据。"""

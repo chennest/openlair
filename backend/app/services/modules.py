@@ -204,6 +204,7 @@ class OverviewService:
             month_expense = 0.0
             trend = 0.0
             budget_amount = 0.0
+            recent_ledger: list[dict] = []
         else:
             rows = self._ledger.query_transactions(book_id=book_id)
             month_expense = sum(
@@ -215,6 +216,18 @@ class OverviewService:
             )
             trend = round((month_expense - prev_expense) / prev_expense * 100, 1) if prev_expense else 0.0
             budget_amount = float(self._ledger.budget_for(book_id, month_key).expense_limit)
+            cat_names = {c.id: c.name for c in self._ledger.categories()}
+            recent_ledger = [
+                {
+                    "id": t.id,
+                    "amount": round(float(t.amount), 2),
+                    "type": t.type,
+                    "category": cat_names.get(t.category_id, "其他"),
+                    "date": t.date.isoformat(),
+                    "note": t.note or "",
+                }
+                for t in rows[:10]
+            ]
 
         return {
             "monthExpense": {
@@ -222,6 +235,7 @@ class OverviewService:
                 "budget": round(budget_amount, 2),
                 "trend": trend,
             },
+            "recentLedger": recent_ledger,
             "todos": [
                 {"text": t.text, "time": t.due, "tag": t.quadrant, "tagClass": "red" if t.quadrant == "重要紧急" else "gray"}
                 for t in self._todo.list_by_user(user_id)
