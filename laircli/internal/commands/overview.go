@@ -12,7 +12,7 @@ import (
 func overviewCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "overview",
-		Short: "总览看板（本月支出 / 待办 / 即将开始 / 习惯）",
+		Short: "总览看板（本月支出 / 最近流水 / 待办 / 即将开始 / 习惯）",
 		Run:   runOverview,
 	}
 }
