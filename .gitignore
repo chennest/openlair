@@ -69,3 +69,6 @@ temp/
 # kubeconfig（含集群证书，不入库）
 *admin*.conf
 *admin*.yaml
+
+# 临时锁文件
+*.lock
