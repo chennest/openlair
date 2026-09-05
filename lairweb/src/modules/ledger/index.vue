@@ -323,6 +323,7 @@ onMounted(async () => {
       :shared="currentBook?.type === 'shared'"
       @remove="handleRemove"
       @page="(p: number) => handleQueryChange({ page: p })"
+      @page-size="(s: number) => handleQueryChange({ pageSize: s, page: 1 })"
     >
       <template #toolbar>
         <LedgerFilter :categories="categories" :value="query" @change="handleQueryChange" />
