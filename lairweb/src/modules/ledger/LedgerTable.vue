@@ -70,6 +70,9 @@ const groups = computed<DayGroup[]>(() => {
       <Tag variant="gray">{{ total }} 条</Tag>
     </div>
 
+    <!-- 工具行：筛选/搜索由父组件通过 slot 注入（流水为主体，筛选归位于卡片头部） -->
+    <slot name="toolbar"></slot>
+
     <div v-if="transactions.length === 0" class="empty">
       没有符合条件的记录，试试调整筛选条件。
     </div>

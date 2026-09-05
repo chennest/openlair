@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 记账模块页：账本切换 + 摘要/预算/趋势/统计/筛选/流水/弹窗，负责数据加载与查询状态
+// 记账模块页：账本切换 + 横幅摘要 + slim 摘要条 + 流水通栏（筛选内嵌）+ 弹窗，负责数据加载与查询状态
 import { computed, onMounted, ref } from 'vue'
 import { Check, Plus } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,7 @@ import BookCreate from './BookCreate.vue'
 import BookJoin from './BookJoin.vue'
 import BookTrash from './BookTrash.vue'
 import LedgerSummary from './LedgerSummary.vue'
-import LedgerBudget from './LedgerBudget.vue'
-import LedgerTrend from './LedgerTrend.vue'
-import LedgerStats from './LedgerStats.vue'
+import LedgerStrip from './LedgerStrip.vue'
 import LedgerFilter from './LedgerFilter.vue'
 import LedgerTable from './LedgerTable.vue'
 import LedgerDialog from './LedgerDialog.vue'
@@ -308,27 +306,28 @@ onMounted(async () => {
       </template>
     </LedgerSummary>
 
-    <!-- 查询筛选 -->
-    <LedgerFilter :categories="categories" :value="query" @change="handleQueryChange" />
+    <!-- 摘要条：统计压缩为一行，只占一点高度 -->
+    <LedgerStrip
+      :summary="data!.summary"
+      :budget="data!.budget"
+      :trend="trend"
+      @save-budget="handleBudgetSave"
+    />
 
-    <div class="lower-grid">
-      <div class="left-col">
-        <LedgerBudget :budget="data!.budget" :expense="data!.summary.expense" @save="handleBudgetSave" />
-        <LedgerTrend :trend="trend" />
-      </div>
-      <div class="right-col">
-        <LedgerStats :stats="data!.categoryStats" />
-        <LedgerTable
-          :transactions="data!.transactions"
-          :total="data!.total"
-          :page="data!.page"
-          :page-size="data!.pageSize"
-          :shared="currentBook?.type === 'shared'"
-          @remove="handleRemove"
-          @page="(p: number) => handleQueryChange({ page: p })"
-        />
-      </div>
-    </div>
+    <!-- 流水主体：筛选收进卡片头部，列表通栏按日分组 -->
+    <LedgerTable
+      :transactions="data!.transactions"
+      :total="data!.total"
+      :page="data!.page"
+      :page-size="data!.pageSize"
+      :shared="currentBook?.type === 'shared'"
+      @remove="handleRemove"
+      @page="(p: number) => handleQueryChange({ page: p })"
+    >
+      <template #toolbar>
+        <LedgerFilter :categories="categories" :value="query" @change="handleQueryChange" />
+      </template>
+    </LedgerTable>
 
     <LedgerDialog :open="showDialog" :categories="categories" @close="showDialog = false" @submit="handleCreate" />
 
@@ -399,19 +398,6 @@ onMounted(async () => {
 .fade-leave-to {
   opacity: 0;
 }
-.lower-grid {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 2fr;
-  gap: 18px;
-  align-items: start;
-}
-.left-col,
-.right-col {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
-}
 .placeholder {
   display: grid;
   place-items: center;
@@ -465,10 +451,5 @@ onMounted(async () => {
   border-radius: var(--r-pill);
   font-size: 0.92rem;
   font-weight: 600;
-}
-@media (max-width: 960px) {
-  .lower-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

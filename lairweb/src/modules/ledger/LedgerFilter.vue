@@ -188,11 +188,9 @@ const catKey = computed({
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-bottom: 18px;
-  padding: 12px 14px;
-  border-radius: var(--r-panel);
-  background: var(--surface);
-  box-shadow: var(--sh-panel);
+  padding: 0 0 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
 }
 .seg {
   height: auto;
