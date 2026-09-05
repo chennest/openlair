@@ -73,6 +73,15 @@ const groups = computed<DayGroup[]>(() => {
     <!-- 工具行：筛选/搜索由父组件通过 slot 注入（流水为主体，筛选归位于卡片头部） -->
     <slot name="toolbar"></slot>
 
+    <!-- 表头：与行使用同一套栅格列，形成对齐的表格观感 -->
+    <div v-if="transactions.length > 0" class="thead" :class="{ shared }" aria-hidden="true">
+      <span>分类</span>
+      <span>备注</span>
+      <span v-if="shared">记账人</span>
+      <span class="ta-r">金额</span>
+      <span></span>
+    </div>
+
     <div v-if="transactions.length === 0" class="empty">
       没有符合条件的记录，试试调整筛选条件。
     </div>
@@ -85,17 +94,20 @@ const groups = computed<DayGroup[]>(() => {
           <span v-if="g.expense > 0" class="expense num">-¥{{ g.expense.toFixed(2) }}</span>
         </span>
       </div>
-      <div class="row-list">
+      <div class="row-list" :class="{ shared }">
         <div v-for="t in g.rows" :key="t.id" class="row">
-          <span class="main">
-            <span v-if="shared" class="face" :title="`${t.userName} 记的`" aria-hidden="true">{{ t.userName.slice(0, 1) }}</span>
+          <span class="cat">
             <Badge variant="secondary" class="flex-none text-[0.72rem] font-semibold text-[var(--text-2)]!">{{ t.category }}</Badge>
-            <span class="text">{{ t.note || '—' }}</span>
           </span>
-          <span class="sub">
-            <span class="amt num" :class="t.type === '收入' ? 'income' : 'expense'">
-              {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
-            </span>
+          <span class="text" :title="t.note || ''">{{ t.note || '—' }}</span>
+          <span v-if="shared" class="user" :title="`${t.userName} 记的`">
+            <span class="face" aria-hidden="true">{{ t.userName.slice(0, 1) }}</span>
+            {{ t.userName }}
+          </span>
+          <span class="amt num" :class="t.type === '收入' ? 'income' : 'expense'">
+            {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
+          </span>
+          <span class="op">
             <Button variant="ghost" size="icon-sm" class="text-[var(--text-3)] hover:text-[var(--heat)]! hover:bg-transparent" aria-label="删除" @click="emit('remove', t.id)">
               <X class="size-3.5" />
             </Button>
@@ -178,11 +190,29 @@ const groups = computed<DayGroup[]>(() => {
   background: var(--hover);
   overflow: hidden;
 }
+/* 表格栅格：分类 | 备注 | (记账人) | 金额 | 操作；表头与行共用同一套列 */
+.thead,
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 120px 36px;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
+}
+.thead.shared,
+.row-list.shared .row {
+  grid-template-columns: 92px minmax(0, 1fr) 96px 120px 36px;
+}
+.thead {
+  padding: 0 14px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+.thead .ta-r {
+  text-align: right;
+}
+.row {
   padding: 10px 14px;
   border-bottom: 1px solid var(--hairline);
   font-size: 0.9rem;
@@ -195,15 +225,28 @@ const groups = computed<DayGroup[]>(() => {
 .row:hover {
   background: var(--hover);
 }
-.main {
+.cat {
   display: flex;
-  align-items: center;
-  gap: 10px;
   min-width: 0;
 }
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  overflow: hidden;
+  white-space: nowrap;
+}
 .face {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -213,26 +256,33 @@ const groups = computed<DayGroup[]>(() => {
   background: var(--accent);
   flex: 0 0 auto;
 }
-.text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-2);
-}
-.sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
 .amt {
   font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.op {
+  display: flex;
+  justify-content: flex-end;
 }
 .income {
   color: var(--live);
 }
 .expense {
   color: var(--text);
+}
+@media (max-width: 680px) {
+  .thead {
+    display: none;
+  }
+  .thead.shared,
+  .row-list.shared .row {
+    grid-template-columns: 84px minmax(0, 1fr) 110px 32px;
+  }
+  .row-list.shared .row .user {
+    display: none;
+  }
 }
 .pager {
   display: flex;
