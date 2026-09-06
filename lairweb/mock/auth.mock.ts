@@ -30,6 +30,12 @@ function toDTO(u: User): AuthUserDTO {
 }
 
 export default {
+  // 注册开关查询（公开）：mock 默认开放，方便本地注册调试
+  registerStatus: defineMock({
+    url: '/api/auth/register-status',
+    method: 'GET',
+    body: () => ok({ allowRegister: true }),
+  }),
   // 注册：{ name, email, password } → 成功自动登录（返回 token）
   register: defineMock({
     url: '/api/auth/register',

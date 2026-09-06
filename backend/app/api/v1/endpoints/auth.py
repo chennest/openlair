@@ -10,6 +10,12 @@ from app.models.user import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.get("/register-status")
+async def register_status(request: Request) -> dict:
+    """注册开关查询（公开）：前端切到注册模式时实时获取。"""
+    return ok_response(request.app.state.auth_service.register_status())
+
+
 @router.post("/register")
 async def register(request: Request, payload: RegisterInput) -> dict:
     data = request.app.state.auth_service.register(

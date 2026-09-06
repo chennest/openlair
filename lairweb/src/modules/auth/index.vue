@@ -22,8 +22,22 @@ const showPw = ref(false)
 const loading = ref(false)
 const error = ref('')
 
-// 注册开关：与后端 settings.allow_register 一致（生产默认禁止，开放时改 true）
-const allowRegister = false
+// 注册开关：注册入口常驻可点，切换到注册模式时实时查询后端
+// GET /api/auth/register-status（settings.allow_register）动态更新
+const allowRegister = ref(false)
+const checkingRegister = ref(false)
+
+async function checkRegisterStatus() {
+  checkingRegister.value = true
+  try {
+    const r = await authApi.registerStatus()
+    allowRegister.value = r.allowRegister
+  } catch {
+    allowRegister.value = false
+  } finally {
+    checkingRegister.value = false
+  }
+}
 
 const isLogin = computed(() => mode.value === 'login')
 const title = computed(() => (isLogin.value ? '欢迎回来' : '创建账号'))
@@ -32,6 +46,15 @@ const subtitle = computed(() => (isLogin.value ? '登录你的 OpenLair 工作�
 function switchMode(m: 'login' | 'register') {
   mode.value = m
   error.value = ''
+  // 切到注册模式时实时查询后端注册开关；关闭则提示并退回登录
+  if (m === 'register') {
+    checkRegisterStatus().then(() => {
+      if (!allowRegister.value) {
+        mode.value = 'login'
+        error.value = '系统暂未开放注册，请联系管理员'
+      }
+    })
+  }
 }
 
 function validate(): string {
@@ -46,6 +69,10 @@ function validate(): string {
 
 async function submit() {
   if (loading.value) return
+  if (!isLogin.value && !allowRegister.value) {
+    error.value = '系统暂未开放注册，请联系管理员'
+    return
+  }
   const invalid = validate()
   if (invalid) {
     error.value = invalid
@@ -84,14 +111,10 @@ async function submit() {
 
       <div class="seg mb-6 grid grid-cols-2 gap-1 p-1" role="tablist">
         <button class="seg-btn" :class="{ on: isLogin }" @click="switchMode('login')">登录</button>
-        <button
-          class="seg-btn"
-          :class="{ on: !isLogin }"
-          :disabled="!allowRegister"
-          :title="allowRegister ? '' : '系统暂未开放注册'"
-          @click="allowRegister && switchMode('register')"
-        >
-          注册<span v-if="!allowRegister" class="ml-1 text-[10px] opacity-60">未开放</span>
+        <button class="seg-btn" :class="{ on: !isLogin }" @click="switchMode('register')">
+          注册
+          <span v-if="checkingRegister" class="ml-1 text-[10px] opacity-60">检测中…</span>
+          <span v-else-if="!allowRegister" class="ml-1 text-[10px] opacity-60">未开放</span>
         </button>
       </div>
 

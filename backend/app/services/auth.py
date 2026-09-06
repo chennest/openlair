@@ -43,6 +43,10 @@ class AuthService:
         self._tokens = tokens
         self._settings = settings
 
+    def register_status(self) -> dict:
+        """注册开关状态（公开查询，供前端动态渲染注册入口）。"""
+        return {"allowRegister": self._settings.get("allow_register", "0") == "1"}
+
     def register(self, *, name: str, email: str, password: str) -> dict:
         # 注册开关：settings.allow_register "0"=禁止（默认） / "1"=允许
         if self._settings.get("allow_register", "0") != "1":

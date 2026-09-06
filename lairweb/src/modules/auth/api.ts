@@ -25,6 +25,7 @@ export interface AuthResult {
 }
 
 export const authApi = {
+  registerStatus: () => get<{ allowRegister: boolean }>('/api/auth/register-status'),
   register: (input: RegisterInput) => post<AuthResult>('/api/auth/register', input),
   login: (input: LoginInput) => post<AuthResult>('/api/auth/login', input),
   logout: () => post<{ ok: boolean }>('/api/auth/logout', {}),

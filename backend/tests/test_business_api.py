@@ -51,6 +51,21 @@ def test_register_closed_by_default(tmp_path) -> None:
     assert r.json()["data"] is None
 
 
+def test_register_status_endpoint(tmp_path) -> None:
+    """注册开关查询：默认关闭 false，显式置 "1" 后 true（供前端动态渲染注册入口）。"""
+    app = create_app(database_url=f"sqlite+pysqlite:///{tmp_path}/lair-status.db")
+    client = TestClient(app)
+    r = client.get("/api/auth/register-status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["code"] == 200
+    assert body["data"] == {"allowRegister": False}
+
+    app.state.setting_repo.set("allow_register", "1")
+    r = client.get("/api/auth/register-status")
+    assert r.json()["data"] == {"allowRegister": True}
+
+
 def test_register_then_login(tmp_path) -> None:
     client = make_client(tmp_path)
     r = client.post(
