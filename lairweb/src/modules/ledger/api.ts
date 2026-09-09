@@ -103,6 +103,15 @@ export interface CreateTransactionInput {
   note?: string
 }
 
+/** 编辑流水：可改字段（type/分类/金额/日期/备注） */
+export interface UpdateTransactionInput {
+  type?: '支出' | '收入'
+  categoryId?: number
+  amount?: number
+  date?: string
+  note?: string
+}
+
 // ---------- 分类常量（仅前端本地兜底/展示用；数据源以接口为准） ----------
 export const EXPENSE_CATEGORIES = ['餐饮', '交通', '购物', '居住', '娱乐', '医疗', '学习', '人情', '通讯', '其他']
 export const INCOME_CATEGORIES = ['工资', '奖金', '理财', '礼金', '退款', '其他']
@@ -135,6 +144,9 @@ export const ledgerApi = {
   updateBudget: (bookId: number, amount: number) =>
     put<{ budget: number }>('/api/ledger/budget', { bookId, amount }),
   create: (input: CreateTransactionInput) => post<{ id: number; item: Transaction }>('/api/ledger', input),
+  /** 编辑单条流水（PUT /api/ledger/{id}） */
+  update: (id: number, patch: UpdateTransactionInput) =>
+    put<{ item: Transaction }>(`/api/ledger/${id}`, patch),
   remove: (id: number) => del<{ ok: boolean }>(`/api/ledger/${id}`),
 }
 

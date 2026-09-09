@@ -6,17 +6,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { Category, CreateTransactionInput } from './api'
+import type { Category, CreateTransactionInput, Transaction } from './api'
 
 const props = defineProps<{
   open: boolean
   categories: Category[]
+  /** 传入 = 编辑该条流水；不传 = 记一笔 */
+  transaction?: Transaction | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'submit', payload: CreateTransactionInput): void
+  (e: 'update', payload: { id: number; patch: CreateTransactionInput }): void
 }>()
+
+/** 编辑态：标题/按钮文案随之切换 */
+const isEdit = computed(() => !!props.transaction)
 
 const saving = ref(false)
 const today = () => {
@@ -41,14 +47,23 @@ const form = ref<{ type: '支出' | '收入'; categoryId: number; amount: number
 // 当前类型对应的分类（数据源：分类表接口）
 const categoryOptions = computed(() => props.categories.filter((c) => c.type === form.value.type))
 
-// 每次打开时重置表单；类型切换时若分类不属于该类型则重置
+// 每次打开时重置表单：编辑模式预填原流水，新建模式用默认值
 watch(
-  () => props.open,
-  (open) => {
-    if (open) {
-      form.value = { type: '支出', categoryId: defaultCategoryId('支出'), amount: 0, date: today(), note: '' }
-    }
+  () => [props.open, props.transaction] as const,
+  ([open, tx]) => {
+    if (!open) return
+    saving.value = false // 提交后父组件关闭弹窗，重新打开时复位保存态
+    form.value = tx
+      ? {
+          type: tx.type,
+          categoryId: tx.categoryId,
+          amount: tx.amount,
+          date: tx.date,
+          note: tx.note ?? '',
+        }
+      : { type: '支出', categoryId: defaultCategoryId('支出'), amount: 0, date: today(), note: '' }
   },
+  { immediate: true },
 )
 
 watch(
@@ -68,18 +83,20 @@ function submit() {
   const amount = Number(form.value.amount)
   if (!amount || amount <= 0 || !form.value.categoryId) return
   saving.value = true
-  emit('submit', {
+  const payload: CreateTransactionInput = {
     type: form.value.type,
     categoryId: form.value.categoryId,
     amount,
     date: form.value.date || undefined,
     note: form.value.note,
-  })
+  }
+  if (props.transaction) emit('update', { id: props.transaction.id, patch: payload })
+  else emit('submit', payload)
 }
 </script>
 
 <template>
-  <BaseModal v-if="open" title="记一笔" @close="emit('close')">
+  <BaseModal v-if="open" :title="isEdit ? '编辑流水' : '记一笔'" @close="emit('close')">
     <!-- 类型切换（Tabs 白胶囊 segmented） -->
     <Tabs v-model="form.type" class="type-tabs">
       <TabsList class="type-switch">
@@ -138,7 +155,7 @@ function submit() {
     <div class="modal-foot">
       <Button variant="outline" class="h-11 pl-[19px] pr-[19px] rounded-full! text-foreground bg-white/80 font-semibold text-[13px] cursor-pointer" @click="emit('close')">取消</Button>
       <Button class="min-w-[130px] h-11 pl-[18px] pr-[18px] rounded-full! font-semibold text-[13px] hover:shadow-[var(--sh-cta)] disabled:opacity-[0.45]" :disabled="saving || !form.amount || Number(form.amount) <= 0 || !form.categoryId" @click="submit">
-        {{ saving ? '保存中…' : '保存这笔' }}
+        {{ saving ? '保存中…' : isEdit ? '保存修改' : '保存这笔' }}
       </Button>
     </div>
   </BaseModal>

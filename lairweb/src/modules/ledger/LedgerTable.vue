@@ -2,7 +2,7 @@
 // 流水表格：shadcn Table + 完整分页器（每页条数 / 共 N 条 / 页码 / 上下页）
 // 纯展示：props 进，交互 emit 出（remove / page / page-size）
 import { computed } from 'vue'
-import { ChevronLeft, ChevronRight, X } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Pencil, X } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -28,6 +28,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'remove', id: number): void
+  (e: 'edit', tx: Transaction): void
   (e: 'page', page: number): void
   (e: 'page-size', size: number): void
 }>()
@@ -71,13 +72,13 @@ const fmtDate = (iso: string) => {
           <TableHead class="w-[70px] pl-1">日期</TableHead>
           <TableHead class="w-[92px]">分类</TableHead>
           <TableHead>备注</TableHead>
-          <TableHead v-if="shared" class="w-[110px]">记账人</TableHead>
+          <TableHead class="w-[110px]">记账人</TableHead>
           <TableHead class="w-[120px] text-right pr-6">金额</TableHead>
-          <TableHead class="w-[52px] text-right pr-1"><span class="sr-only">操作</span></TableHead>
+          <TableHead class="w-[92px] text-right pr-1">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableEmpty v-if="transactions.length === 0" :colspan="shared ? 6 : 5">
+        <TableEmpty v-if="transactions.length === 0" :colspan="6">
           没有符合条件的记录，试试调整筛选条件。
         </TableEmpty>
         <TableRow v-for="t in transactions" :key="t.id">
@@ -88,10 +89,10 @@ const fmtDate = (iso: string) => {
           <TableCell class="max-w-0">
             <span class="block truncate text-[var(--text-2)]" :title="t.note || ''">{{ t.note || '—' }}</span>
           </TableCell>
-          <TableCell v-if="shared">
-            <span class="inline-flex items-center gap-1.5 text-[0.82rem] text-[var(--text-3)]" :title="`${t.userName} 记的`">
-              <span class="face" aria-hidden="true">{{ t.userName.slice(0, 1) }}</span>
-              {{ t.userName }}
+          <TableCell>
+            <span class="inline-flex items-center gap-1.5 text-[0.82rem] text-[var(--text-3)]" :title="`由 ${t.userName} 记录`">
+              <span class="face" aria-hidden="true">{{ (t.userName || '?').slice(0, 1) }}</span>
+              {{ t.userName || '未知' }}
             </span>
           </TableCell>
           <TableCell
@@ -101,6 +102,15 @@ const fmtDate = (iso: string) => {
             {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
           </TableCell>
           <TableCell class="pr-1 text-right">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="text-[var(--text-3)] hover:text-[var(--accent)]! hover:bg-transparent"
+              aria-label="编辑"
+              @click="emit('edit', t)"
+            >
+              <Pencil class="size-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"

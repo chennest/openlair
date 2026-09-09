@@ -10,6 +10,7 @@ import {
   type Category,
   type LedgerData,
   type LedgerQuery,
+  type Transaction,
 } from './api'
 import BookSwitcher from './BookSwitcher.vue'
 import BookManage from './BookManage.vue'
@@ -45,6 +46,8 @@ const showTrash = ref(false)
 const trashBooks = ref<Book[]>([])
 
 const showDialog = ref(false)
+/** 正在编辑的流水（null = 记一笔模式） */
+const editingTx = ref<Transaction | null>(null)
 const savedTip = ref(false)
 
 // 查询状态（筛选栏 + 分页；bookId 跟随当前账本）
@@ -106,6 +109,26 @@ async function handleCreate(payload: Parameters<typeof ledgerApi.create>[0]) {
   } finally {
     // 弹窗内 saving 状态由父组件提交完成后复位
   }
+}
+
+/** 打开编辑弹窗：预填该条流水 */
+function openEdit(tx: Transaction) {
+  editingTx.value = tx
+  showDialog.value = true
+}
+
+/** 关闭弹窗：同时清掉编辑态，避免再次打开停在编辑模式 */
+function closeDialog() {
+  showDialog.value = false
+  editingTx.value = null
+}
+
+async function handleUpdate(payload: { id: number; patch: Parameters<typeof ledgerApi.update>[1] }) {
+  await ledgerApi.update(payload.id, payload.patch)
+  closeDialog()
+  savedTip.value = true
+  setTimeout(() => (savedTip.value = false), 2000)
+  await load()
 }
 
 async function handleRemove(id: number) {
@@ -322,6 +345,7 @@ onMounted(async () => {
       :page-size="data!.pageSize"
       :shared="currentBook?.type === 'shared'"
       @remove="handleRemove"
+      @edit="openEdit"
       @page="(p: number) => handleQueryChange({ page: p })"
       @page-size="(s: number) => handleQueryChange({ pageSize: s, page: 1 })"
     >
@@ -330,7 +354,14 @@ onMounted(async () => {
       </template>
     </LedgerTable>
 
-    <LedgerDialog :open="showDialog" :categories="categories" @close="showDialog = false" @submit="handleCreate" />
+    <LedgerDialog
+      :open="showDialog"
+      :categories="categories"
+      :transaction="editingTx"
+      @close="closeDialog"
+      @submit="handleCreate"
+      @update="handleUpdate"
+    />
 
     <BookManage
       :open="showManage"
