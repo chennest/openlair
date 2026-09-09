@@ -68,21 +68,21 @@ const fmtDate = (iso: string) => {
 
     <Table>
       <TableHeader>
-        <TableRow class="hover:bg-transparent!">
-          <TableHead class="w-[70px] pl-1">日期</TableHead>
-          <TableHead class="w-[92px]">分类</TableHead>
-          <TableHead>备注</TableHead>
-          <TableHead class="w-[110px]">记账人</TableHead>
-          <TableHead class="w-[120px] text-right pr-6">金额</TableHead>
-          <TableHead class="w-[92px] text-right pr-1">操作</TableHead>
+        <TableRow class="hover:bg-transparent! border-b-[var(--hairline)]!">
+          <TableHead class="h-11 w-[96px] pl-5 text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">日期</TableHead>
+          <TableHead class="h-11 w-[104px] text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">分类</TableHead>
+          <TableHead class="h-11 text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">备注</TableHead>
+          <TableHead class="h-11 w-[128px] text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">记账人</TableHead>
+          <TableHead class="h-11 w-[140px] pr-5 text-right text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">金额</TableHead>
+          <TableHead class="h-11 w-[96px] pr-5 text-right text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!"><span class="sr-only">操作</span></TableHead>
         </TableRow>
       </TableHeader>
-      <TableBody>
+      <TableBody class="[&_tr:last-child]:border-b-0">
         <TableEmpty v-if="transactions.length === 0" :colspan="6">
           没有符合条件的记录，试试调整筛选条件。
         </TableEmpty>
-        <TableRow v-for="t in transactions" :key="t.id">
-          <TableCell class="pl-1 text-[0.82rem] text-[var(--text-3)] tabular-nums">{{ fmtDate(t.date) }}</TableCell>
+        <TableRow v-for="t in transactions" :key="t.id" class="h-[52px] border-b-[var(--hairline)]! hover:bg-[var(--hover)]!">
+          <TableCell class="pl-5 text-[0.82rem] tabular-nums text-[var(--text-3)]">{{ fmtDate(t.date) }}</TableCell>
           <TableCell>
             <Badge variant="secondary" class="text-[0.72rem] font-semibold text-[var(--text-2)]!">{{ t.category }}</Badge>
           </TableCell>
@@ -96,30 +96,32 @@ const fmtDate = (iso: string) => {
             </span>
           </TableCell>
           <TableCell
-            class="pr-6 text-right font-semibold tabular-nums"
+            class="pr-5 text-right font-semibold tabular-nums"
             :class="t.type === '收入' ? 'text-[var(--live)]' : 'text-[var(--text)]'"
           >
             {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
           </TableCell>
-          <TableCell class="pr-1 text-right">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="text-[var(--text-3)] hover:text-[var(--accent)]! hover:bg-transparent"
-              aria-label="编辑"
-              @click="emit('edit', t)"
-            >
-              <Pencil class="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="text-[var(--text-3)] hover:text-[var(--heat)]! hover:bg-transparent"
-              aria-label="删除"
-              @click="emit('remove', t.id)"
-            >
-              <X class="size-3.5" />
-            </Button>
+          <TableCell class="pr-5 text-right">
+            <span class="inline-flex items-center justify-end gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="text-[var(--text-3)] hover:text-[var(--accent)]! hover:bg-transparent"
+                aria-label="编辑"
+                @click="emit('edit', t)"
+              >
+                <Pencil class="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="text-[var(--text-3)] hover:text-[var(--heat)]! hover:bg-transparent"
+                aria-label="删除"
+                @click="emit('remove', t.id)"
+              >
+                <X class="size-3.5" />
+              </Button>
+            </span>
           </TableCell>
         </TableRow>
       </TableBody>

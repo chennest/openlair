@@ -31,8 +31,10 @@ const emit = defineEmits<{
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: grid;
-  place-items: center;
+  /* 用 flex 居中替代 grid place-items：grid 项在内容不足时会被拉伸出多余空白 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
   background: rgba(0, 0, 0, 0.28);
 }
@@ -40,8 +42,13 @@ const emit = defineEmits<{
   width: min(460px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
+  /* 高度贴合内容，避免 flex 居中时容器被拉伸留白 */
+  height: auto;
   padding: 26px 26px 22px;
   border-radius: var(--r-hero);
+  /* 纯白表面 + 柔和双层阴影（规范：普通内容不用玻璃层）。
+     此前 transition 结束态给 .modal 加了 backdrop-filter，与半透明遮罩
+     叠加后透出深色模糊层，表现为弹窗上的异常灰底 —— 已移除。 */
   background: var(--surface);
   box-shadow: var(--sh-overlay);
 }
@@ -72,7 +79,8 @@ const emit = defineEmits<{
   color: var(--text);
   background: rgba(0, 0, 0, 0.08);
 }
-/* materialize：遮罩淡入略快于表面；表面 blur+scale+opacity 同路进出 */
+/* materialize：遮罩淡入略快于表面；表面 opacity+scale 同路进出。
+   弹窗表面为纯白实色，不加玻璃层（backdrop-filter 会透出深色遮罩形成灰底） */
 .modal-enter-active,
 .modal-leave-active {
   transition: opacity 250ms ease;
@@ -81,8 +89,7 @@ const emit = defineEmits<{
 .modal-leave-active .modal {
   transition:
     opacity 400ms var(--ease-spring),
-    transform 400ms var(--ease-spring),
-    backdrop-filter 400ms var(--ease-spring);
+    transform 400ms var(--ease-spring);
 }
 .modal-enter-from,
 .modal-leave-to {
@@ -92,20 +99,17 @@ const emit = defineEmits<{
 .modal-leave-to .modal {
   opacity: 0;
   transform: translateY(12px) scale(0.98);
-  backdrop-filter: blur(0px);
 }
 .modal-enter-to .modal,
 .modal-leave-from .modal {
   opacity: 1;
   transform: none;
-  backdrop-filter: blur(20px) saturate(180%);
 }
 @media (prefers-reduced-motion: reduce) {
   .modal-enter-active .modal,
   .modal-leave-active .modal {
     transition: opacity 200ms ease;
     transform: none !important;
-    backdrop-filter: none;
   }
 }
 @media (prefers-reduced-transparency: reduce) {
