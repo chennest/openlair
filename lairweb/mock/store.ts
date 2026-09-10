@@ -31,6 +31,8 @@ export interface Category {
   sortOrder: number
   /** 系统默认分类（如「其他」），不可删除 */
   isDefault: boolean
+  /** 归属用户（null = 系统预置；非空 = 该用户创建，可改删） */
+  userId: number | null
   createdAt: string
 }
 
@@ -319,22 +321,26 @@ export function verifyPassword(password: string, stored: string): boolean {
   return got.length === expect.length && timingSafeEqual(got, expect)
 }
 
-/** 分类表种子：固定 id（跨重启稳定，供外键引用），支出 1-10 + 收入 11-16 */
+/** 分类表种子：固定 id（跨重启稳定，供外键引用），系统预置 26 个（支出 18 + 收入 8）
+ *  sortOrder 与后端 seed 一致：支出块 0-17 / 收入块 18-25，「其他」各组兜底位 */
 function seedCategories(): Category[] {
-  const exp: [string, string][] = [
+  const exp: [string, number][] = [
     ['餐饮', 1], ['交通', 2], ['购物', 3],
     ['居住', 4], ['娱乐', 5], ['医疗', 6],
     ['学习', 7], ['人情', 8], ['通讯', 9],
+    ['数码', 17], ['宠物', 18], ['运动健身', 19], ['美妆', 20],
+    ['旅行', 21], ['维修', 22], ['订阅服务', 23], ['汽车', 24],
     ['其他', 10],
   ]
-  const inc: [string, string][] = [
+  const inc: [string, number][] = [
     ['工资', 11], ['奖金', 12], ['理财', 13],
-    ['礼金', 14], ['退款', 15], ['其他', 16],
+    ['礼金', 14], ['退款', 15], ['副业', 25], ['报销', 26],
+    ['其他', 16],
   ]
   const t = nowISO()
   return [
-    ...exp.map(([name, id], i) => ({ id, name, type: '支出' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
-    ...inc.map(([name, id], i) => ({ id, name, type: '收入' as const, sortOrder: i, isDefault: name === '其他', createdAt: t })),
+    ...exp.map(([name, id], i) => ({ id, name, type: '支出' as const, sortOrder: i, isDefault: name === '其他', userId: null, createdAt: t })),
+    ...inc.map(([name, id], i) => ({ id, name, type: '收入' as const, sortOrder: 18 + i, isDefault: name === '其他', userId: null, createdAt: t })),
   ]
 }
 
@@ -478,6 +484,46 @@ export function categoryName(id: number): string {
 
 export function categoriesOf(type: '支出' | '收入'): Category[] {
   return store.categories.filter((c) => c.type === type).sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+/** 分类可见范围：系统预置 + 指定用户集合的自定义（不传 = 全量） */
+export function visibleCategories(userIds?: number[], type?: '支出' | '收入'): Category[] {
+  let rows = store.categories
+  if (userIds) rows = rows.filter((c) => c.userId === null || userIds.includes(c.userId))
+  if (type) rows = rows.filter((c) => c.type === type)
+  return rows.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+}
+
+/** 同名同类型防重（系统预置或本人已占用即重复） */
+export function categoryExists(name: string, type: string, userId: number, excludeId?: number): boolean {
+  return store.categories.some(
+    (c) => c.name === name && c.type === type && (c.userId === null || c.userId === userId) && c.id !== excludeId,
+  )
+}
+
+export function createCategory(name: string, type: '支出' | '收入', userId: number): Category {
+  const maxSort = Math.max(...store.categories.filter((c) => c.type === type).map((c) => c.sortOrder), 0)
+  const c: Category = { id: nextId(store.categories), name, type, sortOrder: maxSort + 1, isDefault: false, userId, createdAt: nowISO() }
+  store.categories.push(c)
+  return c
+}
+
+export function renameCategory(id: number, name: string): Category | undefined {
+  const c = getCategory(id)
+  if (c) c.name = name
+  return c
+}
+
+/** 该分类被流水引用条数（删除保护依据） */
+export function categoryUsageCount(id: number): number {
+  return store.transactions.filter((t) => t.categoryId === id).length
+}
+
+export function removeCategory(id: number): boolean {
+  const i = store.categories.findIndex((c) => c.id === id)
+  if (i === -1) return false
+  store.categories.splice(i, 1)
+  return true
 }
 
 // ---------- 交易筛选条件 ----------

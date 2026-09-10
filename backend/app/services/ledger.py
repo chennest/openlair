@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 
 from app.core.envelope import ApiError
+from app.models.category import Category
 from app.models.transaction import Transaction
 from app.repositories.books import BookRepository
 from app.repositories.ledger import LedgerRepository
@@ -96,17 +97,84 @@ class LedgerService:
 
     # ---------- 分类 ----------
 
-    def categories(self, type: str | None = None) -> list[dict]:
-        return [
-            {
-                "id": c.id,
-                "name": c.name,
-                "type": c.type,
-                "sortOrder": c.sort_order,
-                "isDefault": c.is_default,
-            }
-            for c in self._ledger.categories(type)
-        ]
+    @staticmethod
+    def _category_dto(c: Category) -> dict:
+        return {
+            "id": c.id,
+            "name": c.name,
+            "type": c.type,
+            "sortOrder": c.sort_order,
+            "isDefault": c.is_default,
+            "userId": c.user_id,  # None = 系统预置；非空 = 用户自定义（该用户可改删）
+        }
+
+    def categories(
+        self,
+        type: str | None = None,
+        *,
+        user_id: int | None = None,
+        book_id: int | None = None,
+    ) -> list[dict]:
+        """分类列表。user_id/book_id 均缺省 = 全量（内部统计用）。
+
+        可见范围（用户确认的规则）：
+        - book_id 给定：系统预置 + 该账本所有成员的自定义（共享账本共用分类）
+        - 仅 user_id 给定：系统预置 + 本人自定义
+        """
+        if book_id is not None:
+            self._require_book(book_id)
+            user_ids = [m.user_id for m in self._books.members_of(book_id)]
+        elif user_id is not None:
+            user_ids = [user_id]
+        else:
+            user_ids = None
+        return [self._category_dto(c) for c in self._ledger.categories(type, user_ids=user_ids)]
+
+    def create_category(self, *, user_id: int, name: str, type: str) -> dict:
+        name = (name or "").strip()
+        if not name:
+            raise ApiError(400, "分类名不能为空")
+        if len(name) > 20:
+            raise ApiError(400, "分类名最长 20 字")
+        if type not in ("支出", "收入"):
+            raise ApiError(400, "分类类型不合法")
+        if self._ledger.category_exists(name=name, type=type, user_id=user_id):
+            raise ApiError(409, f"「{name}」已存在（系统预置或你已创建）")
+        c = self._ledger.create_category(
+            name=name, type=type, sort_order=self._ledger.max_sort_order(type) + 1, user_id=user_id
+        )
+        return self._category_dto(c)
+
+    def rename_category(self, *, user_id: int, category_id: int, name: str) -> dict:
+        name = (name or "").strip()
+        if not name:
+            raise ApiError(400, "分类名不能为空")
+        if len(name) > 20:
+            raise ApiError(400, "分类名最长 20 字")
+        c = self._ledger.category_by_id(category_id)
+        if c is None:
+            raise ApiError(404, "分类不存在")
+        if c.user_id is None:
+            raise ApiError(403, "系统预置分类不可修改")
+        if c.user_id != user_id:
+            raise ApiError(403, "只能修改自己创建的分类")
+        if name != c.name and self._ledger.category_exists(
+            name=name, type=c.type, user_id=user_id, exclude_id=category_id
+        ):
+            raise ApiError(409, f"「{name}」已存在（系统预置或你已创建）")
+        return self._category_dto(self._ledger.rename_category(category_id, name))
+
+    def remove_category(self, *, user_id: int, category_id: int) -> None:
+        c = self._ledger.category_by_id(category_id)
+        if c is None:
+            raise ApiError(404, "分类不存在")
+        if c.user_id is None:
+            raise ApiError(403, "系统预置分类不可删除")
+        if c.user_id != user_id:
+            raise ApiError(403, "只能删除自己创建的分类")
+        usage = self._ledger.category_usage_count(category_id)
+        if usage > 0:
+            raise ApiError(409, f"「{c.name}」下有 {usage} 条流水，请先迁移流水后再删除")
 
     # ---------- 列表（含摘要/统计/分页/预算） ----------
 

@@ -90,7 +90,7 @@ async function load() {
 async function switchBook(bookId: number) {
   currentBookId.value = bookId
   query.value = { page: 1, pageSize: 20 }
-  await load()
+  await Promise.all([loadCategories(), load()])
 }
 
 async function handleQueryChange(q: LedgerQuery) {
@@ -263,13 +263,18 @@ async function openTrash() {
   showTrash.value = true
 }
 
-onMounted(async () => {
+/** 分类表：系统预置 + 当前账本可见的自定义（共享账本成员共用） */
+async function loadCategories() {
   try {
-    categories.value = await ledgerApi.categories()
+    categories.value = await ledgerApi.categories(undefined, currentBookId.value || undefined)
   } catch {
     categories.value = []
   }
+}
+
+onMounted(async () => {
   await loadBooks()
+  await loadCategories()
   await load()
 })
 </script>
@@ -361,6 +366,7 @@ onMounted(async () => {
       @close="closeDialog"
       @submit="handleCreate"
       @update="handleUpdate"
+      @refresh-categories="loadCategories"
     />
 
     <BookManage

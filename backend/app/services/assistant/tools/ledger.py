@@ -91,7 +91,7 @@ def build_ledger_tools(*, books: BookService, ledger: LedgerService) -> list[Loo
 
     async def list_categories(type: str | None = None) -> str:
         """列出记账分类（名称 + id + 收支类型）。type 可传「收入」或「支出」过滤。"""
-        rows = ledger.categories(type)
+        rows = ledger.categories(type, user_id=user_ctx.get())
         if not rows:
             return "（没有分类）"
         return "\n".join(f"{c['name']} (id={c['id']}, {c['type']})" for c in rows)
@@ -113,7 +113,8 @@ def execute_create_plan(*, ledger: LedgerService, books: BookService, args: dict
     cid: int | None = None
     category_name = args.get("category")
     if category_name:
-        matched = next((c for c in ledger.categories() if c["name"] == category_name), None)
+        # 与 system prompt 喂给 LLM 的分类集合保持一致：系统预置 + 本人自定义
+        matched = next((c for c in ledger.categories(user_id=user_id) if c["name"] == category_name), None)
         cid = matched["id"] if matched else None
 
     result = ledger.create(

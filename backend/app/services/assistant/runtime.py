@@ -215,7 +215,9 @@ class AssistantRuntime:
 
         history = self._build_history(session_id=session_id)
         books_text = "、".join(f"{b['name']}" for b in self._books.list(user_id=user_id))
-        categories_text = "、".join(f"{c['name']}({c['type']})" for c in self._ledger.categories())
+        categories_text = "、".join(
+            f"{c['name']}({c['type']})" for c in self._ledger.categories(user_id=user_id)
+        )
 
         u_token = user_ctx.set(user_id)
         s_token = session_ctx.set(session_id)

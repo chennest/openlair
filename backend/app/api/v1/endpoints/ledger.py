@@ -5,7 +5,13 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.api.v1.deps import get_current_user
-from app.api.v1.schemas import CreateTransactionInput, UpdateBudgetInput, UpdateTransactionInput
+from app.api.v1.schemas import (
+    CategoryCreateInput,
+    CategoryUpdateInput,
+    CreateTransactionInput,
+    UpdateBudgetInput,
+    UpdateTransactionInput,
+)
 from app.core.envelope import ok_response
 from app.models.user import User
 
@@ -16,10 +22,47 @@ router = APIRouter(prefix="/ledger", tags=["ledger"])
 async def categories(
     request: Request,
     type: str | None = None,
-    _user: User = Depends(get_current_user),
+    bookId: int | None = Query(default=None),
+    user: User = Depends(get_current_user),
 ) -> dict:
-    data = request.app.state.ledger_service.categories(type)
+    """分类列表：系统预置 + 可见自定义（带 bookId = 该账本成员共用；否则 = 本人自定义）。"""
+    data = request.app.state.ledger_service.categories(type, user_id=user.id, book_id=bookId)
     return ok_response(data)
+
+
+@router.post("/categories")
+async def create_category(
+    request: Request,
+    payload: CategoryCreateInput,
+    user: User = Depends(get_current_user),
+) -> dict:
+    data = request.app.state.ledger_service.create_category(
+        user_id=user.id, name=payload.name, type=payload.type
+    )
+    return ok_response(data)
+
+
+@router.put("/categories/{category_id}")
+async def rename_category(
+    request: Request,
+    category_id: int,
+    payload: CategoryUpdateInput,
+    user: User = Depends(get_current_user),
+) -> dict:
+    data = request.app.state.ledger_service.rename_category(
+        user_id=user.id, category_id=category_id, name=payload.name
+    )
+    return ok_response(data)
+
+
+@router.delete("/categories/{category_id}")
+async def remove_category(
+    request: Request,
+    category_id: int,
+    user: User = Depends(get_current_user),
+) -> dict:
+    request.app.state.ledger_service.remove_category(user_id=user.id, category_id=category_id)
+    return ok_response({"ok": True})
 
 
 @router.get("")

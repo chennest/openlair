@@ -140,10 +140,68 @@ def test_ledger_categories(tmp_path) -> None:
     token, _ = login(client)
     r = client.get("/api/ledger/categories", headers=auth_headers(token))
     cats = r.json()["data"]
-    assert len(cats) == 16
+    assert len(cats) == 26  # 系统预置 18 支出 + 8 收入
     assert cats[0]["id"] == 1
     assert cats[0]["name"] == "餐饮"
-    assert cats[10]["type"] == "收入"
+    # 全局 sort_order：支出块在前（其他兜底位 17），收入块从 18 起
+    assert cats[17]["name"] == "其他" and cats[17]["type"] == "支出"
+    assert cats[18]["type"] == "收入"
+    # 系统预置 userId 为空
+    assert all(c["userId"] is None for c in cats)
+
+
+def test_category_crud_and_visibility(tmp_path) -> None:
+    client = make_client(tmp_path)
+    token, _ = login(client)
+    h = auth_headers(token)
+
+    # 创建 → userId 归属当前用户、排同类型末尾
+    r = client.post("/api/ledger/categories", headers=h, json={"name": "手办", "type": "支出"})
+    assert r.status_code == 200
+    cat = r.json()["data"]
+    assert cat["userId"] == 1 and cat["type"] == "支出"
+
+    # 与系统预置重名 → 409
+    r = client.post("/api/ledger/categories", headers=h, json={"name": "餐饮", "type": "支出"})
+    assert r.status_code == 409
+
+    # 再次同名 → 409
+    r = client.post("/api/ledger/categories", headers=h, json={"name": "手办", "type": "支出"})
+    assert r.status_code == 409
+
+    # 不带 bookId 可见本人自定义；bookId=2（本人是 owner）同样可见
+    cats = client.get("/api/ledger/categories", headers=h).json()["data"]
+    assert any(c["id"] == cat["id"] for c in cats)
+    cats_book2 = client.get("/api/ledger/categories?bookId=2", headers=h).json()["data"]
+    assert any(c["id"] == cat["id"] for c in cats_book2)
+
+    # 改名
+    r = client.put(f"/api/ledger/categories/{cat['id']}", headers=h, json={"name": "数码硬件"})
+    assert r.json()["data"]["name"] == "数码硬件"
+
+    # 系统预置不可改/删
+    r = client.put("/api/ledger/categories/1", headers=h, json={"name": "改餐饮"})
+    assert r.status_code == 403
+    r = client.delete("/api/ledger/categories/1", headers=h)
+    assert r.status_code == 403
+
+    # 删除保护：先把一条流水挂到该分类再删 → 409
+    r = client.post(
+        "/api/ledger",
+        headers=h,
+        json={"type": "支出", "categoryId": cat["id"], "amount": 9.9, "note": "删测专用", "bookId": 1},
+    )
+    assert r.status_code == 200
+    r = client.delete(f"/api/ledger/categories/{cat['id']}", headers=h)
+    assert r.status_code == 409
+
+    # 删掉流水后可正常删除
+    listed = client.get("/api/ledger?bookId=1&keyword=删测专用", headers=h).json()["data"]
+    assert listed["total"] >= 1
+    tx_id = listed["transactions"][0]["id"]
+    client.delete(f"/api/ledger/{tx_id}", headers=h)
+    r = client.delete(f"/api/ledger/categories/{cat['id']}", headers=h)
+    assert r.status_code == 200
 
 
 def test_ledger_list_seed_data_by_book(tmp_path) -> None:

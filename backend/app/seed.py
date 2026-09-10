@@ -1,7 +1,7 @@
 """初始数据（幂等）：与前端 mock 契约对齐。
 
 - 3 个测试账号：test1/test2/test3@openlair.dev，密码统一 test123456
-- 16 个分类（支出 1-10 / 收入 11-16）
+- 26 个系统预置分类（支出 18 / 收入 8）
 - 2 个账本（个人 + 共享，成员 1/2/3）+ 当月预算
 - 近 90 天流水：个人账本 85 条 + 共享账本 15 条（收入 ~25%）
 - 待办 / 日程 / 笔记 / 习惯 演示数据
@@ -54,16 +54,26 @@ def seed(session: Session) -> None:
         u.created_at = now
         session.add(u)
 
-    # ---------- 分类（固定 id 1-16；收入 sortOrder 偏移 10，全量排序 = 支出块 + 收入块） ----------
-    exp = ["餐饮", "交通", "购物", "居住", "娱乐", "医疗", "学习", "人情", "通讯", "其他"]
-    inc = ["工资", "奖金", "理财", "礼金", "退款", "其他"]
+    # ---------- 分类（系统预置 id 1-16 固定 + 17-26；支出 sortOrder 0-17 / 收入 18-25，「其他」各组兜底位） ----------
+    exp: list[tuple[str, int]] = [
+        ("餐饮", 1), ("交通", 2), ("购物", 3), ("居住", 4), ("娱乐", 5),
+        ("医疗", 6), ("学习", 7), ("人情", 8), ("通讯", 9),
+        ("数码", 17), ("宠物", 18), ("运动健身", 19), ("美妆", 20),
+        ("旅行", 21), ("维修", 22), ("订阅服务", 23), ("汽车", 24),
+        ("其他", 10),
+    ]
+    inc: list[tuple[str, int]] = [
+        ("工资", 11), ("奖金", 12), ("理财", 13), ("礼金", 14), ("退款", 15),
+        ("副业", 25), ("报销", 26),
+        ("其他", 16),
+    ]
     categories: list[Category] = [
-        Category(id=i + 1, name=name, type="支出", sort_order=i, is_default=name == "其他")
-        for i, name in enumerate(exp)
+        Category(id=cid, name=name, type="支出", sort_order=i, user_id=None, is_default=name == "其他")
+        for i, (name, cid) in enumerate(exp)
     ]
     categories += [
-        Category(id=11 + i, name=name, type="收入", sort_order=10 + i, is_default=name == "其他")
-        for i, name in enumerate(inc)
+        Category(id=cid, name=name, type="收入", sort_order=18 + i, user_id=None, is_default=name == "其他")
+        for i, (name, cid) in enumerate(inc)
     ]
     for c in categories:
         c.created_at = now

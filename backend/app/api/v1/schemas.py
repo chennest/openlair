@@ -73,6 +73,15 @@ class UpdateBudgetInput(BaseModel):
     amount: float
 
 
+class CategoryCreateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+    type: str  # 支出 | 收入
+
+
+class CategoryUpdateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+
+
 # ---------- books ----------
 
 class CreateBookInput(BaseModel):

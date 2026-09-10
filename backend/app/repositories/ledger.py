@@ -1,6 +1,7 @@
 from datetime import date
+from typing import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.db.session import SessionFactory
 from app.models.budget import Budget
@@ -16,16 +17,87 @@ class LedgerRepository:
 
     # ---------- 分类 ----------
 
-    def categories(self, type: str | None = None) -> list[Category]:
+    def categories(
+        self, type: str | None = None, *, user_ids: Sequence[int] | None = None
+    ) -> list[Category]:
+        """分类列表（全局按 sort_order, id 排序）。
+
+        - user_ids=None：全量（系统预置 + 所有用户自定义），内部统计/names 映射用
+        - user_ids=序列：系统预置 + 指定用户的自定义分类
+        """
         with self._session_factory() as session:
             stmt = select(Category).order_by(Category.sort_order, Category.id)
+            if user_ids is not None:
+                stmt = stmt.where(or_(Category.user_id.is_(None), Category.user_id.in_(user_ids)))
             if type:
                 stmt = stmt.where(Category.type == type)
             return list(session.scalars(stmt))
 
+    def category_by_id(self, category_id: int) -> Category | None:
+        with self._session_factory() as session:
+            return session.get(Category, category_id)
+
     def category_by_name(self, name: str) -> Category | None:
         with self._session_factory() as session:
             return session.scalar(select(Category).where(Category.name == name))
+
+    def category_exists(
+        self, *, name: str, type: str, user_id: int, exclude_id: int | None = None
+    ) -> bool:
+        """同名同类型防重：系统预置或本人自定义已占用即视为重复（含他人分类不校验）。"""
+        with self._session_factory() as session:
+            stmt = (
+                select(func.count())
+                .select_from(Category)
+                .where(
+                    Category.name == name,
+                    Category.type == type,
+                    or_(Category.user_id.is_(None), Category.user_id == user_id),
+                )
+            )
+            if exclude_id is not None:
+                stmt = stmt.where(Category.id != exclude_id)
+            return session.scalar(stmt) > 0
+
+    def max_sort_order(self, type: str) -> int:
+        with self._session_factory() as session:
+            return session.scalar(
+                select(func.max(Category.sort_order)).where(Category.type == type)
+            ) or 0
+
+    def create_category(self, *, name: str, type: str, sort_order: int, user_id: int) -> Category:
+        with self._session_factory() as session:
+            c = Category(name=name, type=type, sort_order=sort_order, user_id=user_id)
+            session.add(c)
+            session.commit()
+            session.refresh(c)
+            return c
+
+    def rename_category(self, category_id: int, name: str) -> Category | None:
+        with self._session_factory() as session:
+            c = session.get(Category, category_id)
+            if c is None:
+                return None
+            c.name = name
+            session.commit()
+            session.refresh(c)
+            return c
+
+    def category_usage_count(self, category_id: int) -> int:
+        """该分类被流水引用的条数（删除保护依据）。"""
+        with self._session_factory() as session:
+            return session.scalar(
+                select(func.count()).select_from(Transaction).where(Transaction.category_id == category_id)
+            ) or 0
+
+    def delete_category(self, category_id: int) -> bool:
+        with self._session_factory() as session:
+            c = session.get(Category, category_id)
+            if c is None:
+                return False
+            session.delete(c)
+            session.commit()
+            return True
 
     def default_category(self, type: str) -> Category | None:
         with self._session_factory() as session:

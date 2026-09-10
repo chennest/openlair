@@ -7,6 +7,8 @@ export interface Category {
   type: '支出' | '收入'
   sortOrder: number
   isDefault: boolean
+  /** 归属用户 id（null = 系统预置；非空 = 该用户创建，可改删） */
+  userId: number | null
 }
 
 export interface Transaction {
@@ -113,8 +115,11 @@ export interface UpdateTransactionInput {
 }
 
 // ---------- 分类常量（仅前端本地兜底/展示用；数据源以接口为准） ----------
-export const EXPENSE_CATEGORIES = ['餐饮', '交通', '购物', '居住', '娱乐', '医疗', '学习', '人情', '通讯', '其他']
-export const INCOME_CATEGORIES = ['工资', '奖金', '理财', '礼金', '退款', '其他']
+export const EXPENSE_CATEGORIES = [
+  '餐饮', '交通', '购物', '居住', '娱乐', '医疗', '学习', '人情', '通讯',
+  '数码', '宠物', '运动健身', '美妆', '旅行', '维修', '订阅服务', '汽车', '其他',
+]
+export const INCOME_CATEGORIES = ['工资', '奖金', '理财', '礼金', '退款', '副业', '报销', '其他']
 export const CATEGORIES = [...new Set([...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES])]
 
 // ---------- API ----------
@@ -133,8 +138,17 @@ function qs(query: LedgerQuery): string {
 }
 
 export const ledgerApi = {
-  /** 分类表 */
-  categories: (type?: '支出' | '收入') => get<Category[]>(`/api/ledger/categories${type ? `?type=${type}` : ''}`),
+  /**
+   * 分类表：系统预置 + 可见自定义
+   * @param bookId 传入 = 该账本全部成员的自定义分类也可见（共享账本共用）；缺省 = 仅本人
+   */
+  categories: (type?: '支出' | '收入', bookId?: number) => {
+    const p = new URLSearchParams()
+    if (type) p.set('type', type)
+    if (bookId) p.set('bookId', String(bookId))
+    const s = p.toString()
+    return get<Category[]>(`/api/ledger/categories${s ? `?${s}` : ''}`)
+  },
   /** 交易列表（按账本隔离 + 筛选 + 分页） */
   list: (query: LedgerQuery = {}) => get<LedgerData>(`/api/ledger${qs(query)}`),
   /** 近 6 月收支趋势（按账本） */
@@ -148,6 +162,13 @@ export const ledgerApi = {
   update: (id: number, patch: UpdateTransactionInput) =>
     put<{ item: Transaction }>(`/api/ledger/${id}`, patch),
   remove: (id: number) => del<{ ok: boolean }>(`/api/ledger/${id}`),
+}
+
+/** 分类管理 API：仅系统预置不可改删；删除时若挂有流水后端返回 409 */
+export const categoryApi = {
+  create: (input: { name: string; type: '支出' | '收入' }) => post<Category>('/api/ledger/categories', input),
+  rename: (id: number, name: string) => put<Category>(`/api/ledger/categories/${id}`, { name }),
+  remove: (id: number) => del<{ ok: boolean }>(`/api/ledger/categories/${id}`),
 }
 
 /** 账本 API（共享账单核心） */
