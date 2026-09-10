@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -90,11 +91,17 @@ func fail(w http.ResponseWriter, status int, message string) {
 	w.Write(body)
 }
 
+func userID(v int) *int { return &v }
+
 var categories = []categoryDTO{
-	{ID: 1, Name: "餐饮", Type: "支出", IsDefault: true},
-	{ID: 2, Name: "交通", Type: "支出", IsDefault: true},
-	{ID: 11, Name: "工资", Type: "收入", IsDefault: true},
+	// 契约：UserID=nil = 系统预置；IsDefault 只标记「其他」兜底分类。
+	{ID: 1, Name: "餐饮", Type: "支出", IsDefault: false},
+	{ID: 2, Name: "交通", Type: "支出", IsDefault: false},
+	{ID: 10, Name: "其他", Type: "支出", IsDefault: true},
+	{ID: 11, Name: "工资", Type: "收入", IsDefault: false},
 	{ID: 16, Name: "其他", Type: "收入", IsDefault: true},
+	{ID: 27, Name: "手办", Type: "支出", UserID: userID(1)},
+	{ID: 28, Name: "数码硬件", Type: "支出", UserID: userID(1)},
 }
 
 var books = []bookDTO{
@@ -131,6 +138,43 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		envelope(w, 200, kept)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/ledger/categories":
+		var req struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		}
+		json.Unmarshal(raw, &req)
+		if req.Name == "餐饮" || req.Name == "手办" {
+			fail(w, http.StatusConflict, fmt.Sprintf("「%s」已存在（系统预置或你已创建）", req.Name))
+			return
+		}
+		envelope(w, 200, categoryDTO{ID: 29, Name: req.Name, Type: req.Type, UserID: userID(1)})
+	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/ledger/categories/"):
+		id := atoiSuffix(r.URL.Path, "/api/ledger/categories/")
+		var req struct {
+			Name string `json:"name"`
+		}
+		json.Unmarshal(raw, &req)
+		switch id {
+		case 1, 2, 11, 16:
+			fail(w, http.StatusForbidden, "系统预置分类不可修改")
+		case 27, 28:
+			envelope(w, 200, categoryDTO{ID: id, Name: req.Name, Type: "支出", UserID: userID(1)})
+		default:
+			fail(w, http.StatusNotFound, "分类不存在")
+		}
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/ledger/categories/"):
+		id := atoiSuffix(r.URL.Path, "/api/ledger/categories/")
+		switch id {
+		case 1, 2, 11, 16:
+			fail(w, http.StatusForbidden, "系统预置分类不可删除")
+		case 28:
+			fail(w, http.StatusConflict, "「数码硬件」下有 3 条流水，请先迁移流水后再删除")
+		case 27:
+			envelope(w, 200, map[string]any{"ok": true})
+		default:
+			fail(w, http.StatusNotFound, "分类不存在")
+		}
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ledger":
 		var req struct {
 			Type       string  `json:"type"`
@@ -183,9 +227,11 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 		envelope(w, 200, nil)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/calendar":
 		today := time.Now().Format("2006-01-02")
+		tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 		envelope(w, 200, map[string]any{"events": []eventDTO{
 			{ID: 1, Title: "周会", Date: today, Time: "09:30", Location: "3 号会议室"},
-			{ID: 2, Title: "体检", Date: "2026-09-10", Time: "08:00", Done: true},
+			// 体检固定用"明天"而不是硬编码日期：硬编码会在运行日越过它时打破排序断言。
+			{ID: 2, Title: "体检", Date: tomorrow, Time: "08:00", Done: true},
 		}})
 	case r.Method == http.MethodPost && r.URL.Path == "/api/calendar":
 		envelope(w, 200, mutation[eventDTO]{ID: 41, Item: eventDTO{ID: 41, Title: "新日程", Date: "2026-09-01", Time: "10:00"}})
@@ -239,4 +285,10 @@ func nameOf(id int) string {
 		}
 	}
 	return "其他"
+}
+
+// atoiSuffix 从 "/api/ledger/categories/27" 这类路径里抠出尾部的整数 id。
+func atoiSuffix(path, prefix string) int {
+	n, _ := strconv.Atoi(strings.TrimPrefix(path, prefix))
+	return n
 }

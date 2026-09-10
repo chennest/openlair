@@ -72,3 +72,6 @@ temp/
 
 # 临时锁文件
 *.lock
+
+# 本地构建产物
+laircli/lair.exe

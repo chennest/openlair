@@ -202,6 +202,9 @@ def test_category_crud_and_visibility(tmp_path) -> None:
     client.delete(f"/api/ledger/{tx_id}", headers=h)
     r = client.delete(f"/api/ledger/categories/{cat['id']}", headers=h)
     assert r.status_code == 200
+    # 回归钉死：删除返回 200 后分类必须真的消失（曾出现校验通过但不执行删除的 bug）
+    cats_after = client.get("/api/ledger/categories", headers=h).json()["data"]
+    assert all(c["id"] != cat["id"] for c in cats_after)
 
 
 def test_ledger_list_seed_data_by_book(tmp_path) -> None:

@@ -16,7 +16,8 @@ func ledgerCmd() *cli.Command {
 		Short: "记账：流水 / 分类 / 趋势 / 预算",
 		Sub: []*cli.Command{
 			ledgerAdd(), ledgerList(), ledgerEdit(), ledgerRemove(),
-			ledgerCategories(), ledgerTrend(), ledgerBudget(),
+			ledgerCategories(), ledgerCatAdd(), ledgerCatRename(), ledgerCatRemove(),
+			ledgerTrend(), ledgerBudget(),
 		},
 	}
 }
@@ -316,9 +317,11 @@ func ledgerRemove() *cli.Command {
 func ledgerCategories() *cli.Command {
 	return &cli.Command{
 		Name:  "categories",
-		Short: "列出可用分类（全局固定 1-16）",
+		Short: "列出可用分类（系统预置 + 自定义）",
+		Long:  "列出可用分类：系统预置 + 你创建的自定义分类；显式给 --book 时查看该账本成员共用的自定义分类。",
 		Flags: []*cli.Flag{
 			{Name: "type", Short: "t", Usage: "只看支出或收入侧", Kind: cli.String},
+			bookFlag(),
 		},
 		Run: func(ctx *cli.Context, in *cli.Inv) error {
 			app := ctx.App.(*App)
@@ -332,7 +335,18 @@ func ledgerCategories() *cli.Command {
 					return err
 				}
 			}
-			resp, err := client.Get("/api/ledger/categories", api.Query{"type": wantedType}.Values())
+			query := api.Query{"type": wantedType}
+			if in.OptInt("book") != nil {
+				book, explicit, err := app.resolveBook(client, in.OptInt("book"))
+				if err != nil {
+					return err
+				}
+				query["bookId"] = itoa(book.ID)
+				if line := bookLine(book, explicit); line != "" {
+					app.R.Hint(line)
+				}
+			}
+			resp, err := client.Get("/api/ledger/categories", query.Values())
 			if err != nil {
 				return err
 			}
@@ -345,13 +359,149 @@ func ledgerCategories() *cli.Command {
 			}
 			rows := make([][]string, 0, len(cats))
 			for _, c := range cats {
-				yes := ""
-				if c.IsDefault {
-					yes = "是"
+				// 后端契约：userId=null = 系统预置；非空 = 用户自定义。
+				// isDefault 只标记「其他」兜底分类，别拿它判系统预置。
+				source := "自定义"
+				if c.UserID == nil {
+					source = "系统预置"
 				}
-				rows = append(rows, []string{itoa(c.ID), c.Name, c.Type, yes})
+				rows = append(rows, []string{itoa(c.ID), c.Name, c.Type, source})
 			}
-			app.R.Table([]render.Col{{Title: "ID", Align: render.Right}, {Title: "名称"}, {Title: "类型"}, {Title: "默认"}}, rows)
+			app.R.Table([]render.Col{
+				{Title: "ID", Align: render.Right}, {Title: "名称"}, {Title: "类型"}, {Title: "来源"},
+			}, rows)
+			return nil
+		},
+	}
+}
+
+// validateCategoryName 校验分类名长度（后端约束：1-20 字，按字符数不按字节）。
+func validateCategoryName(name string) error {
+	n := len([]rune(name))
+	if n < 1 {
+		return cli.Usagef("分类名不能为空")
+	}
+	if n > 20 {
+		return cli.Usagef("分类名最长 20 字，当前 %d 字", n)
+	}
+	return nil
+}
+
+func ledgerCatAdd() *cli.Command {
+	return &cli.Command{
+		Name:  "cat-add",
+		Short: "新建自定义分类（挂在你的名下，可改可删）",
+		Args:  []cli.Arg{{Name: "名称"}},
+		Flags: []*cli.Flag{
+			{Name: "type", Short: "t", Usage: "expense/income 或 支出/收入（必填）", Kind: cli.String},
+		},
+		Run: func(ctx *cli.Context, in *cli.Inv) error {
+			app := ctx.App.(*App)
+			client, err := app.apiClient()
+			if err != nil {
+				return err
+			}
+			name := in.Arg(0)
+			if err := validateCategoryName(name); err != nil {
+				return err
+			}
+			if in.Str("type") == "" {
+				return cli.Usagef("创建分类必须给 --type（expense/income 或 支出/收入）")
+			}
+			txType, err := parse.Type(in.Str("type"))
+			if err != nil {
+				return err
+			}
+			resp, err := client.Post("/api/ledger/categories", map[string]any{"name": name, "type": txType})
+			if err != nil {
+				return err
+			}
+			if app.isJSON() {
+				return app.R.Data(resp.Data)
+			}
+			var cat categoryDTO
+			if err := resp.Into(&cat); err != nil {
+				return err
+			}
+			app.R.OK(fmt.Sprintf("#%d 已创建自定义分类「%s」（%s）", cat.ID, cat.Name, cat.Type))
+			app.R.Hint("记账即可用：lair ledger add 金额 -c " + cat.Name)
+			return nil
+		},
+	}
+}
+
+func ledgerCatRename() *cli.Command {
+	return &cli.Command{
+		Name:  "cat-rename",
+		Short: "给自定义分类改名（系统预置不可改）",
+		Args:  []cli.Arg{{Name: "分类id或名称"}, {Name: "新名称"}},
+		Run: func(ctx *cli.Context, in *cli.Inv) error {
+			app := ctx.App.(*App)
+			client, err := app.apiClient()
+			if err != nil {
+				return err
+			}
+			oldName := in.Arg(0)
+			newName := in.Arg(1)
+			if err := validateCategoryName(newName); err != nil {
+				return err
+			}
+			cats, err := app.categories(client, "")
+			if err != nil {
+				return err
+			}
+			picked, err := pickCategory(cats, "", oldName)
+			if err != nil {
+				return err
+			}
+			if picked == nil {
+				return cli.Usagef("请提供要改名的分类")
+			}
+			resp, err := client.Put(fmt.Sprintf("/api/ledger/categories/%d", picked.ID),
+				map[string]any{"name": newName})
+			if err != nil {
+				return err
+			}
+			if app.isJSON() {
+				return app.R.Data(resp.Data)
+			}
+			var cat categoryDTO
+			if err := resp.Into(&cat); err != nil {
+				return err
+			}
+			app.R.OK(fmt.Sprintf("#%d 已改名「%s」→「%s」", cat.ID, picked.Name, cat.Name))
+			return nil
+		},
+	}
+}
+
+func ledgerCatRemove() *cli.Command {
+	return &cli.Command{
+		Name:  "cat-rm",
+		Short: "删除自定义分类（系统预置不可删；分类下有流水时后端拒绝）",
+		Args:  []cli.Arg{{Name: "分类id或名称"}},
+		Run: func(ctx *cli.Context, in *cli.Inv) error {
+			app := ctx.App.(*App)
+			client, err := app.apiClient()
+			if err != nil {
+				return err
+			}
+			query := in.Arg(0)
+			cats, err := app.categories(client, "")
+			if err != nil {
+				return err
+			}
+			picked, err := pickCategory(cats, "", query)
+			if err != nil {
+				return err
+			}
+			if picked == nil {
+				return cli.Usagef("请提供要删除的分类")
+			}
+			if _, err := client.Delete(fmt.Sprintf("/api/ledger/categories/%d", picked.ID)); err != nil {
+				return err
+			}
+			app.R.OK(fmt.Sprintf("#%d 已删除分类「%s」", picked.ID, picked.Name))
 			return nil
 		},
 	}

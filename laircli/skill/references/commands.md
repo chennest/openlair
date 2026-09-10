@@ -37,7 +37,10 @@ laircli 是 OpenLair 的 Go 版命令行客户端，走后端 `/api`（`{code, m
 - `lair ledger list [-t type] [-k 关键词] [--page-size N] [--page N] [--book id]` — 流水
 - `lair ledger edit <id> [...]` — 改单条
 - `lair ledger rm <id>` — 删单条（不可逆，先复核）
-- `lair ledger categories [--book id]` — 分类列表
+- `lair ledger categories [-t 类型] [--book id]` — 分类列表（系统预置 + 自定义；--book 看该账本共用）
+- `lair ledger cat-add <名称> -t 支出|收入` — 新建自定义分类（名称 ≤20 字；重名 409）
+- `lair ledger cat-rename <id或名称> <新名称>` — 给自定义分类改名（系统预置 403）
+- `lair ledger cat-rm <id或名称>` — 删除自定义分类（系统预置 403；分类下有流水 409，先迁移流水）
 - `lair ledger trend [--book id]` — 收支趋势
 - `lair ledger budget <金额> [--book id]` — 设当月预算
 

@@ -175,6 +175,7 @@ class LedgerService:
         usage = self._ledger.category_usage_count(category_id)
         if usage > 0:
             raise ApiError(409, f"「{c.name}」下有 {usage} 条流水，请先迁移流水后再删除")
+        self._ledger.delete_category(category_id)
 
     # ---------- 列表（含摘要/统计/分页/预算） ----------
 

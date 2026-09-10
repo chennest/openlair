@@ -334,6 +334,116 @@ func TestLedgerBudgetReadAndWrite(t *testing.T) {
 	}
 }
 
+// ---------- ledger 分类 CRUD（系统预置 + 自定义） ----------
+
+func TestCategoriesListsSourceColumn(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "categories")
+	mustCode(t, code, 0, out, errw)
+	mustContain(t, out, "系统预置", "自定义", "手办")
+	if strings.Contains(out, "全局固定") {
+		t.Fatalf("过时文案漏改:\n%s", out)
+	}
+}
+
+func TestCategoriesWithBookFlagSendsBookID(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "categories", "--book", "2")
+	mustCode(t, code, 0, out, errw)
+	if q := f.lastQuery(); !strings.Contains(q, "bookId=2") {
+		t.Fatalf("bookId 没上查询串: %q", q)
+	}
+}
+
+func TestCategoryAddHappyPath(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-add", "宠物", "-t", "expense")
+	mustCode(t, code, 0, out, errw)
+	mustContain(t, out, "#29 已创建自定义分类「宠物」（支出）", "-c 宠物")
+	if !f.called("POST /api/ledger/categories") {
+		t.Fatalf("没打到创建接口: %v", f.calls)
+	}
+	body := f.lastBody()
+	if !strings.Contains(body, `"name":"宠物"`) || !strings.Contains(body, `"type":"支出"`) {
+		t.Fatalf("创建请求体不对: %s", body)
+	}
+}
+
+func TestCategoryAddRejectsBadType(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-add", "宠物", "-t", "转账")
+	mustCode(t, code, 1, out, errw)
+	mustContain(t, errw, "类型不合法")
+	if f.called("POST /api/ledger/categories") {
+		t.Fatal("非法类型不该发请求")
+	}
+}
+
+func TestCategoryAddRequiresType(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-add", "宠物")
+	mustCode(t, code, 2, out, errw)
+	mustContain(t, errw, "--type")
+}
+
+func TestCategoryAddRejectsOverlongName(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-add", strings.Repeat("超", 21), "-t", "支出")
+	mustCode(t, code, 2, out, errw)
+	mustContain(t, errw, "最长 20 字")
+	if f.called("POST /api/ledger/categories") {
+		t.Fatal("超长名不该发请求")
+	}
+}
+
+func TestCategoryAddConflictSurfaces409(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-add", "餐饮", "-t", "支出")
+	mustCode(t, code, 1, out, errw)
+	mustContain(t, errw, "[409]", "已存在")
+}
+
+func TestCategoryRenameByIdAndName(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-rename", "27", "潮玩")
+	mustCode(t, code, 0, out, errw)
+	mustContain(t, out, "已改名「手办」→「潮玩」")
+	if !f.called("PUT /api/ledger/categories/27") {
+		t.Fatalf("没打到改名接口: %v", f.calls)
+	}
+
+	f = newFake(t)
+	code, out, errw = f.run(t, "ledger", "cat-rename", "手办", "潮玩")
+	mustCode(t, code, 0, out, errw)
+	if !f.called("PUT /api/ledger/categories/27") {
+		t.Fatalf("按名解析失败: %v", f.calls)
+	}
+}
+
+func TestCategoryRenameSystemCategory403(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-rename", "餐饮", "干饭")
+	mustCode(t, code, 1, out, errw)
+	mustContain(t, errw, "[403]", "系统预置分类不可修改")
+}
+
+func TestCategoryRemoveHappyPath(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-rm", "手办")
+	mustCode(t, code, 0, out, errw)
+	mustContain(t, out, "#27 已删除分类「手办」")
+	if !f.called("DELETE /api/ledger/categories/27") {
+		t.Fatalf("没打到删除接口: %v", f.calls)
+	}
+}
+
+func TestCategoryRemoveReferencedSurfaces409(t *testing.T) {
+	f := newFake(t)
+	code, out, errw := f.run(t, "ledger", "cat-rm", "数码硬件")
+	mustCode(t, code, 1, out, errw)
+	mustContain(t, errw, "[409]", "迁移流水")
+}
+
 // ---------- JSON 输出与错误归一 ----------
 
 func TestJSONStdoutIsPureAndComplete(t *testing.T) {

@@ -79,6 +79,7 @@ C:\Users\<你>\.laircli\config.json        # Windows
 | `lair init` / `lair whoami` / `lair config` | 配置并校验 Key / 看当前用户 / 看配置（Key 只打印前 12 字符） |
 | `lair book list\|create\|use\|current\|join` | 账本与默认账本 |
 | `lair ledger add\|list\|edit\|rm\|categories\|trend\|budget` | 记账主干 |
+| `lair ledger cat-add\|cat-rename\|cat-rm` | 分类管理：新建/改名/删除自定义分类（系统预置只读，名称 ≤20 字） |
 | `lair todo list\|add\|done\|undo\|edit\|rm` | 待办 |
 | `lair cal list\|add\|done\|undo\|rm` | 日程 |
 | `lair note list\|show\|add\|rm` | 笔记 |
@@ -92,6 +93,8 @@ lair ledger add 38.5 -c 餐饮 -n 午饭          # 分类名会解析成 catego
 lair ledger add 12000 -c 工资                 # 收入侧分类会自动反推 type=收入
 lair ledger list -t expense -k 午饭 --page-size 10
 lair ledger trend && lair ledger budget 6000
+lair ledger cat-add 宠物 -t expense           # 新建自定义分类（重名 409）
+lair ledger cat-rename 手办 潮玩 && lair ledger cat-rm 手办   # 改名 / 删除（系统预置 403，有流水 409）
 lair --json ledger list | jq '.summary'
 lair todo add 写周报 -q 1 -d 今天 && lair todo done 9
 lair habit check 1 && lair cal add 体检 -d 明天 -T 09:00

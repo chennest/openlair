@@ -44,6 +44,7 @@ type categoryDTO struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	IsDefault bool   `json:"isDefault"`
+	UserID    *int   `json:"userId"` // nil = 系统预置；非空 = 用户自定义（该用户可改删）
 }
 
 type memberDTO struct {

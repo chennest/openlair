@@ -35,6 +35,7 @@ agent_created: true
 | `lair init` / `whoami` / `config` | 配置并校验 Key / 看当前用户 / 看配置 |
 | `lair book list\|create\|use\|current\|join` | 账本列表、建账本、切换默认账本、当前账本、邀请码加入 |
 | `lair ledger add\|list\|edit\|rm\|categories\|trend\|budget` | 记账主干：记一笔、流水、改删、分类、趋势、预算 |
+| `lair ledger cat-add\|cat-rename\|cat-rm` | 分类管理：新建/改名/删除自定义分类（系统预置只读） |
 | `lair todo list\|add\|done\|undo\|edit\|rm` | 待办 |
 | `lair cal list\|add\|done\|undo\|rm` | 日程 |
 | `lair note list\|show\|add\|rm` | 笔记 |
@@ -57,6 +58,9 @@ lair ledger add 12000 -c 工资                 # 收入侧分类自动反推 ty
 lair ledger list -t expense -k 午饭 --page-size 10   # 过滤类型+关键词分页
 lair ledger trend                              # 收支趋势
 lair ledger budget 6000                        # 设当月预算
+lair ledger cat-add 宠物 -t expense             # 新建自定义分类（≤20 字，重名 409）
+lair ledger cat-rename 手办 潮玩                # 改名（支持 id 或名称；系统预置 403）
+lair ledger cat-rm 手办                         # 删除自定义分类（有流水时后端 409 拒绝）
 lair --json ledger list | jq '.summary'       # JSON 输出（--json 全局 flag，可放任意位置）
 lair todo add 写周报 -q 1 -d 今天 && lair todo done 9   # 加待办（优先级1、今天）并完成 9 号
 lair habit check 1                             # 习惯打卡
@@ -72,6 +76,7 @@ lair cal add 体检 -d 明天 -T 09:00             # 加日程
 3. **type 是中文枚举** `收入`/`支出`：非「收入」的值写入时被后端归一成「支出」。CLI 接受 `expense|income|+|-|支出|收入` 别名并显式映射，非法值直接拒绝。
 4. **信封与退出码**：成功 `code=200`（不是 0）；422 是 FastAPI 唯一裸响应（`{"detail":[...]}`），无信封。退出码：`0` 成功、`1` 接口/业务失败（stderr 带 HTTP 状态+后端 message）、`2` 用法错误、`3` 未配置 Key（提示 `lair init`）。
 5. **Windows 编码已解决**：Go 版不再需要 `PYTHONUTF8=1` / `MSYS2_ARG_CONV_EXCL`，中文参数在 Git Bash/cmd/PowerShell 下原样送达。
+6. **分类权限**（v0.2.0 起分类可自定义）：系统预置分类（`isDefault=true`、`userId=null`）所有人可读但**不可改删**（后端 403）；自定义分类归创建者所有，改名/删除仅限本人；删除时分类下有流水会被 409 拒绝——提示用户先迁移流水。分类名全局唯一（同侧 409），限 1-20 字。
 
 ## 安全边界（严格遵守）
 
@@ -87,6 +92,9 @@ lair cal add 体检 -d 明天 -T 09:00             # 加日程
 | 401 / 退出码 1 | Key 被撤销或无效 → 提示重新 `lair init` |
 | 400 缺账本 | 指定 `--book <id>` 或先 `lair book list`/`lair book use <id>` |
 | 分类解析失败 | 先 `lair ledger categories` 确认分类名，不要跳过校验发写请求 |
+| 分类改名/删除 403 | 动了系统预置或别人的分类 → 只能操作自己创建的 |
+| 分类删除 409 | 该分类下还有流水 → 先把流水 `ledger edit <id> -c <新分类> -t <类型>` 迁走 |
+| 分类创建 409 | 同名分类已存在（系统预置或已创建）→ 换个名字 |
 | 本地连不上后端 | 检查 `--base-url`：开发用 `http://127.0.0.1:8001`，生产默认 `https://lair.lcc007.top` |
 
 详细命令参考（含每个子命令参数、环境变量、契约细节）见 `references/commands.md`。
