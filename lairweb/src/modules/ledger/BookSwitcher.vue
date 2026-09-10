@@ -192,4 +192,10 @@ function pick(bookId: number) {
     transform: none !important;
   }
 }
+/* 窄屏：下拉菜单不溢出视口 */
+@media (max-width: 860px) {
+  .menu {
+    max-width: calc(100vw - 48px);
+  }
+}
 </style>

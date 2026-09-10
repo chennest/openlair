@@ -235,13 +235,42 @@ const catKey = computed({
   color: var(--accent);
   background: rgba(0, 113, 227, 0.06);
 }
-@media (max-width: 640px) {
+/* ---------- 移动端（≤860px 手机壳布局） ---------- */
+@media (max-width: 860px) {
   .filter {
     gap: 8px;
   }
-  .kw {
+  /* 日期档位横向滑动，不换行堆叠 */
+  .presets {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    flex: 1 0 100%;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .presets::-webkit-scrollbar {
+    display: none;
+  }
+  .presets :deep(button) {
+    flex: 0 0 auto;
+    height: 36px;
+  }
+  /* 分类选择器与重置并排一行，搜索框独占整行 */
+  .cat-select {
+    flex: 1 1 auto;
     min-width: 0;
-    flex: 1;
+    height: 38px;
+  }
+  .reset {
+    flex: 0 0 auto;
+    height: 38px;
+  }
+  .kw {
+    flex: 1 0 100%;
+    min-width: 0;
+    height: 38px;
   }
 }
 </style>

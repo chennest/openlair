@@ -139,7 +139,7 @@ export default {
         const q = queryFrom(req)
         const rows = queryTransactions(q)
         const page = Number(req.query?.page) || 1
-        const pageSize = Number(req.query?.pageSize) || 20
+        const pageSize = Number(req.query?.pageSize) || 10
         const budget = currentBudget(q.bookId ?? 1)
         return ok({
           summary: summarize(rows),

@@ -249,4 +249,23 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
     align-items: flex-start;
   }
 }
+
+/* 窄屏：两列网格对齐，预算/趋势各占整行 */
+@media (max-width: 680px) {
+  .strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 4px 0;
+  }
+  .cell {
+    padding: 10px 16px;
+  }
+  .budget,
+  .trend {
+    grid-column: 1 / -1;
+  }
+  .trend {
+    align-items: flex-start;
+  }
+}
 </style>

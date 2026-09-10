@@ -66,7 +66,7 @@ const fmtDate = (iso: string) => {
       <slot name="toolbar"></slot>
     </div>
 
-    <Table>
+    <Table class="desk-table">
       <TableHeader>
         <TableRow class="hover:bg-transparent! border-b-[var(--hairline)]!">
           <TableHead class="h-11 w-[96px] pl-5 text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-3)]!">日期</TableHead>
@@ -127,9 +127,38 @@ const fmtDate = (iso: string) => {
       </TableBody>
     </Table>
 
+    <!-- 移动端列表：手机壳布局（≤860px）下替代 6 列表格，单面板 + hairline 分行 -->
+    <ul class="m-list">
+      <li v-if="transactions.length === 0" class="m-empty">没有符合条件的记录，试试调整筛选条件。</li>
+      <li v-for="t in transactions" :key="t.id" class="m-row">
+        <div class="m-row-top">
+          <Badge variant="secondary" class="m-cat text-[0.72rem] font-semibold text-[var(--text-2)]!">{{ t.category }}</Badge>
+          <span class="m-note" :title="t.note || ''">{{ t.note || '—' }}</span>
+          <span class="m-amt num" :class="t.type === '收入' ? 'is-income' : ''">
+            {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
+          </span>
+        </div>
+        <div class="m-row-sub">
+          <span class="m-meta">
+            <span class="face" aria-hidden="true">{{ (t.userName || '?').slice(0, 1) }}</span>
+            <span class="num">{{ fmtDate(t.date) }}</span>
+            <span>·</span>
+            <span>{{ t.userName || '未知' }}</span>
+          </span>
+          <span class="m-acts">
+            <button type="button" class="m-act is-edit" aria-label="编辑" @click="emit('edit', t)">
+              <Pencil class="size-4" />
+            </button>
+            <button type="button" class="m-act is-del" aria-label="删除" @click="emit('remove', t.id)">
+              <X class="size-4" />
+            </button>
+          </span>
+        </div>
+      </li>
+    </ul>
+
     <!-- 分页器 -->
-    <nav v-if="total > 0" class="pager" aria-label="分页">
-      <div class="pager-left">
+    <nav v-if="total > 0" class="pager" aria-label="分页">      <div class="pager-left">
         <span class="per">每页</span>
         <Select v-model="sizeKey">
           <SelectTrigger class="size-select">
@@ -241,6 +270,124 @@ const fmtDate = (iso: string) => {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- 移动端列表（≤860px 手机壳布局） ---------- */
+/* 桌面：只显示表格 */
+.m-list {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+@media (max-width: 860px) {
+  /* 手机：隐藏 6 列表格，改用行列表 */
+  .desk-table {
+    display: none;
+  }
+  .m-list {
+    display: block;
+  }
+  .m-row {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .m-row:last-child {
+    border-bottom: 0;
+  }
+  .m-empty {
+    padding: 32px 14px;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--text-3);
+  }
+  .m-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .m-cat {
+    flex: 0 0 auto;
+  }
+  .m-note {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.92rem;
+    color: var(--text-2);
+  }
+  .m-amt {
+    flex: 0 0 auto;
+    font-size: 0.95rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .m-amt.is-income {
+    color: var(--live);
+  }
+  .m-row-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .m-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    color: var(--text-3);
+  }
+  .m-acts {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+  }
+  /* 触控目标 ≥ 44px：视觉图标小、命中区大 */
+  .m-act {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin: -6px -4px -6px 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-act.is-edit:active {
+    color: var(--accent);
+  }
+  .m-act.is-del:active {
+    color: var(--heat);
+  }
+  /* 手机头部信息换行防挤压 */
+  .panel-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  /* 分页器触控目标加大 */
+  .pager-right :deep(button) {
+    min-height: 40px;
+  }
+  .size-select {
+    height: 36px;
+  }
+}
+
 @media (max-width: 680px) {
   .panel-head {
     padding: 16px 14px 0;

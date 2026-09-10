@@ -104,13 +104,19 @@ defineProps<{ summary: LedgerSummary }>()
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.45);
 }
-@media (max-width: 760px) {
+@media (max-width: 860px) {
+  .hero {
+    padding: 14px 16px;
+  }
   .hero-in {
     flex-wrap: wrap;
+    gap: 12px;
   }
   .right {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 }
 </style>

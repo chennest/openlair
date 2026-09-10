@@ -50,8 +50,8 @@ const showDialog = ref(false)
 const editingTx = ref<Transaction | null>(null)
 const savedTip = ref(false)
 
-// 查询状态（筛选栏 + 分页；bookId 跟随当前账本）
-const query = ref<LedgerQuery>({ page: 1, pageSize: 20 })
+// 查询状态（筛选栏 + 分页；bookId 跟随当前账本；PC 默认每页 10 条）
+const query = ref<LedgerQuery>({ page: 1, pageSize: 10 })
 
 async function loadBooks() {
   try {
@@ -89,7 +89,7 @@ async function load() {
 
 async function switchBook(bookId: number) {
   currentBookId.value = bookId
-  query.value = { page: 1, pageSize: 20 }
+  query.value = { page: 1, pageSize: 10 }
   await Promise.all([loadCategories(), load()])
 }
 
