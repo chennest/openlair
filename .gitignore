@@ -75,3 +75,6 @@ temp/
 
 # 本地构建产物
 laircli/lair.exe
+
+# WorkBuddy 过程产物（UI 截图等）
+.workbuddy/outputs/
