@@ -153,8 +153,8 @@ deploy-test:
     - 'sed -i "s|newTag: .*|newTag: test-${CI_PIPELINE_IID}|" kustomization.yaml'
     # 部署
     - kubectl apply -k .
-    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
-    - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
+    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=12m
+    - kubectl rollout status deployment/openlair-web -n openlair --timeout=12m
 
 # ============================================================
 # Stage 5: 部署生产环境（K8s，环境专属 runner：tag k8s-prod）
@@ -200,5 +200,5 @@ deploy-prod:
     - 'sed -i "s|newTag: .*|newTag: ${CI_COMMIT_TAG}|" kustomization.yaml'
     # 部署
     - kubectl apply -k .
-    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=5m
-    - kubectl rollout status deployment/openlair-web -n openlair --timeout=5m
+    - kubectl rollout status deployment/openlair-backend -n openlair --timeout=12m
+    - kubectl rollout status deployment/openlair-web -n openlair --timeout=12m
