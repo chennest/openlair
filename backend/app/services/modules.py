@@ -1,9 +1,11 @@
-"""待办 / 日程 / 笔记 / 习惯 的 CRUD 服务 + 总览聚合。"""
+"""待办 / 日程 / 笔记 / 习惯 / 倒数日 的 CRUD 服务 + 总览聚合。"""
 
+import calendar
 from datetime import date, timedelta
 
 from app.core.envelope import ApiError
 from app.repositories.books import BookRepository
+from app.repositories.days import DayRepository
 from app.repositories.events import EventRepository
 from app.repositories.habits import HabitRepository
 from app.repositories.ledger import LedgerRepository
@@ -167,6 +169,103 @@ class HabitService:
     def remove(self, *, habit_id: int) -> None:
         if not self._repo.delete(habit_id):
             raise ApiError(404, "习惯不存在")
+
+
+class DayService:
+    """倒数日 / 纪念日：重复规则展开为下一次日期，倒数天数与周年数在 DTO 统一计算。"""
+
+    REPEATS = ("once", "yearly", "monthly")
+
+    def __init__(self, repo: DayRepository) -> None:
+        self._repo = repo
+
+    def list(self, user_id: int) -> dict:
+        today = date.today()
+        dtos = [self._dto(item, today) for item in self._repo.list_by_user(user_id)]
+        # 置顶在前，其余按「距离天数」绝对值升序（今天/临近在前，久远的累计日在后）
+        dtos.sort(key=lambda d: (not d["pinned"], abs(d["daysUntil"]), d["id"]))
+        return {"days": dtos}
+
+    def create(
+        self, *, user_id: int, title: str, day_date: date, emoji: str, repeat: str, pinned: bool
+    ) -> dict:
+        item = self._repo.create(
+            user_id=user_id,
+            title=(title or "").strip() or "未命名日子",
+            date=day_date,
+            emoji=(emoji or "")[:8],
+            repeat=repeat if repeat in self.REPEATS else "once",
+            pinned=bool(pinned),
+        )
+        return {"id": item.id, "item": self._dto(item, date.today())}
+
+    def update(self, *, user_id: int, day_id: int, patch: dict) -> dict:
+        if self._repo.get(day_id) is None:
+            raise ApiError(404, "日子不存在")
+        clean = {
+            k: v for k, v in patch.items()
+            if k in {"title", "emoji", "date", "repeat", "pinned"} and v is not None
+        }
+        if "title" in clean:
+            clean["title"] = str(clean["title"]).strip() or "未命名日子"
+        if "emoji" in clean:
+            clean["emoji"] = str(clean["emoji"])[:8]
+        if "repeat" in clean and clean["repeat"] not in self.REPEATS:
+            clean["repeat"] = "once"
+        if "date" in clean:
+            clean["date"] = date.fromisoformat(str(clean["date"]))
+        item = self._repo.update(day_id, clean)
+        return {"item": self._dto(item, date.today())}
+
+    def remove(self, *, day_id: int) -> None:
+        if not self._repo.delete(day_id):
+            raise ApiError(404, "日子不存在")
+
+    @staticmethod
+    def _next_due(d: date, repeat: str, today: date) -> date:
+        """展开下一次日期：once=原日期；yearly=今年周年（已过取明年，2/29 平年落 2/28）；
+        monthly=本月同日（已过取下月，月末截断到当月最后一天）。"""
+        if repeat == "yearly":
+            try:
+                candidate = d.replace(year=today.year)
+            except ValueError:  # 2/29 出生平年
+                candidate = date(today.year, 2, 28)
+            if candidate < today:
+                try:
+                    candidate = d.replace(year=today.year + 1)
+                except ValueError:
+                    candidate = date(today.year + 1, 2, 28)
+            return candidate
+        if repeat == "monthly":
+
+            def month_day(year: int, month: int) -> date:
+                last = calendar.monthrange(year, month)[1]
+                return date(year, month, min(d.day, last))
+
+            candidate = month_day(today.year, today.month)
+            if candidate < today:
+                y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+                candidate = month_day(y, m)
+            return candidate
+        return d
+
+    def _dto(self, item, today: date) -> dict:
+        due = self._next_due(item.date, item.repeat, today)
+        days_until = (due - today).days
+        # 每年重复时给出第几次周年/生日（如 3 = 3 岁生日）；一次性无此概念
+        milestone = due.year - item.date.year + 1 if item.repeat == "yearly" else None
+        return {
+            "id": item.id,
+            "title": item.title,
+            "emoji": item.emoji,
+            "date": item.date.isoformat(),
+            "repeat": item.repeat,
+            "pinned": bool(item.pinned),
+            "daysUntil": days_until,
+            "milestone": milestone,
+            "createdAt": iso_z(item.created_at),
+            "updatedAt": iso_z(item.updated_at),
+        }
 
 
 class OverviewService:

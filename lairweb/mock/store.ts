@@ -140,6 +140,20 @@ export interface Habit {
   updatedAt: string
 }
 
+/** days 表：倒数日 / 纪念日（repeat 决定后端如何展开下一次日期） */
+export interface DayItem {
+  id: number
+  title: string
+  emoji: string
+  /** YYYY-MM-DD（重复时只取月/日展开） */
+  date: string
+  /** once 一次性 / yearly 每年 / monthly 每月 */
+  repeat: 'once' | 'yearly' | 'monthly'
+  pinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 /** AI 助手会话 */
 export interface AssistantSession {
   id: number
@@ -198,6 +212,7 @@ export interface StoreShape {
   events: CalendarEvent[]
   notes: Note[]
   habits: Habit[]
+  days: DayItem[]
   assistantSessions: AssistantSession[]
   assistantMessages: AssistantMessage[]
   apiKeys: ApiKey[]
@@ -220,6 +235,8 @@ const date = (offsetDays = 0) => {
   const d = new Date(Date.now() + offsetDays * 86400000)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+/** YYYY-MM-DD 年份平移（生日/周年演示数据用） */
+const shiftYear = (raw: string, dy: number) => `${Number(raw.slice(0, 4)) + dy}${raw.slice(4)}`
 const nowISO = () => new Date().toISOString()
 
 /** 自增主键：模拟 SQLAlchemy 自增 INTEGER PRIMARY KEY（新行 id = 当前最大 id + 1） */
@@ -454,6 +471,18 @@ function seed(): StoreShape {
         createdAt: c,
         updatedAt: c,
       }
+    }),
+    // 倒数日 / 纪念日：覆盖一次性未来/今天/过去、每年、每月（与后端 seed 演示数据同款）
+    days: [
+      { emoji: '📚', title: '考研初试', date: date(3), repeat: 'once', pinned: false },
+      { emoji: '🚀', title: '项目上线', date: date(0), repeat: 'once', pinned: false },
+      { emoji: '🎂', title: '宝宝生日', date: shiftYear(date(12), -2), repeat: 'yearly', pinned: true },
+      { emoji: '💰', title: '发工资', date: `${new Date().getFullYear()}-${pad(new Date().getMonth() + 1)}-01`, repeat: 'monthly', pinned: false },
+      { emoji: '💍', title: '结婚纪念日', date: shiftYear(date(45), -5), repeat: 'yearly', pinned: false },
+      { emoji: '💕', title: '在一起', date: date(-1023), repeat: 'once', pinned: false },
+    ].map((row, i) => {
+      const c = nowISO()
+      return { id: i + 1, ...row, createdAt: c, updatedAt: c }
     }),
     assistantSessions: [],
     assistantMessages: [],

@@ -10,6 +10,7 @@ from app.core.envelope import register_envelope_handlers
 from app.db.session import create_database_engine, create_session_factory, init_database
 from app.repositories.api_keys import ApiKeyRepository
 from app.repositories.books import BookRepository
+from app.repositories.days import DayRepository
 from app.repositories.events import EventRepository
 from app.repositories.habits import HabitRepository
 from app.repositories.ledger import LedgerRepository
@@ -29,6 +30,7 @@ from app.services.auth import AuthService
 from app.services.books import BookService
 from app.services.ledger import LedgerService
 from app.services.modules import (
+    DayService,
     EventService,
     HabitService,
     NoteService,
@@ -73,6 +75,7 @@ def create_app(
     event_repo = EventRepository(session_factory)
     note_repo = NoteRepository(session_factory)
     habit_repo = HabitRepository(session_factory)
+    day_repo = DayRepository(session_factory)
     setting_repo = SettingRepository(session_factory)
     app.state.setting_repo = setting_repo
 
@@ -85,6 +88,7 @@ def create_app(
     app.state.event_service = EventService(event_repo)
     app.state.note_service = NoteService(note_repo)
     app.state.habit_service = HabitService(habit_repo)
+    app.state.day_service = DayService(day_repo)
     app.state.overview_service = OverviewService(
         ledger=ledger_repo, todo=todo_repo, events=event_repo, habits=habit_repo, books=book_repo
     )

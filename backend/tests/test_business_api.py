@@ -120,7 +120,7 @@ def test_logout_revokes_token(tmp_path) -> None:
 
 def test_business_endpoints_require_token(tmp_path) -> None:
     client = make_client(tmp_path)
-    for path in ("/api/ledger", "/api/books", "/api/todo", "/api/calendar", "/api/notes", "/api/habits", "/api/overview"):
+    for path in ("/api/ledger", "/api/books", "/api/todo", "/api/calendar", "/api/notes", "/api/habits", "/api/days", "/api/overview"):
         r = client.get(path)
         assert r.status_code == 401, path
         assert r.json()["code"] == 401
@@ -617,3 +617,121 @@ def test_book_convert_to_shared_one_way(tmp_path) -> None:
     token2, _ = login(client, email="test2@openlair.dev")
     h2 = auth_headers(token2)
     assert client.post(f"/api/books/{book['id']}/convert", headers=h2).status_code == 403
+
+
+# ---------- days（倒数日 / 纪念日） ----------
+
+def test_days_crud_and_countdown(tmp_path) -> None:
+    """全链路：创建四种状态的日子 → 排序 → 更新 → 删除，DTO 契约与前端对齐。"""
+    import datetime as _dt
+
+    client = make_client(tmp_path)
+    # 注册全新用户：seed 演示日子都挂在 user 1 名下，新用户列表从零开始，断言不受干扰
+    client.post("/api/auth/register", json={"name": "日子用户", "email": "days@openlair.dev", "password": "test123456"})
+    token, _ = login(client, email="days@openlair.dev")
+    headers = auth_headers(token)
+    today = _dt.date.today()
+
+    # 一次性倒数：3 天后
+    r = client.post(
+        "/api/days",
+        json={"title": "考研初试", "date": str(today + _dt.timedelta(days=3)), "emoji": "📚"},
+        headers=headers,
+    )
+    assert r.json()["code"] == 200
+    item = r.json()["data"]["item"]
+    assert item["daysUntil"] == 3
+    assert item["repeat"] == "once"
+    assert item["milestone"] is None
+
+    # 今天 → daysUntil 0
+    r = client.post("/api/days", json={"title": "项目上线", "date": str(today)}, headers=headers)
+    assert r.json()["data"]["item"]["daysUntil"] == 0
+
+    # 每年生日：2 年前的「今天+12 天」→ 还有 12 天、第 3 次
+    birthday = (today + _dt.timedelta(days=12)).replace(year=today.year - 2)
+    r = client.post(
+        "/api/days",
+        json={"title": "宝宝生日", "date": birthday.isoformat(), "repeat": "yearly", "pinned": True},
+        headers=headers,
+    )
+    yearly_id = r.json()["data"]["id"]
+    item = r.json()["data"]["item"]
+    assert item["daysUntil"] == 12
+    assert item["milestone"] == 3
+
+    # 一次性过去：400 天前 → 累计 -400
+    r = client.post(
+        "/api/days",
+        json={"title": "在一起", "date": str(today - _dt.timedelta(days=400))},
+        headers=headers,
+    )
+    assert r.json()["data"]["item"]["daysUntil"] == -400
+
+    # 列表：置顶在前，其余按 |daysUntil| 升序；DTO 字段齐全
+    days = client.get("/api/days", headers=headers).json()["data"]["days"]
+    assert [d["title"] for d in days] == ["宝宝生日", "项目上线", "考研初试", "在一起"]
+    assert set(days[0]) == {
+        "id", "title", "emoji", "date", "repeat", "pinned", "daysUntil", "milestone", "createdAt", "updatedAt",
+    }
+
+    # 更新：改标题 + 取消置顶
+    r = client.put(f"/api/days/{yearly_id}", json={"title": "儿子生日", "pinned": False}, headers=headers)
+    assert r.json()["data"]["item"]["title"] == "儿子生日"
+    assert r.json()["data"]["item"]["pinned"] is False
+
+    # 删除后更新 → 404
+    r = client.delete(f"/api/days/{yearly_id}", headers=headers)
+    assert r.json()["data"] == {"ok": True}
+    r = client.put(f"/api/days/{yearly_id}", json={"title": "x"}, headers=headers)
+    assert r.json()["code"] == 404
+
+    # 非法 repeat 归一为 once；标题纯空白兜底
+    r = client.post(
+        "/api/days",
+        json={"title": "  ", "date": str(today + _dt.timedelta(days=1)), "repeat": "weekly"},
+        headers=headers,
+    )
+    item = r.json()["data"]["item"]
+    assert item["repeat"] == "once"
+    assert item["title"] == "未命名日子"
+
+
+def test_days_monthly_and_feb29(tmp_path) -> None:
+    """monthly 月末截断 + yearly 2/29 平年落 2/28：不崩且下一次不早于今天。"""
+    import calendar as _calendar
+    import datetime as _dt
+
+    client = make_client(tmp_path)
+    token, _ = login(client)
+    headers = auth_headers(token)
+    today = _dt.date.today()
+
+    # monthly：上月 15 号 → 下一次 = 本月/下月 15 号（与后端同规则独立复算）
+    prev_month_15 = (today.replace(day=1) - _dt.timedelta(days=1)).replace(day=15)
+    r = client.post(
+        "/api/days",
+        json={"title": "发工资", "date": prev_month_15.isoformat(), "repeat": "monthly"},
+        headers=headers,
+    )
+    item = r.json()["data"]["item"]
+
+    def month_day(day: int, year: int, month: int) -> _dt.date:
+        return _dt.date(year, month, min(day, _calendar.monthrange(year, month)[1]))
+
+    y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+    expected = month_day(15, today.year, today.month)
+    if expected < today:
+        expected = month_day(15, y, m)
+    assert item["daysUntil"] == (expected - today).days
+
+    # yearly：2004-02-29（2/29 出生）→ 平年落 2/28，正常返回非负倒数
+    r = client.post(
+        "/api/days",
+        json={"title": "闰日生日", "date": "2004-02-29", "repeat": "yearly"},
+        headers=headers,
+    )
+    assert r.json()["code"] == 200
+    item = r.json()["data"]["item"]
+    assert item["daysUntil"] >= 0
+    assert item["milestone"] is not None and item["milestone"] >= 1

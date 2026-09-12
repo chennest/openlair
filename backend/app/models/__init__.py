@@ -5,6 +5,7 @@ from app.models.assistant import AssistantMessage, AssistantPlan, AssistantSessi
 from app.models.book import Book, BookMember
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.day import Day
 from app.models.event import CalendarEvent
 from app.models.habit import Habit
 from app.models.note import Note
@@ -24,6 +25,7 @@ __all__ = [
     "Budget",
     "CalendarEvent",
     "Category",
+    "Day",
     "Habit",
     "Note",
     "RevokedToken",

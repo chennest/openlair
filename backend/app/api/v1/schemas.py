@@ -157,6 +157,24 @@ class UpdateHabitInput(BaseModel):
     week: list[bool] | None = None
 
 
+# ---------- days（倒数日 / 纪念日） ----------
+
+class CreateDayInput(BaseModel):
+    title: str = Field(min_length=1, max_length=60)
+    date: _date
+    emoji: str = Field(default="", max_length=8)
+    repeat: str = "once"  # once 一次性 / yearly 每年 / monthly 每月
+    pinned: bool = False
+
+
+class UpdateDayInput(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=60)
+    date: _date | None = None
+    emoji: str | None = Field(default=None, max_length=8)
+    repeat: str | None = None
+    pinned: bool | None = None
+
+
 # ---------- assistant（AI 助手） ----------
 
 class AssistantChatInput(BaseModel):

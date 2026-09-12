@@ -1,13 +1,15 @@
-"""/api/todo /api/calendar /api/notes /api/habits /api/overview 路由。"""
+"""/api/todo /api/calendar /api/notes /api/habits /api/days /api/overview 路由。"""
 
 from fastapi import APIRouter, Depends, Request
 
 from app.api.v1.deps import get_current_user
 from app.api.v1.schemas import (
+    CreateDayInput,
     CreateEventInput,
     CreateHabitInput,
     CreateNoteInput,
     CreateTodoInput,
+    UpdateDayInput,
     UpdateEventInput,
     UpdateHabitInput,
     UpdateNoteInput,
@@ -177,6 +179,49 @@ async def remove_habit(
     request: Request, habit_id: int, _user: User = Depends(get_current_user)
 ) -> dict:
     request.app.state.habit_service.remove(habit_id=habit_id)
+    return ok_response({"ok": True})
+
+
+days_router = APIRouter(prefix="/days", tags=["days"])
+
+
+@days_router.get("")
+async def list_days(request: Request, user: User = Depends(get_current_user)) -> dict:
+    return ok_response(request.app.state.day_service.list(user.id))
+
+
+@days_router.post("")
+async def create_day(
+    request: Request, payload: CreateDayInput, user: User = Depends(get_current_user)
+) -> dict:
+    return ok_response(
+        request.app.state.day_service.create(
+            user_id=user.id,
+            title=payload.title,
+            day_date=payload.date,
+            emoji=payload.emoji or "",
+            repeat=payload.repeat or "once",
+            pinned=bool(payload.pinned),
+        )
+    )
+
+
+@days_router.put("/{day_id}")
+async def update_day(
+    request: Request, day_id: int, payload: UpdateDayInput, user: User = Depends(get_current_user)
+) -> dict:
+    return ok_response(
+        request.app.state.day_service.update(
+            user_id=user.id, day_id=day_id, patch=payload.model_dump(exclude_unset=True)
+        )
+    )
+
+
+@days_router.delete("/{day_id}")
+async def remove_day(
+    request: Request, day_id: int, _user: User = Depends(get_current_user)
+) -> dict:
+    request.app.state.day_service.remove(day_id=day_id)
     return ok_response({"ok": True})
 
 

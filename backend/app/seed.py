@@ -18,6 +18,7 @@ from app.core.security import hash_password
 from app.models.book import Book, BookMember
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.day import Day
 from app.models.event import CalendarEvent
 from app.models.habit import Habit
 from app.models.note import Note
@@ -31,6 +32,7 @@ LOCATIONS = ["公司", "家", "健身房", "咖啡厅", "线上"]
 DUES = ["今天", "明天", "本周", "下月", "无期限"]
 TAGS = ["工作", "学习", "生活", "灵感", "会议", "备忘"]
 HABIT_NAMES = ["早起打卡", "背单词", "跑步 3km", "阅读 30 分钟", "冥想", "记账"]
+# 倒数日演示数据：(标题, emoji, 距今天数偏移或绝对日, 重复, 置顶)
 SENTENCES = [
     "推进周报整理", "预约下周会议", "整理报销发票", "完成季度复盘", "更新学习计划",
     "排查线上告警", "审阅合同条款", "参加技术分享", "优化部署脚本", "补充接口文档",
@@ -180,6 +182,32 @@ def seed(session: Session) -> None:
                 week=[rng.random() > 0.5 for _ in range(7)],
                 created_at=created,
                 updated_at=created,
+            )
+        )
+
+    # ---------- 倒数日 / 纪念日演示数据（覆盖一次性未来/今天/过去、每年、每月） ----------
+    birthday = (today + timedelta(days=12)).replace(year=today.year - 2)
+    anniversary = (today + timedelta(days=45)).replace(year=today.year - 5)
+    demo_days = [
+        ("考研初试", "📚", today + timedelta(days=3), "once", False),
+        ("项目上线", "🚀", today, "once", False),
+        ("宝宝生日", "🎂", birthday, "yearly", True),
+        ("发工资", "💰", today.replace(day=1), "monthly", False),
+        ("结婚纪念日", "💍", anniversary, "yearly", False),
+        ("在一起", "💕", today - timedelta(days=1023), "once", False),
+    ]
+    for i, (title, emoji, day_date, repeat, pinned) in enumerate(demo_days):
+        session.add(
+            Day(
+                id=i + 1,
+                user_id=1,
+                title=title,
+                emoji=emoji,
+                date=day_date,
+                repeat=repeat,
+                pinned=pinned,
+                created_at=now,
+                updated_at=now,
             )
         )
 
