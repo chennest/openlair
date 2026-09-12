@@ -16,6 +16,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+# dev 模式默认配置（仅 development 加载，不含密钥，刻意入库）
+!.env.development
 *.local
 
 # OMO / Sisyphus / agent runtime state
