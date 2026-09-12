@@ -2,6 +2,7 @@
 // 收支摘要：单行紧凑横条（唯一彩色时刻，wallet.html 模式压缩版）
 // 布局：左「本月结余」大字 + 右「收入/支出」meta + 操作 slot
 import type { LedgerSummary } from './api'
+import { money } from './format'
 
 defineProps<{ summary: LedgerSummary }>()
 </script>
@@ -13,13 +14,13 @@ defineProps<{ summary: LedgerSummary }>()
     <div class="hero-in">
       <div class="left">
         <span class="lbl">本月结余</span>
-        <div class="amt">¥{{ Number(summary.balance).toFixed(2) }}</div>
+        <div class="amt">{{ money(summary.balance) }}</div>
       </div>
       <div class="right">
         <div class="meta">
-          <span class="num">收入 ¥{{ Number(summary.income).toFixed(2) }}</span>
+          <span class="num">收入 {{ money(summary.income) }}</span>
           <span class="dot" aria-hidden="true"></span>
-          <span class="num">支出 ¥{{ Number(summary.expense).toFixed(2) }}</span>
+          <span class="num">支出 {{ money(summary.expense) }}</span>
         </div>
         <slot name="action" />
       </div>

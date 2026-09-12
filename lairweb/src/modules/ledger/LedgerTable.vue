@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 流水表格：shadcn Table + 完整分页器（每页条数 / 共 N 条 / 页码 / 上下页）
+// 流水表格：shadcn Table + 完整分页器（每页条数 / 共 N 条 / 页码 / 上下页）；删除两步确认防误删
 // 纯展示：props 进，交互 emit 出（remove / page / page-size）
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Pencil, X } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { Transaction } from './api'
+import { money } from './format'
 
 const props = defineProps<{
   transactions: Transaction[]
@@ -52,6 +53,28 @@ const fmtDate = (iso: string) => {
   const [, m, d] = iso.split('-')
   return iso.slice(0, 4) === String(new Date().getFullYear()) ? `${m}-${d}` : iso
 }
+
+// ---------- 删除两步确认：首击进入确认态（3s 自动复位），再击才真正删除 ----------
+const confirmId = ref<number | null>(null)
+let confirmTimer: ReturnType<typeof setTimeout> | undefined
+
+function askRemove(id: number) {
+  if (confirmId.value === id) {
+    clearConfirm()
+    emit('remove', id)
+    return
+  }
+  confirmId.value = id
+  clearTimeout(confirmTimer)
+  confirmTimer = setTimeout(() => (confirmId.value = null), 3000)
+}
+
+function clearConfirm() {
+  confirmId.value = null
+  clearTimeout(confirmTimer)
+}
+
+onBeforeUnmount(clearConfirm)
 </script>
 
 <template>
@@ -99,7 +122,7 @@ const fmtDate = (iso: string) => {
             class="pr-5 text-right font-semibold tabular-nums"
             :class="t.type === '收入' ? 'text-[var(--live)]' : 'text-[var(--text)]'"
           >
-            {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
+            {{ t.type === '收入' ? '+' : '-' }}{{ money(t.amount) }}
           </TableCell>
           <TableCell class="pr-5 text-right">
             <span class="inline-flex items-center justify-end gap-0.5">
@@ -113,13 +136,24 @@ const fmtDate = (iso: string) => {
                 <Pencil class="size-3.5" />
               </Button>
               <Button
+                v-if="confirmId !== t.id"
                 variant="ghost"
                 size="icon-sm"
                 class="text-[var(--text-3)] hover:text-[var(--heat)]! hover:bg-transparent"
                 aria-label="删除"
-                @click="emit('remove', t.id)"
+                @click="askRemove(t.id)"
               >
                 <X class="size-3.5" />
+              </Button>
+              <Button
+                v-else
+                variant="ghost"
+                size="sm"
+                class="h-6 rounded-full! px-2 text-[11px] font-bold text-[var(--heat)]! hover:bg-[rgba(255,59,48,0.08)]!"
+                aria-label="确认删除"
+                @click="askRemove(t.id)"
+              >
+                确认
               </Button>
             </span>
           </TableCell>
@@ -135,7 +169,7 @@ const fmtDate = (iso: string) => {
           <Badge variant="secondary" class="m-cat text-[0.72rem] font-semibold text-[var(--text-2)]!">{{ t.category }}</Badge>
           <span class="m-note" :title="t.note || ''">{{ t.note || '—' }}</span>
           <span class="m-amt num" :class="t.type === '收入' ? 'is-income' : ''">
-            {{ t.type === '收入' ? '+' : '-' }}¥{{ Number(t.amount).toFixed(2) }}
+            {{ t.type === '收入' ? '+' : '-' }}{{ money(t.amount) }}
           </span>
         </div>
         <div class="m-row-sub">
@@ -149,8 +183,15 @@ const fmtDate = (iso: string) => {
             <button type="button" class="m-act is-edit" aria-label="编辑" @click="emit('edit', t)">
               <Pencil class="size-4" />
             </button>
-            <button type="button" class="m-act is-del" aria-label="删除" @click="emit('remove', t.id)">
-              <X class="size-4" />
+            <button
+              type="button"
+              class="m-act"
+              :class="confirmId === t.id ? 'is-confirm' : 'is-del'"
+              :aria-label="confirmId === t.id ? '确认删除' : '删除'"
+              @click="askRemove(t.id)"
+            >
+              <span v-if="confirmId === t.id" class="m-confirm">确认</span>
+              <X v-else class="size-4" />
             </button>
           </span>
         </div>
@@ -281,8 +322,10 @@ const fmtDate = (iso: string) => {
 }
 
 @media (max-width: 860px) {
-  /* 手机：隐藏 6 列表格，改用行列表 */
-  .desk-table {
+  /* 手机：隐藏 6 列表格，改用行列表。
+     注意：desk-table 经 props.class 落在 shadcn Table 内层 <table> 上，
+     父组件 scope 属性只在其根 div，必须 :deep() 才能命中 */
+  :deep(.desk-table) {
     display: none;
   }
   .m-list {
@@ -373,6 +416,16 @@ const fmtDate = (iso: string) => {
   }
   .m-act.is-del:active {
     color: var(--heat);
+  }
+  /* 确认态：红底白字占位同尺寸，再点一次才真删 */
+  .m-act.is-confirm {
+    color: var(--heat);
+    background: rgba(255, 59, 48, 0.1);
+  }
+  .m-confirm {
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
   }
   /* 手机头部信息换行防挤压 */
   .panel-head {

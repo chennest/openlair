@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { LedgerSummary, TrendPoint } from './api'
+import { money } from './format'
 
 const props = defineProps<{
   summary: LedgerSummary
@@ -42,12 +43,15 @@ function cancel() {
   editing.value = false
 }
 
-// ---------- 近6月迷你趋势（无图表库，纯 CSS 细柱） ----------
+// ---------- 近6月迷你趋势（无图表库，纯 CSS 细柱；当前月高亮与左侧「本月」数字呼应） ----------
 const trendMax = computed(() => {
   let m = 0
   for (const p of props.trend) m = Math.max(m, p.expense, p.income)
   return m || 1
 })
+
+const now = new Date()
+const curMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
 const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
 </script>
@@ -56,15 +60,15 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
   <section class="strip" aria-label="收支摘要条">
     <div class="cell">
       <span class="lbl">本月支出</span>
-      <span class="val num">¥{{ Number(summary.expense).toFixed(2) }}</span>
+      <span class="val num">{{ money(summary.expense) }}</span>
     </div>
     <div class="cell">
-      <span class="lbl">收入</span>
-      <span class="val num income">¥{{ Number(summary.income).toFixed(2) }}</span>
+      <span class="lbl">本月收入</span>
+      <span class="val num income">{{ money(summary.income) }}</span>
     </div>
     <div class="cell">
-      <span class="lbl">结余</span>
-      <span class="val num">¥{{ Number(summary.balance).toFixed(2) }}</span>
+      <span class="lbl">本月结余</span>
+      <span class="val num">{{ money(summary.balance) }}</span>
     </div>
 
     <div class="cell budget">
@@ -84,7 +88,7 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
       </template>
       <template v-else>
         <span class="lbl">
-          预算
+          本月预算
           <Button
             variant="ghost"
             size="sm"
@@ -93,8 +97,8 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
           >调整</Button>
         </span>
         <span class="val num" :class="{ over }">
-          <template v-if="over">超支 ¥{{ Math.abs(left).toFixed(0) }}</template>
-          <template v-else>剩余 ¥{{ left.toFixed(0) }}</template>
+          <template v-if="over">超支 {{ money(Math.abs(left), 0) }}</template>
+          <template v-else>剩余 {{ money(left, 0) }}</template>
         </span>
         <div class="meter" :class="{ over }">
           <i :style="{ width: percent + '%' }"></i>
@@ -106,7 +110,13 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
       <span class="lbl">近 6 月</span>
       <div v-if="trend.length === 0" class="trend-empty">暂无</div>
       <div v-else class="mini-bars" role="img" aria-label="近 6 月收支趋势">
-        <div v-for="p in trend" :key="p.month" class="mini-col" :title="`${monthLabel(p.month)} 收入 ¥${p.income.toFixed(0)} · 支出 ¥${p.expense.toFixed(0)}`">
+        <div
+          v-for="p in trend"
+          :key="p.month"
+          class="mini-col"
+          :class="{ cur: p.month === curMonthKey }"
+          :title="`${monthLabel(p.month)} 收入 ¥${p.income.toFixed(0)} · 支出 ¥${p.expense.toFixed(0)}`"
+        >
           <div class="mini-pair">
             <i class="inc" :style="{ height: Math.max(2, (p.income / trendMax) * 100) + '%' }"></i>
             <i class="exp" :style="{ height: Math.max(2, (p.expense / trendMax) * 100) + '%' }"></i>
@@ -228,6 +238,14 @@ const monthLabel = (m: string) => `${Number(m.split('-')[1])}月`
 .mini-pair .exp {
   background: var(--text);
   opacity: 0.65;
+}
+/* 当前月柱体提亮，与左侧「本月」数字呼应 */
+.mini-col.cur .mini-pair i {
+  opacity: 1;
+}
+.mini-col.cur .mini-lbl {
+  color: var(--text-2);
+  font-weight: 600;
 }
 .mini-lbl {
   font-size: 9.5px;

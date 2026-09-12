@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 历史查询筛选栏：类型 segmented / 日期快捷范围 / 分类 / 关键字
 // 纯展示：props 进（当前值 + 分类列表），交互 emit change（完整 query 变更）
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -111,6 +111,32 @@ const catKey = computed({
   get: () => (props.value.categoryId ? String(props.value.categoryId) : 'all'),
   set: (v: string) => pickCategory(v === 'all' ? 0 : Number(v)),
 })
+
+// ---------- 关键字防抖（400ms）：避免每敲一个字符就发一次请求 ----------
+const kwDraft = ref(props.value.keyword ?? '')
+let kwTimer: ReturnType<typeof setTimeout> | undefined
+
+// 外部清空关键字（重置按钮 / 切账本重置 query）时，撤销尚未发出的输入
+watch(
+  () => props.value.keyword,
+  (v) => {
+    if (v || (!kwDraft.value && !kwTimer)) return
+    clearTimeout(kwTimer)
+    kwTimer = undefined
+    kwDraft.value = ''
+  },
+)
+
+function onKwInput(v: string | number) {
+  kwDraft.value = String(v)
+  clearTimeout(kwTimer)
+  kwTimer = setTimeout(() => {
+    kwTimer = undefined
+    change({ keyword: kwDraft.value.trim() || undefined, page: 1 })
+  }, 400)
+}
+
+onBeforeUnmount(() => clearTimeout(kwTimer))
 </script>
 
 <template>
@@ -161,12 +187,12 @@ const catKey = computed({
       </SelectContent>
     </Select>
 
-    <!-- 关键字 -->
+    <!-- 关键字（输入防抖 400ms 后才触发查询） -->
     <Input
       class="kw"
-      :model-value="value.keyword ?? ''"
+      :model-value="kwDraft"
       placeholder="搜索备注 / 分类"
-      @update:model-value="change({ keyword: String($event), page: 1 })"
+      @update:model-value="onKwInput"
     />
 
     <Button

@@ -10,6 +10,7 @@ import {
   type Category,
   type LedgerData,
   type LedgerQuery,
+  type LedgerSummary as LedgerSummaryData,
   type Transaction,
 } from './api'
 import BookSwitcher from './BookSwitcher.vue'
@@ -28,6 +29,19 @@ const error = ref('')
 const data = ref<LedgerData | null>(null)
 const trend = ref<Awaited<ReturnType<typeof ledgerApi.trend>>>([])
 const categories = ref<Category[]>([])
+/** 顶部摘要（横幅 + 摘要条）固定为「本月」，不跟随流水区的筛选档位 */
+const monthSummary = ref<LedgerSummaryData>({ income: 0, expense: 0, balance: 0 })
+
+/** 当前自然月范围（1 号 ~ 月末） */
+function monthRange(): { startDate: string; endDate: string } {
+  const n = new Date()
+  const pad = (x: number) => String(x).padStart(2, '0')
+  const last = new Date(n.getFullYear(), n.getMonth() + 1, 0)
+  return {
+    startDate: `${n.getFullYear()}-${pad(n.getMonth() + 1)}-01`,
+    endDate: `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`,
+  }
+}
 
 // 账本状态
 const books = ref<Book[]>([])
@@ -69,6 +83,7 @@ async function loadBooks() {
 async function load() {
   if (!currentBookId.value) {
     data.value = null
+    monthSummary.value = { income: 0, expense: 0, balance: 0 }
     loading.value = false
     return
   }
@@ -76,10 +91,17 @@ async function load() {
   const isInitial = !data.value
   if (isInitial) loading.value = true
   try {
-    const q: LedgerQuery = { ...query.value, bookId: currentBookId.value }
-    const [d, t] = await Promise.all([ledgerApi.list(q), ledgerApi.trend(currentBookId.value)])
+    const bid = currentBookId.value
+    const q: LedgerQuery = { ...query.value, bookId: bid }
+    // 列表跟随筛选；摘要单独按自然月查一次（pageSize=1 只取 summary），两者互不影响
+    const [d, t, m] = await Promise.all([
+      ledgerApi.list(q),
+      ledgerApi.trend(bid),
+      ledgerApi.list({ bookId: bid, ...monthRange(), page: 1, pageSize: 1 }),
+    ])
     data.value = d
     trend.value = t
+    monthSummary.value = m.summary
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
@@ -311,7 +333,7 @@ onMounted(async () => {
       />
     </div>
 
-    <LedgerSummary :summary="data!.summary">
+    <LedgerSummary :summary="monthSummary">
       <template #action>
         <div class="hero-actions">
           <Button
@@ -334,9 +356,9 @@ onMounted(async () => {
       </template>
     </LedgerSummary>
 
-    <!-- 摘要条：统计压缩为一行，只占一点高度 -->
+    <!-- 摘要条：统计压缩为一行，只占一点高度；数据固定为本月，不跟随筛选 -->
     <LedgerStrip
-      :summary="data!.summary"
+      :summary="monthSummary"
       :budget="data!.budget"
       :trend="trend"
       @save-budget="handleBudgetSave"
