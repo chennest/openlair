@@ -305,7 +305,7 @@ async function uploadRecording() {
   try {
     const fd = new FormData()
     fd.append('file', blob, `voice.${ext}`)
-    const res = await fetch('/api/transcribe', {
+    const res = await fetch('/api/assistant/transcribe', {
       method: 'POST',
       headers: { Authorization: `Bearer ${getToken() ?? ''}` },
       body: fd,
