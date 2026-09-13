@@ -185,6 +185,117 @@ export interface ApiKey {
   revokedAt?: string
 }
 
+// ---------- vocab（词汇打字练习，与后端 6 表契约对齐） ----------
+
+export interface VocabTranslation {
+  pos: string
+  cn: string
+}
+export interface VocabSentence {
+  en: string
+  cn: string
+}
+export interface VocabSyno {
+  pos: string
+  ws: string[]
+}
+
+/** vocab_books 表：词书（全局共享，正式词库由导入脚本维护） */
+export interface VocabBookItem {
+  id: number
+  slug: string
+  name: string
+  lang: string
+  emoji: string
+  description: string
+  wordCount: number
+  sort: number
+  isEnabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/** vocab_words 表：单词条（全局去重，word 唯一） */
+export interface VocabWordItem {
+  id: number
+  word: string
+  phoneticUs: string
+  phoneticUk: string
+  translations: VocabTranslation[]
+  sentences: VocabSentence[]
+  phrases: string[]
+  synos: VocabSyno[]
+  /** { root, rels: [{ pos, words: [{ c, cn }] }] } 相关词+词根，自测干扰项加权用 */
+  relWords: { root: string; rels: { pos: string; words: { c: string; cn: string }[] }[] }
+  freq: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** vocab_book_words 表：词书↔单词多对多 */
+export interface VocabBookWordRow {
+  id: number
+  bookId: number
+  wordId: number
+  sort: number
+  createdAt: string
+}
+
+/** vocab_word_progress 表：学习进度（FSRS 卡片，每用户每词一条，跨词书不重复学） */
+export interface VocabProgressRow {
+  id: number
+  userId: number
+  wordId: number
+  bookId: number
+  /** learning / mastered */
+  status: 'learning' | 'mastered'
+  collected: boolean
+  wrongCount: number
+  rightCount: number
+  /** 是否在错词本中 */
+  wrongActive: boolean
+  lastWrongAt?: string
+  /** FSRS 下次到期 */
+  due?: string
+  stability?: number
+  difficulty?: number
+  /** FSRS State：0 未复习哨兵 / 1 Learning / 2 Review / 3 Relearning */
+  state: number
+  step?: number
+  lastReview?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** vocab_practice_sessions 表：练习会话 */
+export interface VocabSessionRow {
+  id: number
+  userId: number
+  bookId: number
+  /** follow 跟打 / dictation 听写 / self_test 自测 / spell 默写 */
+  mode: string
+  totalCount: number
+  correctCount: number
+  wrongCount: number
+  durationSec: number
+  finishedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** vocab_practice_logs 表：练习明细（只插入） */
+export interface VocabLogRow {
+  id: number
+  userId: number
+  sessionId: number
+  wordId: number
+  mode: string
+  isCorrect: boolean
+  wrongTimes: number
+  durationMs: number
+  createdAt: string
+}
+
 // ---------- 常量 ----------
 export const QUADRANTS = ['重要紧急', '重要不紧急', '紧急不重要', '不重要不紧急']
 export const MONTH = () => {
@@ -216,6 +327,12 @@ export interface StoreShape {
   assistantSessions: AssistantSession[]
   assistantMessages: AssistantMessage[]
   apiKeys: ApiKey[]
+  vocabBooks: VocabBookItem[]
+  vocabWords: VocabWordItem[]
+  vocabBookWords: VocabBookWordRow[]
+  vocabProgress: VocabProgressRow[]
+  vocabSessions: VocabSessionRow[]
+  vocabLogs: VocabLogRow[]
 }
 
 const g = globalThis as unknown as { __openlair_mock__?: SharedRuntime }
@@ -254,6 +371,18 @@ const LOCATIONS = ['公司', '家', '健身房', '咖啡厅', '线上']
 const DUES = ['今天', '明天', '本周', '下月', '无期限']
 const TAGS = ['工作', '学习', '生活', '灵感', '会议', '备忘']
 const HABIT_NAMES = ['早起打卡', '背单词', '跑步 3km', '阅读 30 分钟', '冥想', '记账']
+
+// 词汇演示词书（与后端 seed 同款 8 词；全量词库由后端导入脚本维护）
+const VOCAB_DEMO_WORDS: Array<[string, string, string, VocabTranslation[], VocabSentence[]]> = [
+  ['cancel', 'ˈkænsl', 'ˈkænsl', [{ pos: 'v.', cn: '取消；撤销' }, { pos: 'n.', cn: '取消，撤销' }], [{ en: 'The customer called to cancel the order.', cn: '顾客打电话来取消了订单。' }]],
+  ['abandon', 'əˈbændən', 'əˈbændən', [{ pos: 'v.', cn: '放弃；抛弃' }, { pos: 'n.', cn: '放纵，放任' }], [{ en: 'They had to abandon the plan.', cn: '他们不得不放弃这个计划。' }]],
+  ['achieve', 'əˈtʃiːv', 'əˈtʃiːv', [{ pos: 'v.', cn: '实现；达到；获得' }], [{ en: 'She achieved her goal ahead of time.', cn: '她提前实现了目标。' }]],
+  ['benefit', 'ˈbenɪfɪt', 'ˈbenɪfɪt', [{ pos: 'n.', cn: '好处；利益' }, { pos: 'v.', cn: '有益于；受益' }], [{ en: 'Exercise brings great benefit to health.', cn: '锻炼对健康大有好处。' }]],
+  ['capture', 'ˈkæptʃə', 'ˈkæptʃər', [{ pos: 'v.', cn: '捕获；夺取；记录' }, { pos: 'n.', cn: '捕获；战利品' }], [{ en: 'The camera captured the moment.', cn: '相机捕捉到了这一刻。' }]],
+  ['decline', 'dɪˈklaɪn', 'dɪˈklaɪn', [{ pos: 'v.', cn: '下降；谢绝' }, { pos: 'n.', cn: '下降；衰退' }], [{ en: 'Sales began to decline last year.', cn: '去年销售额开始下降。' }]],
+  ['estimate', 'ˈestɪmeɪt', 'ˈestɪmeɪt', [{ pos: 'v.', cn: '估计；估算' }, { pos: 'n.', cn: '估计；估算值' }], [{ en: 'I estimate the trip will take two hours.', cn: '我估计这次行程要两个小时。' }]],
+  ['maintain', 'meɪnˈteɪn', 'meɪnˈteɪn', [{ pos: 'v.', cn: '维持；保养；坚持认为' }], [{ en: 'It is important to maintain a balance.', cn: '保持平衡很重要。' }]],
+]
 
 // ══════════════════════════════════════════════════════════════
 // 安全层（模拟真实后端 FastAPI security）
@@ -487,6 +616,40 @@ function seed(): StoreShape {
     assistantSessions: [],
     assistantMessages: [],
     apiKeys: [],
+    // 词汇演示词书（全局共享，与后端 seed 同款；正式词库由后端导入脚本维护）
+    vocabBooks: [
+      {
+        id: 1,
+        slug: 'demo',
+        name: '演示词书',
+        lang: 'en',
+        emoji: '📖',
+        description: '内置演示词汇，正式词库用后端导入脚本添加',
+        wordCount: VOCAB_DEMO_WORDS.length,
+        sort: 0,
+        isEnabled: true,
+        createdAt: t,
+        updatedAt: t,
+      },
+    ],
+    vocabWords: VOCAB_DEMO_WORDS.map(([word, uk, us, translations, sentences], i) => ({
+      id: i + 1,
+      word,
+      phoneticUk: uk,
+      phoneticUs: us,
+      translations,
+      sentences,
+      phrases: [] as string[],
+      synos: [] as VocabSyno[],
+      relWords: { root: '', rels: [] },
+      freq: 0,
+      createdAt: t,
+      updatedAt: t,
+    })),
+    vocabBookWords: VOCAB_DEMO_WORDS.map((_, i) => ({ id: i + 1, bookId: 1, wordId: i + 1, sort: i, createdAt: t })),
+    vocabProgress: [],
+    vocabSessions: [],
+    vocabLogs: [],
   }
 }
 
