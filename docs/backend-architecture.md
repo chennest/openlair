@@ -166,13 +166,13 @@ HTTP 请求
 |---|---|---|
 | GET | /books | 词书列表（附每本我的进度 learning/mastered/due） |
 | GET | /books/{book_id}/words?limit=&offset= | 词书单词分批拉取（带 total） |
-| POST | /practice/sessions | 开课+智能排课 `{bookId, mode, newLimit?, reviewLimit?}` → `{id, queue:[{word..., progress?}]}`；复习池 = due≤now 且 learning（按 due 升序），新词池 = 词书内无进度词 |
+| POST | /practice/sessions | 开课+智能排课 `{bookId, mode, source?, newLimit?, reviewLimit?}` → `{id, bookId, bookName, source, mode, queue:[{word..., progress?}]}`；source=book（默认）复习池 = due≤now 且 learning（按 due 升序）+ 新词池；source=wrong/collect 直接练错词本/收藏（bookId 忽略，session.book_id=0） |
 | POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课） |
 | POST | /practice/sessions/{id}/finish | 结束会话 `{durationSec}`，落 finished_at |
 | GET | /review/wrong | 错词本（wrong_active 且 learning） |
 | GET | /review/collect | 收藏列表 |
 | PUT | /progress/{word_id} | 标记 `{status?/collected?/dismissWrong?}`；未学过的词也可直接标记（自动建进度行） |
-| GET | /stats | 今日 + 累计统计（由 sessions/progress 聚合，无日表） |
+| GET | /stats | 今日 + 累计统计（`tzOffset` 为本地相对 UTC 分钟差，按客户端本地零点算“今日”；由 sessions/progress 聚合，无日表） |
 
 - **FSRS 调度**：进度按 (user, word) 全局唯一（跨词书不重复学），book_id 只记首次来源；FSRS 字段平铺进 `vocab_word_progress`（排课需 `WHERE due <= now` 索引）；SQLite 读回的 datetime 无 tzinfo，服务层统一按 UTC 归一化。
 - **词库数据**：词书/单词为全局共享表，不走启动 seed（seed 仅注入一本 8 词演示词书）；正式词库用 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4` 从 ECDICT（MIT）导入，例句留空待后续数据源补充。

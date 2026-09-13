@@ -16,13 +16,14 @@ const chars = computed(() => target.value.split(''))
 const typedCount = ref(0)
 const wrongTimes = ref(0)
 const flash = ref(false)
+const ukAccent = ref(false) // 发音口音：默认美音，可切英音
 const startedAt = Date.now()
 
 const showWord = computed(() => props.mode === 'follow')
 const showPhonetic = computed(() => props.mode === 'follow')
 
 function replay() {
-  playWord(target.value, false)
+  playWord(target.value, ukAccent.value)
 }
 
 function finish(correct: boolean) {
@@ -89,6 +90,9 @@ onMounted(() => {
       <button class="ghost-btn" type="button" @click="replay">
         <Volume2 class="size-4" />
         发音（Tab）
+      </button>
+      <button class="ghost-btn" type="button" :title="ukAccent ? '切换为美音' : '切换为英音'" @click="ukAccent = !ukAccent; replay()">
+        {{ ukAccent ? '英音' : '美音' }}
       </button>
       <button class="ghost-btn" type="button" @click="typedCount = 0; wrongTimes = 0">
         <RotateCcw class="size-4" />

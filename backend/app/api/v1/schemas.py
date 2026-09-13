@@ -190,8 +190,9 @@ class AssistantConfirmInput(BaseModel):
 # ---------- vocab（词汇打字练习） ----------
 
 class StartSessionInput(BaseModel):
-    bookId: int
+    bookId: int = 0  # source=wrong/collect 时忽略，可为 0
     mode: str = "follow"  # follow 跟打 / dictation 听写 / self_test 自测 / spell 默写
+    source: str = "book"  # book 词书排课 / wrong 错词本 / collect 收藏复习
     newLimit: int | None = Field(default=None, ge=0, le=100)
     reviewLimit: int | None = Field(default=None, ge=1, le=100)
 

@@ -49,6 +49,10 @@ function onPractice(mode: VocabMode, bookId: number) {
   void router.push(`/vocab/practice/${bookId}?mode=${mode}`)
 }
 
+function practiceSource(source: 'wrong' | 'collect') {
+  void router.push(`/vocab/practice/0?mode=follow&source=${source}`)
+}
+
 async function onDismissWrong(wordId: number) {
   await vocabApi.updateProgress(wordId, { dismissWrong: true })
   wrongWords.value = wrongWords.value.filter((w) => w.id !== wordId)
@@ -115,6 +119,18 @@ onMounted(load)
           >{{ f.label }}</TabsTrigger>
         </TabsList>
       </Tabs>
+      <button
+        v-if="filter === 'wrong' && wrongWords.length"
+        class="extra-btn"
+        type="button"
+        @click="practiceSource('wrong')"
+      >开始错词练习（{{ wrongWords.length }}）</button>
+      <button
+        v-if="filter === 'collect' && collectedWords.length"
+        class="extra-btn"
+        type="button"
+        @click="practiceSource('collect')"
+      >复习收藏（{{ collectedWords.length }}）</button>
     </div>
 
     <!-- 词书墙 -->
@@ -197,7 +213,29 @@ onMounted(load)
 }
 
 .toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: 22px 0 4px;
+}
+.extra-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--sh-cta);
+}
+.extra-btn:hover {
+  filter: brightness(1.05);
+}
+.extra-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .seg {
   height: auto;

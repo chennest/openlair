@@ -6,7 +6,7 @@
 - 复习池 = due <= now 且 learning；新词池 = 词书内无进度记录的词
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fsrs import Card, Rating, Scheduler, State
 
@@ -16,6 +16,7 @@ from app.repositories.vocab import VocabRepository
 from app.services import iso_z
 
 MODES = ("follow", "dictation", "self_test", "spell")
+SOURCES = ("book", "wrong", "collect")  # book 词书排课 / wrong 错词本 / collect 收藏
 STATUSES = ("learning", "mastered")
 
 DEFAULT_NEW_LIMIT = 10  # 每次练习的新词配额
@@ -72,31 +73,59 @@ class VocabService:
 
     # ---------- 练习会话 ----------
 
-    def start_session(self, *, user_id: int, book_id: int, mode: str, new_limit: int | None = None, review_limit: int | None = None) -> dict:
+    def start_session(
+        self,
+        *,
+        user_id: int,
+        book_id: int,
+        mode: str,
+        new_limit: int | None = None,
+        review_limit: int | None = None,
+        source: str = "book",
+    ) -> dict:
         if mode not in MODES:
             raise ApiError(400, "不支持的练习模式")
-        book = self._repo.get_book(book_id)
-        if book is None:
-            raise ApiError(404, "词书不存在")
+        if source not in SOURCES:
+            raise ApiError(400, "不支持的练习来源")
         now = self._utcnow()
         review_limit = max(1, min(review_limit or DEFAULT_REVIEW_LIMIT, MAX_QUEUE_LIMIT))
         new_limit = max(0, min(new_limit if new_limit is not None else DEFAULT_NEW_LIMIT, MAX_QUEUE_LIMIT))
 
-        due_rows = self._repo.list_due_progress(user_id, now, limit=review_limit)
-        due_words = {w.id: w for w in self._repo.list_words_by_ids([p.word_id for p in due_rows])}
         queue: list[dict] = []
-        for p in due_rows:
-            word = due_words.get(p.word_id)
-            if word is not None:
-                queue.append(self._queue_item(word, p))
-        if new_limit > 0:
-            for w in self._repo.list_new_words(book_id, user_id, limit=new_limit):
-                queue.append(self._queue_item(w, None))
+        book = None
+        if source == "wrong":
+            # 错词本练习：全部来自当前错词（按最近错误倒序），答对自动移出错词本
+            for p in self._repo.list_wrong_progress(user_id, limit=review_limit):
+                w = self._repo.get_word(p.word_id)
+                if w is not None:
+                    queue.append(self._queue_item(w, p))
+            book_name = "错词本"
+        elif source == "collect":
+            # 收藏复习
+            for p in self._repo.list_collected_progress(user_id, limit=review_limit):
+                w = self._repo.get_word(p.word_id)
+                if w is not None:
+                    queue.append(self._queue_item(w, p))
+            book_name = "收藏复习"
+        else:
+            book = self._repo.get_book(book_id)
+            if book is None:
+                raise ApiError(404, "词书不存在")
+            due_rows = self._repo.list_due_progress(user_id, now, limit=review_limit)
+            due_words = {w.id: w for w in self._repo.list_words_by_ids([p.word_id for p in due_rows])}
+            for p in due_rows:
+                word = due_words.get(p.word_id)
+                if word is not None:
+                    queue.append(self._queue_item(word, p))
+            if new_limit > 0:
+                for w in self._repo.list_new_words(book_id, user_id, limit=new_limit):
+                    queue.append(self._queue_item(w, None))
+            book_name = book.name
         if not queue:
-            raise ApiError(400, "暂无可练习的单词（到期复习与新词均为空）")
+            raise ApiError(400, "暂无可练习的单词（到期复习与新词均为空）" if source == "book" else "暂无可练习的单词")
 
-        session = self._repo.create_session(user_id=user_id, book_id=book_id, mode=mode)
-        return {"id": session.id, "bookId": book_id, "mode": mode, "queue": queue}
+        session = self._repo.create_session(user_id=user_id, book_id=book.id if book else 0, mode=mode)
+        return {"id": session.id, "bookId": session.book_id, "bookName": book_name, "source": source, "mode": mode, "queue": queue}
 
     def submit_answer(self, *, user_id: int, session_id: int, word_id: int, correct: bool, wrong_times: int, duration_ms: int) -> dict:
         session = self._repo.get_session(session_id)
@@ -198,9 +227,13 @@ class VocabService:
 
     # ---------- 统计 ----------
 
-    def stats(self, user_id: int) -> dict:
+    def stats(self, user_id: int, tz_offset: int = 0) -> dict:
         now = self._utcnow()
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # “今日”边界按客户端本地零点算：tz_offset 为本地相对 UTC 的分钟差（东区为正）。
+        # 直接用 UTC 零点会让 UTC+8 用户早上 8 点前练的词算进“昨天”。
+        tz_offset = max(-840, min(840, int(tz_offset or 0)))
+        local_midnight_utc = (now + timedelta(minutes=tz_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start = local_midnight_utc - timedelta(minutes=tz_offset)
         today_sessions = self._repo.list_sessions_since(user_id, day_start)
         all_sessions = self._repo.list_sessions_since(user_id, datetime(2000, 1, 1, tzinfo=UTC))
         progress_rows = self._repo.list_progress(user_id)

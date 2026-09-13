@@ -204,6 +204,78 @@ def test_master_and_collect_on_unlearned_word(tmp_path) -> None:
     assert r.json()["data"]["words"] == []
 
 
+# ---------- 错词本 / 收藏 直接练习 ----------
+
+def test_wrong_book_practice(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "vocab8@openlair.dev")
+    # 打错一个词进错词本
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers)
+    session_id = r.json()["data"]["id"]
+    word_id = r.json()["data"]["queue"][0]["id"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session_id}/answers",
+        json={"wordId": word_id, "correct": False, "wrongTimes": 1},
+        headers=headers,
+    )
+    # source=wrong 直接开练错词：bookId 忽略可为 0
+    r = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": 0, "mode": "spell", "source": "wrong"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["bookName"] == "错词本" and data["source"] == "wrong" and data["bookId"] == 0
+    assert [w["id"] for w in data["queue"]] == [word_id]
+    assert data["queue"][0]["progress"]["wrongActive"] is True
+    # 复习打对 → 自动移出错词本
+    r = client.post(
+        f"/api/vocab/practice/sessions/{data['id']}/answers",
+        json={"wordId": word_id, "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    r = client.get("/api/vocab/review/wrong", headers=headers)
+    assert r.json()["data"]["words"] == []
+    # 错词清空后再开 → 优雅拒绝
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": 0, "mode": "follow", "source": "wrong"}, headers=headers)
+    assert r.status_code == 400
+
+
+def test_collect_practice(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "vocab9@openlair.dev")
+    client.put("/api/vocab/progress/4", json={"collected": True}, headers=headers)
+    r = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": 0, "mode": "follow", "source": "collect"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["bookName"] == "收藏复习"
+    assert [w["id"] for w in data["queue"]] == [4]
+
+
+def test_start_session_returns_book_name_and_validates_source(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "vocab10@openlair.dev")
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers)
+    data = r.json()["data"]
+    assert data["bookName"] == "演示词书" and data["source"] == "book"
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow", "source": "bad"}, headers=headers)
+    assert r.status_code == 400
+
+
+def test_stats_accepts_tz_offset(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "vocab11@openlair.dev")
+    r = client.get("/api/vocab/stats", params={"tzOffset": 480}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["data"]["today"]["sessions"] == 0
+
+
 # ---------- 校验与鉴权 ----------
 
 def test_session_validation_errors(tmp_path) -> None:

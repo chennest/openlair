@@ -10,6 +10,7 @@ import {
   type QueueItem,
   type VocabMode,
   type VocabSessionSummary,
+  type VocabSource,
   type VocabWord,
 } from './api'
 import { pickDistractors } from './similar'
@@ -24,6 +25,7 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const mode = ref<VocabMode>('follow')
+const source = ref<VocabSource>('book')
 const bookName = ref('')
 const sessionId = ref(0)
 const queue = ref<QueueItem[]>([])
@@ -52,18 +54,23 @@ async function startPractice() {
   reveal.value = null
   results.value = []
   idx.value = 0
-  const bookId = Number(route.params.bookId)
+  const bookId = Number(route.params.bookId) || 0
   const queryMode = String(route.query.mode ?? 'follow') as VocabMode
   mode.value = VOCAB_MODES.some((m) => m.value === queryMode) ? queryMode : 'follow'
+  const querySource = String(route.query.source ?? 'book') as VocabSource
+  source.value = ['book', 'wrong', 'collect'].includes(querySource) ? querySource : 'book'
   try {
-    // 自测模式需要同词书的干扰项候选池
-    if (mode.value === 'self_test') {
-      pool.value = (await vocabApi.bookWords(bookId, 100)).words
-    }
-    const res = await vocabApi.start({ bookId, mode: mode.value })
+    const res = await vocabApi.start({ bookId, mode: mode.value, source: source.value })
     sessionId.value = res.id
     queue.value = res.queue
-    bookName.value = ''
+    bookName.value = res.bookName
+    // 自测模式的干扰项候选池：词书练习取全词书，错词本/收藏练习取当前队列
+    if (mode.value === 'self_test') {
+      pool.value =
+        source.value === 'book'
+          ? (await vocabApi.bookWords(bookId, 100)).words
+          : res.queue.map(({ progress: _p, ...w }) => w)
+    }
     startedAt.value = Date.now()
     elapsedSec.value = 0
     if (!timer) timer = setInterval(() => (elapsedSec.value = Math.floor((Date.now() - startedAt.value) / 1000)), 1000)
@@ -136,7 +143,7 @@ onBeforeUnmount(() => {
           <div class="progress-fill" :style="{ width: `${(idx / queue.length) * 100}%` }" />
         </div>
         <div class="head-meta">
-          <span>{{ modeLabel }}练习</span>
+          <span>《{{ bookName }}》· {{ modeLabel }}练习</span>
           <span class="meta-nums">
             <b>{{ idx }}</b> / {{ queue.length }} ·
             <i class="ok-num">{{ passedCount }}</i> 对 ·

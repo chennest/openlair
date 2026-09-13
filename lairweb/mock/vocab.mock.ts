@@ -193,36 +193,64 @@ export default {
     ),
   }),
 
-  // 开课 + 排课
+  // 开课 + 排课（source: book 词书排课 / wrong 错词本 / collect 收藏复习）
   startSession: defineMock({
     url: '/api/vocab/practice/sessions',
     method: 'POST',
     response: respond(
       guard((req, auth: AuthContext) => {
         const userId = Number(auth.userId)
-        const body = (req.body ?? {}) as { bookId?: number; mode?: string; newLimit?: number; reviewLimit?: number }
+        const body = (req.body ?? {}) as { bookId?: number; mode?: string; source?: string; newLimit?: number; reviewLimit?: number }
         const mode = MODES.includes(String(body.mode)) ? String(body.mode) : null
         if (!mode) return err(400, '不支持的练习模式')
-        const book = store.vocabBooks.find((b) => b.id === Number(body.bookId))
-        if (!book) return err(404, '词书不存在')
-
+        const source = ['book', 'wrong', 'collect'].includes(String(body.source)) ? String(body.source) : 'book'
         const reviewLimit = Math.min(100, Math.max(1, Number(body.reviewLimit) || DEFAULT_REVIEW_LIMIT))
         const newLimit = Math.min(100, Math.max(0, Number(body.newLimit ?? DEFAULT_NEW_LIMIT)))
+
+        let bookName = ''
+        let sessionBookId = 0
         const queue: ReturnType<typeof queueItem>[] = []
-        for (const p of reviewPool(userId, reviewLimit)) {
-          const w = store.vocabWords.find((x) => x.id === p.wordId)
-          if (w) queue.push(queueItem(w, p))
+        if (source === 'wrong' || source === 'collect') {
+          const rows = store.vocabProgress
+            .filter((p) =>
+              p.userId === userId &&
+              p.status === 'learning' &&
+              (source === 'wrong' ? p.wrongActive : p.collected),
+            )
+            .sort((a, b) =>
+              source === 'wrong'
+                ? String(b.lastWrongAt ?? '').localeCompare(String(a.lastWrongAt ?? '')) || b.id - a.id
+                : String(b.updatedAt).localeCompare(String(a.updatedAt)),
+            )
+            .slice(0, reviewLimit)
+          for (const p of rows) {
+            const w = store.vocabWords.find((x) => x.id === p.wordId)
+            if (w) queue.push(queueItem(w, p))
+          }
+          bookName = source === 'wrong' ? '错词本' : '收藏复习'
+          sessionBookId = 0
+        } else {
+          const book = store.vocabBooks.find((b) => b.id === Number(body.bookId))
+          if (!book) return err(404, '词书不存在')
+          sessionBookId = book.id
+          bookName = book.name
+          for (const p of reviewPool(userId, reviewLimit)) {
+            const w = store.vocabWords.find((x) => x.id === p.wordId)
+            if (w) queue.push(queueItem(w, p))
+          }
+          if (newLimit > 0) {
+            for (const w of newWords(book.id, userId, newLimit)) queue.push(queueItem(w, null))
+          }
         }
-        if (newLimit > 0) {
-          for (const w of newWords(book.id, userId, newLimit)) queue.push(queueItem(w, null))
+        if (!queue.length) {
+          return err(400, source === 'book' ? '暂无可练习的单词（到期复习与新词均为空）' : '暂无可练习的单词')
         }
-        if (!queue.length) return err(400, '暂无可练习的单词（到期复习与新词均为空）')
 
         const t = nowISO()
         const session: VocabSessionRow = {
           id: nextId(store.vocabSessions),
           userId,
-          bookId: book.id,
+          bookId: sessionBookId,
           mode,
           totalCount: 0,
           correctCount: 0,
@@ -232,7 +260,7 @@ export default {
           updatedAt: t,
         }
         store.vocabSessions.push(session)
-        return ok({ id: session.id, bookId: book.id, mode, queue })
+        return ok({ id: session.id, bookId: sessionBookId, bookName, source, mode, queue })
       }),
     ),
   }),
@@ -412,19 +440,23 @@ export default {
     ),
   }),
 
-  // 统计
+  // 统计（tzOffset：本地相对 UTC 的分钟差，按本地零点算“今日”，与后端同构）
   stats: defineMock({
     url: '/api/vocab/stats',
     method: 'GET',
     response: respond(
-      guard((_req, auth: AuthContext) => {
+      guard((req, auth: AuthContext) => {
         const userId = Number(auth.userId)
-        const dayStart = new Date()
-        dayStart.setHours(0, 0, 0, 0)
+        const tzOffset = Math.max(-840, Math.min(840, Number(req.query?.tzOffset) || 0))
+        const nowDate = new Date()
+        // 与后端同构：时间平移 tz 分钟后取零点，再平移回 UTC
+        const shifted = new Date(nowDate.getTime() + tzOffset * 60000)
+        shifted.setUTCHours(0, 0, 0, 0)
+        const dayStart = new Date(shifted.getTime() - tzOffset * 60000)
         const mine = store.vocabSessions.filter((s) => s.userId === userId)
         const today = mine.filter((s) => new Date(s.createdAt).getTime() >= dayStart.getTime())
         const progress = store.vocabProgress.filter((p) => p.userId === userId)
-        const now = Date.now()
+        const now = nowDate.getTime()
         const summarize = (rows: VocabSessionRow[]) => ({
           sessions: rows.length,
           words: rows.reduce((m, r) => m + r.totalCount, 0),

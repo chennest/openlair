@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 自测四选一：给出单词选正确释义；选错标红可继续选，是否一次选对决定评分
 import { onMounted, ref } from 'vue'
+import { onKeyStroke } from '@vueuse/core'
 import { Volume2 } from '@lucide/vue'
 import { playWord } from './audio'
 import type { QueueItem, VocabWord } from './api'
@@ -11,6 +12,15 @@ const emit = defineEmits<{ done: [payload: { correct: boolean; wrongTimes: numbe
 const pickedWrong = ref(new Set<number>())
 const wrongTimes = ref(0)
 const startedAt = Date.now()
+
+// 数字键 1-4 直接选择（TypeWords 同款快捷键）
+onKeyStroke(
+  (e) => {
+    const idx = ['1', '2', '3', '4'].indexOf(e.key)
+    if (idx >= 0 && props.options[idx]) pick(props.options[idx])
+  },
+  { eventName: 'keydown' },
+)
 
 function meaningOf(option: { word: VocabWord }): string {
   const t = option.word.translations[0]

@@ -72,9 +72,15 @@ export interface QueueItem extends VocabWord {
   progress: VocabProgress | null
 }
 
+/** 练习来源：book 词书排课 / wrong 错词本 / collect 收藏复习 */
+export type VocabSource = 'book' | 'wrong' | 'collect'
+
 export interface StartSessionResult {
   id: number
   bookId: number
+  /** 词书名；错词本/收藏练习为对应名称 */
+  bookName: string
+  source: VocabSource
   mode: VocabMode
   queue: QueueItem[]
 }
@@ -108,7 +114,7 @@ export const vocabApi = {
   books: () => get<{ books: VocabBook[] }>('/api/vocab/books'),
   bookWords: (bookId: number, limit = 100, offset = 0) =>
     get<{ total: number; words: VocabWord[] }>(`/api/vocab/books/${bookId}/words?limit=${limit}&offset=${offset}`),
-  start: (input: { bookId: number; mode: VocabMode; newLimit?: number; reviewLimit?: number }) =>
+  start: (input: { bookId: number; mode: VocabMode; source?: VocabSource; newLimit?: number; reviewLimit?: number }) =>
     post<StartSessionResult>('/api/vocab/practice/sessions', input),
   answer: (sessionId: number, input: AnswerInput) =>
     post<{ item: VocabProgress }>(`/api/vocab/practice/sessions/${sessionId}/answers`, input),
@@ -118,5 +124,6 @@ export const vocabApi = {
   collect: () => get<{ words: QueueItem[] }>('/api/vocab/review/collect'),
   updateProgress: (wordId: number, patch: { status?: 'learning' | 'mastered'; collected?: boolean; dismissWrong?: boolean }) =>
     put<{ item: VocabProgress }>(`/api/vocab/progress/${wordId}`, patch),
-  stats: () => get<VocabStats>('/api/vocab/stats'),
+  /** tzOffset：本地相对 UTC 的分钟差（东区为正），后端按本地零点算“今日” */
+  stats: () => get<VocabStats>(`/api/vocab/stats?tzOffset=${-new Date().getTimezoneOffset()}`),
 }

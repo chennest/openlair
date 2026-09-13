@@ -42,6 +42,7 @@ async def start_practice_session(
             mode=payload.mode,
             new_limit=payload.newLimit,
             review_limit=payload.reviewLimit,
+            source=payload.source,
         )
     )
 
@@ -103,5 +104,9 @@ async def update_vocab_progress(
 
 
 @vocabulary_router.get("/stats")
-async def vocab_stats(request: Request, user: User = Depends(get_current_user)) -> dict:
-    return ok_response(request.app.state.vocab_service.stats(user.id))
+async def vocab_stats(
+    request: Request,
+    tzOffset: int = Query(default=0, ge=-840, le=840),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.vocab_service.stats(user.id, tz_offset=tzOffset))
