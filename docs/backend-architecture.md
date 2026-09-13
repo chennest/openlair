@@ -76,7 +76,7 @@ HTTP 请求
 - **密钥来源**：`OPENLAIR_JWT_SECRET`（进程环境 → `backend/.env` → 开发默认值），HS256 要求 ≥ 32 字节；生产必须显式配置。
 - 鉴权依赖 `get_current_user`（api/v1/deps.py）执行：验签 → 过期检查 → 黑名单检查 → 用户存在性检查，任一失败统一 401。
 
-## 数据模型（16 张表，models/）
+## 数据模型（23 张表，models/）
 
 | 表 | 说明 |
 |---|---|
@@ -96,6 +96,13 @@ HTTP 请求
 | `assistant_sessions` | AI 助手会话（每用户单持久线程）：title、summary（压缩检查点）、summary_through_id |
 | `assistant_messages` | AI 助手消息（transcript）：role(user/assistant)、type(text/confirm_request/tool_result)、content、meta |
 | `assistant_plans` | AI 记账计划执行日志：plan_id、args、status(pending/executed/cancelled/failed) |
+| `days` | 倒数日 / 纪念日：title、emoji、date、repeat(once/yearly/monthly)、pinned |
+| `vocab_books` | 词书（全局共享）：slug（唯一）、name、lang、word_count、sort；全量数据由 `app/scripts/import_vocab.py` 从 ECDICT 导入 |
+| `vocab_words` | 单词（全局去重，word 唯一）：音标、translations/sentences/phrases/synos/rel_words（JSON）、freq 词频 |
+| `vocab_book_words` | 词书↔单词多对多：book_id + word_id（唯一），sort 词书内顺序 |
+| `vocab_word_progress` | 学习进度（FSRS 卡片，每用户每词一条）：status(learning/mastered)、collected、wrong/right_count、wrong_active（错词本）、due（排课索引）+ FSRS 平铺字段 stability/difficulty/state/step/last_review |
+| `vocab_practice_sessions` | 练习会话：book_id、mode(follow/dictation/self_test/spell)、total/correct/wrong_count、duration_sec、finished_at |
+| `vocab_practice_logs` | 练习明细（只插入）：session_id、word_id、is_correct、wrong_times、duration_ms |
 
 ## API 端点清单（全部挂 `/api`；除 `/api/auth/register|login` 外均需凭证，`Bearer` 与 `X-API-Key` 等价）
 
@@ -153,6 +160,22 @@ HTTP 请求
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | / | 首页总览：流水/待办/日程/习惯聚合数据 |
+
+### /api/vocab（词汇打字练习）
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | /books | 词书列表（附每本我的进度 learning/mastered/due） |
+| GET | /books/{book_id}/words?limit=&offset= | 词书单词分批拉取（带 total） |
+| POST | /practice/sessions | 开课+智能排课 `{bookId, mode, newLimit?, reviewLimit?}` → `{id, queue:[{word..., progress?}]}`；复习池 = due≤now 且 learning（按 due 升序），新词池 = 词书内无进度词 |
+| POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课） |
+| POST | /practice/sessions/{id}/finish | 结束会话 `{durationSec}`，落 finished_at |
+| GET | /review/wrong | 错词本（wrong_active 且 learning） |
+| GET | /review/collect | 收藏列表 |
+| PUT | /progress/{word_id} | 标记 `{status?/collected?/dismissWrong?}`；未学过的词也可直接标记（自动建进度行） |
+| GET | /stats | 今日 + 累计统计（由 sessions/progress 聚合，无日表） |
+
+- **FSRS 调度**：进度按 (user, word) 全局唯一（跨词书不重复学），book_id 只记首次来源；FSRS 字段平铺进 `vocab_word_progress`（排课需 `WHERE due <= now` 索引）；SQLite 读回的 datetime 无 tzinfo，服务层统一按 UTC 归一化。
+- **词库数据**：词书/单词为全局共享表，不走启动 seed（seed 仅注入一本 8 词演示词书）；正式词库用 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4` 从 ECDICT（MIT）导入，例句留空待后续数据源补充。
 
 ### /api/assistant · /api/transcribe
 | 方法 | 路径 | 说明 |

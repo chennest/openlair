@@ -185,3 +185,29 @@ class AssistantChatInput(BaseModel):
 class AssistantConfirmInput(BaseModel):
     planId: str = Field(min_length=1)
     approved: bool
+
+
+# ---------- vocab（词汇打字练习） ----------
+
+class StartSessionInput(BaseModel):
+    bookId: int
+    mode: str = "follow"  # follow 跟打 / dictation 听写 / self_test 自测 / spell 默写
+    newLimit: int | None = Field(default=None, ge=0, le=100)
+    reviewLimit: int | None = Field(default=None, ge=1, le=100)
+
+
+class SubmitAnswerInput(BaseModel):
+    wordId: int
+    correct: bool
+    wrongTimes: int = Field(default=0, ge=0, le=100)
+    durationMs: int = Field(default=0, ge=0)
+
+
+class FinishSessionInput(BaseModel):
+    durationSec: int = Field(default=0, ge=0)
+
+
+class UpdateVocabProgressInput(BaseModel):
+    status: str | None = None  # learning / mastered
+    collected: bool | None = None
+    dismissWrong: bool | None = None  # true=移出错词本

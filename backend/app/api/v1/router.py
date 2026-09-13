@@ -16,6 +16,7 @@ from app.api.v1.endpoints.modules import (
     todo_router,
 )
 from app.api.v1.endpoints.snap import router as snap_router
+from app.api.v1.endpoints.vocab import vocabulary_router
 
 v1_router = APIRouter(prefix="/api")
 v1_router.include_router(auth_router)
@@ -30,3 +31,4 @@ v1_router.include_router(notes_router)
 v1_router.include_router(habits_router)
 v1_router.include_router(days_router)
 v1_router.include_router(overview_router)
+v1_router.include_router(vocabulary_router)

@@ -19,6 +19,7 @@ from app.repositories.settings import SettingRepository
 from app.repositories.todo import TodoRepository
 from app.repositories.tokens import TokenRepository
 from app.repositories.users import UserRepository
+from app.repositories.vocab import VocabRepository
 from app.seed import seed
 from app.services.api_keys import ApiKeyService
 from app.services.assistant.loop.pydantic_ai import PydanticAIEngine
@@ -37,6 +38,7 @@ from app.services.modules import (
     OverviewService,
     TodoService,
 )
+from app.services.vocab import VocabService
 
 # 数据库连接串：环境变量 → 项目 .env → 默认 SQLite（见 .env.example）
 DEFAULT_DATABASE_URL = get_settings().database_url
@@ -77,6 +79,7 @@ def create_app(
     habit_repo = HabitRepository(session_factory)
     day_repo = DayRepository(session_factory)
     setting_repo = SettingRepository(session_factory)
+    vocab_repo = VocabRepository(session_factory)
     app.state.setting_repo = setting_repo
 
     # ---------- 服务（业务逻辑层） ----------
@@ -89,6 +92,7 @@ def create_app(
     app.state.note_service = NoteService(note_repo)
     app.state.habit_service = HabitService(habit_repo)
     app.state.day_service = DayService(day_repo)
+    app.state.vocab_service = VocabService(vocab_repo)
     app.state.overview_service = OverviewService(
         ledger=ledger_repo, todo=todo_repo, events=event_repo, habits=habit_repo, books=book_repo
     )

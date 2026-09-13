@@ -14,6 +14,7 @@ from app.models.setting import Setting
 from app.models.todo import TodoItem
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.vocab import VocabBook, VocabBookWord, VocabPracticeLog, VocabPracticeSession, VocabWord, VocabWordProgress
 
 __all__ = [
     "ApiKey",
@@ -33,4 +34,10 @@ __all__ = [
     "TodoItem",
     "Transaction",
     "User",
+    "VocabBook",
+    "VocabBookWord",
+    "VocabPracticeLog",
+    "VocabPracticeSession",
+    "VocabWord",
+    "VocabWordProgress",
 ]

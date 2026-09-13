@@ -25,6 +25,7 @@ from app.models.note import Note
 from app.models.todo import TodoItem
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.vocab import VocabBook, VocabBookWord, VocabWord
 
 QUADRANTS = ["重要紧急", "重要不紧急", "紧急不重要", "不重要不紧急"]
 NOTES_POOL = ["午饭", "地铁", "买书", "房租", "工资", "聚餐", "打车", "日用品", "电影票", "水电费"]
@@ -36,6 +37,34 @@ HABIT_NAMES = ["早起打卡", "背单词", "跑步 3km", "阅读 30 分钟", "�
 SENTENCES = [
     "推进周报整理", "预约下周会议", "整理报销发票", "完成季度复盘", "更新学习计划",
     "排查线上告警", "审阅合同条款", "参加技术分享", "优化部署脚本", "补充接口文档",
+]
+
+# 词汇演示词书：(word, 英音, 美音, 释义, 例句)——全量词库用 scripts/import_vocab.py 导入
+VOCAB_DEMO_WORDS = [
+    ("cancel", "ˈkænsl", "ˈkænsl",
+     [{"pos": "v.", "cn": "取消；撤销"}, {"pos": "n.", "cn": "取消，撤销"}],
+     [{"en": "The customer called to cancel the order.", "cn": "顾客打电话来取消了订单。"}]),
+    ("abandon", "əˈbændən", "əˈbændən",
+     [{"pos": "v.", "cn": "放弃；抛弃"}, {"pos": "n.", "cn": "放纵，放任"}],
+     [{"en": "They had to abandon the plan.", "cn": "他们不得不放弃这个计划。"}]),
+    ("achieve", "əˈtʃiːv", "əˈtʃiːv",
+     [{"pos": "v.", "cn": "实现；达到；获得"}],
+     [{"en": "She achieved her goal ahead of time.", "cn": "她提前实现了目标。"}]),
+    ("benefit", "ˈbenɪfɪt", "ˈbenɪfɪt",
+     [{"pos": "n.", "cn": "好处；利益"}, {"pos": "v.", "cn": "有益于；受益"}],
+     [{"en": "Exercise brings great benefit to health.", "cn": "锻炼对健康大有好处。"}]),
+    ("capture", "ˈkæptʃə(r)", "ˈkæptʃər",
+     [{"pos": "v.", "cn": "捕获；夺取；记录"}, {"pos": "n.", "cn": "捕获；战利品"}],
+     [{"en": "The camera captured the moment.", "cn": "相机捕捉到了这一刻。"}]),
+    ("decline", "dɪˈklaɪn", "dɪˈklaɪn",
+     [{"pos": "v.", "cn": "下降；谢绝"}, {"pos": "n.", "cn": "下降；衰退"}],
+     [{"en": "Sales began to decline last year.", "cn": "去年销售额开始下降。"}]),
+    ("estimate", "ˈestɪmeɪt", "ˈestɪmeɪt",
+     [{"pos": "v.", "cn": "估计；估算"}, {"pos": "n.", "cn": "估计；估算值"}],
+     [{"en": "I estimate the trip will take two hours.", "cn": "我估计这次行程要两个小时。"}]),
+    ("maintain", "meɪnˈteɪn", "meɪnˈteɪn",
+     [{"pos": "v.", "cn": "维持；保养；坚持认为"}],
+     [{"en": "It is important to maintain a balance.", "cn": "保持平衡很重要。"}]),
 ]
 
 
@@ -210,5 +239,39 @@ def seed(session: Session) -> None:
                 updated_at=now,
             )
         )
+
+    # ---------- 词汇演示词书（全局共享；正式词库用 scripts/import_vocab.py 导入） ----------
+    session.add(
+        VocabBook(
+            id=1,
+            slug="demo",
+            name="演示词书",
+            lang="en",
+            emoji="📖",
+            description="内置演示词汇，正式词库用导入脚本添加",
+            word_count=len(VOCAB_DEMO_WORDS),
+            sort=0,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    for i, (word, uk, us, trans, sents) in enumerate(VOCAB_DEMO_WORDS):
+        session.add(
+            VocabWord(
+                id=i + 1,
+                word=word,
+                phonetic_uk=uk,
+                phonetic_us=us,
+                translations=trans,
+                sentences=sents,
+                phrases=[],
+                synos=[],
+                rel_words={},
+                freq=0,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(VocabBookWord(book_id=1, word_id=i + 1, sort=i, created_at=now))
 
     session.commit()
