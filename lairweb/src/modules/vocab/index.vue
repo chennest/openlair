@@ -193,6 +193,12 @@ onMounted(load)
           @open="onOpenBook"
           @delete="onDeleteBook"
         />
+        <!-- 词书不满一行时补一张导入卡：既填掉右侧留白，也是自然的入口 -->
+        <button v-if="books.length < 3" type="button" class="import-tile" @click="openImport">
+          <Plus class="size-5" />
+          <span class="import-title">导入词书</span>
+          <span class="import-sub">Anki / ECDICT / 纯文本</span>
+        </button>
       </div>
       <div v-else class="placeholder empty"><div><p>还没有词书，点右上角「导入词书」添加</p></div></div>
     </template>
@@ -269,9 +275,46 @@ onMounted(load)
 
 .card-wall {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  /* min() 兜底：窄屏（容器 < 320px）时塌成单列铺满，不溢出 */
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  align-items: start;
   gap: 18px;
   margin-top: 18px;
+}
+
+/* 导入占位卡：虚线框，与词书卡同尺寸，把词书不满一行的留白收口 */
+.import-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 182px;
+  padding: 20px;
+  border: 1px dashed var(--faint);
+  border-radius: var(--r-card);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: border-color 0.25s var(--ease-out-quart), background 0.25s var(--ease-out-quart),
+    color 0.25s var(--ease-out-quart);
+}
+.import-tile:hover {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.04);
+  color: var(--accent);
+}
+.import-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.import-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.import-sub {
+  font-size: 0.78rem;
+  color: var(--text-4);
 }
 
 .list-panel {

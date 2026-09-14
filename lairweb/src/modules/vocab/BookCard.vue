@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 词书卡片：进度条 + 待复习徽标 + 四模式入口；用户级词书带「我的」徽标和删除入口
+// 词书卡片：标题 + 语言词量 / 进度 / 四模式入口；用户级词书带「我的」徽标和删除入口
 // 点整卡进词书详情页（模式按钮与删除按钮阻止冒泡，保持原行为）
 import { computed } from 'vue'
 import { Trash2 } from '@lucide/vue'
@@ -15,6 +15,19 @@ const emit = defineEmits<{
   delete: [bookId: number]
   open: [bookId: number]
 }>()
+
+/** 语言代码 → 中文名；未收录的语种直接显示原值 */
+const LANG_LABEL: Record<string, string> = {
+  en: '英语',
+  zh: '中文',
+  ja: '日语',
+  ko: '韩语',
+  fr: '法语',
+  de: '德语',
+  es: '西班牙语',
+  ru: '俄语',
+}
+const langLabel = computed(() => LANG_LABEL[props.book.lang] ?? props.book.lang)
 
 const learned = computed(() => props.book.learning + props.book.mastered)
 const percent = computed(() => (props.book.wordCount ? Math.round((learned.value / props.book.wordCount) * 100) : 0))
@@ -38,15 +51,15 @@ function onDelete() {
     <div class="book-head">
       <span class="book-emoji">{{ book.emoji || '📖' }}</span>
       <div class="book-title">
-        <h3>{{ book.name }}</h3>
-        <p class="book-desc">{{ book.description || `${book.wordCount} 个单词` }}</p>
+        <h3 :title="book.description || undefined">{{ book.name }}</h3>
+        <p class="book-meta">{{ langLabel }} · {{ book.wordCount }} 词</p>
       </div>
       <Badge v-if="book.ownerId !== null" variant="ghost" :class="tone('blue')">我的</Badge>
       <Button
         v-if="canDelete"
         variant="ghost"
         size="icon-sm"
-        class="ml-auto text-[var(--text-3)] hover:bg-transparent hover:text-[var(--destructive)]"
+        class="text-[var(--text-3)] hover:bg-transparent hover:text-[var(--destructive)]"
         aria-label="删除词书"
         @click.stop="onDelete"
       >
@@ -55,14 +68,15 @@ function onDelete() {
     </div>
 
     <div class="book-progress">
-      <Progress :model-value="percent" class="bg-[var(--track)]" aria-label="词书学习进度" />
       <div class="progress-nums">
         <span>已学 <b>{{ learned }}</b> / {{ book.wordCount }}</span>
         <span v-if="book.due" class="due-badge">待复习 {{ book.due }}</span>
+        <span v-else>{{ percent }}%</span>
       </div>
+      <Progress :model-value="percent" class="bg-[var(--track)]" aria-label="词书学习进度" />
     </div>
 
-    <!-- 四模式入口：轨道用 minmax(0,1fr) 允许收缩，按钮 min-w-0 + 紧凑内边距，
+    <!-- 四模式入口：轨道用 minmax(0,1fr) 允许收缩，按钮 min-w-0，
          否则 4 个按钮的 min-content 之和会顶破卡片右边界 -->
     <div class="mode-row">
       <Button
@@ -70,7 +84,7 @@ function onDelete() {
         :key="m.value"
         variant="outline"
         size="sm"
-        class="min-w-0 rounded-full px-1 text-[var(--text-2)]"
+        class="min-w-0 rounded-full px-2 text-[var(--text-2)]"
         @click.stop="emit('practice', m.value)"
       >
         {{ m.label }}
@@ -88,7 +102,7 @@ function onDelete() {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   cursor: pointer;
   transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
 }
@@ -111,17 +125,20 @@ function onDelete() {
   line-height: 1;
 }
 .book-title {
+  flex: 1;
   min-width: 0;
 }
 .book-title h3 {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
-.book-desc {
+.book-meta {
   margin: 3px 0 0;
   color: var(--text-3);
   font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -136,6 +153,7 @@ function onDelete() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: 0.78rem;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -152,5 +170,7 @@ function onDelete() {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 13px;
 }
 </style>
