@@ -2,7 +2,7 @@
 // 词书卡片：进度条 + 待复习徽标 + 四模式入口；用户级词书带「我的」徽标和删除入口
 // 点整卡进词书详情页（模式按钮与删除按钮阻止冒泡，保持原行为）
 import { computed } from 'vue'
-import { BookOpen, Trash2 } from '@lucide/vue'
+import { Trash2 } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -62,16 +62,17 @@ function onDelete() {
       </div>
     </div>
 
+    <!-- 四模式入口：轨道用 minmax(0,1fr) 允许收缩，按钮 min-w-0 + 紧凑内边距，
+         否则 4 个按钮的 min-content 之和会顶破卡片右边界 -->
     <div class="mode-row">
       <Button
         v-for="m in VOCAB_MODES"
         :key="m.value"
         variant="outline"
         size="sm"
-        class="w-full rounded-full text-[var(--text-2)]"
+        class="min-w-0 rounded-full px-1 text-[var(--text-2)]"
         @click.stop="emit('practice', m.value)"
       >
-        <BookOpen class="size-3.5" />
         {{ m.label }}
       </Button>
     </div>
@@ -80,6 +81,7 @@ function onDelete() {
 
 <style scoped>
 .book-card {
+  min-width: 0;
   background: var(--surface);
   border-radius: var(--r-card);
   box-shadow: var(--sh-card);
@@ -148,7 +150,7 @@ function onDelete() {
 
 .mode-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 </style>
