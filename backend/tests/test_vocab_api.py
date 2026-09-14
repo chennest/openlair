@@ -713,6 +713,50 @@ def test_explicit_new_limit_overrides_daily_goal(tmp_path) -> None:
     assert len(forced["queue"]) == 5
 
 
+def test_explicit_over_goal_reports_empty_book_not_goal_reached(tmp_path) -> None:
+    """显式加码却练不出词时，真因是「这本书没新词了」，不能误报成「今日目标已完成」。
+
+    前端按这两类文案分流：含「已完成」→ 完成态 + 「继续学习」按钮（点了能加码）；
+    含「暂无可练习」→ 「暂时没有可练的词」且只能返回。报文串了就会给出按了没用的按钮。
+    """
+    client = make_client(tmp_path)
+    headers = register(client, "goal8@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 1, "reviewTarget": 1}, headers=headers)
+
+    # 答一个词就占满新词目标
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": session["queue"][0]["id"], "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["remaining"] == 0
+
+    # 把这本书剩下的词全标成已记住 → 新词池清空（任何进度行都会把词移出新词池）
+    words = client.get(f"/api/vocab/books/{BOOK_ID}/words?limit=200", headers=headers).json()["data"]["words"]
+    for w in words:
+        if w["progress"] is None:
+            client.put(f"/api/vocab/progress/{w['id']}", json={"status": "mastered"}, headers=headers)
+
+    # 不显式要数量：此时确实是目标封顶所致，报「已完成」
+    blocked = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()
+    assert blocked["code"] == 400, blocked
+    assert "已完成" in blocked["message"]
+
+    # 显式加码：目标不该再当借口，要说清是这本书没词了
+    empty = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": BOOK_ID, "mode": "follow", "newLimit": 5},
+        headers=headers,
+    ).json()
+    assert empty["code"] == 400, empty
+    assert "暂无可练习" in empty["message"], empty
+
+
 def test_collect_only_progress_does_not_count_as_learned(tmp_path) -> None:
     """只收藏（没做过题）不该计入「今日已记」；真正作答后才计入。"""
     client = make_client(tmp_path)

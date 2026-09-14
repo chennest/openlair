@@ -190,7 +190,11 @@ HTTP 请求
   - 常量：`STREAK_FAMILIAR=3` / `STREAK_UNFAMILIAR=5`（`services/vocab.py`）。参考实现为 `zyronon/TypeWords`（Nuxt + ts-fsrs）——**它的「掌握」不是算出来的**，而是用户显式点「认识/不认识/已掌握」把词加进全局忽略集；评分则由**本会话累计错次**推导（0→Easy / ≤3→Good / ≤6→Hard / >6→Again）。我们只借用「显式判断 + 连续答对」这一确定性更强的思路。
 - **词书详情**：单词行带 `progress`（本人进度，跨词书共享——同一词在不同词书里是同一份状态）与 `practice`（模式覆盖 `{follow, dictation, selfTest, spell, totalCount, lastAt}`）。模式覆盖由 `vocab_practice_logs` 按 (word_id, mode) 聚合，口径是**全局**的（不按词书/来源过滤：错词本与收藏练习的 `session.book_id` 记为 0，按词书过滤反而会漏）。
 - **词书导入**：页面可导入 ECDICT CSV、简单文本（`word` / `word,释义` / `word<TAB>释义`）和 Anki 的 **Notes in Plain Text** 文本导出（支持 `#separator`、`#deck`、`#html`，首列为单词、第二列为释义，`<br>` 拆为多条释义）。`.apkg` 二进制牌组暂不支持；需要先在 Anki 中导出为文本。大规模完整 ECDICT 仍建议运行 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4`。词条按小写拼写全局去重，已有释义不会被导入覆盖。
-- **每日背词目标**：目标按用户存在 `vocab_daily_goals`，`start_session`（source=book）不传配额时用「各自目标 − 今日已完成量」当新词/复习配额，于是「每天记 N 个、复习 M 个」自动生效、达标后该类不再发放（另一类照常）。两侧都达标而队列仍空时返回 400「今日新词与复习目标均已完成」；只有新词达标时返回「今日新词目标已完成，暂无到期复习」。**错词本与收藏复习是纠错通道，刻意不受每日目标限制。**「今日已记」只看 `vocab_word_progress.first_learned_at`（由 `submit_answer` 首次作答时落），只收藏/只标已掌握不计数；若该词此前只被收藏过、这次真的作答了，会在本次补上首学时间。「今日复习」则要求 `last_review >= 今日零点` 且首次学习更早（今天才学的词当天再练不算「复习」）。「今日」边界一律用 `_day_start(now, tz_offset)` 按客户端本地零点折算（否则 UTC+8 用户早上 8 点前练的词会算进「昨天」）。
+- **每日背词目标**：目标按用户存在 `vocab_daily_goals`，`start_session`（source=book）不传配额时用「各自目标 − 今日已完成量」当新词/复习配额，于是「每天记 N 个、复习 M 个」自动生效、达标后该类不再发放（另一类照常）。**错词本与收藏复习是纠错通道，刻意不受每日目标限制。**「今日已记」只看 `vocab_word_progress.first_learned_at`（由 `submit_answer` 首次作答时落），只收藏/只标已掌握不计数；若该词此前只被收藏过、这次真的作答了，会在本次补上首学时间。「今日复习」则要求 `last_review >= 今日零点` 且首次学习更早（今天才学的词当天再练不算「复习」）。「今日」边界一律用 `_day_start(now, tz_offset)` 按客户端本地零点折算（否则 UTC+8 用户早上 8 点前练的词会算进「昨天」）。
+- **达标不是硬上限（「继续学习」通道）**：每日目标是**默认配额**，不是天花板。`start_session` 里 `new_limit` 显式传值时直接优先于目标剩余量 —— 这条通道本就留给「今天想多学一轮」。前端「继续学习 / 再来一组」按此走：练习页带上 `newLimit = 今日新词目标数`（一组）重开。**空队列的两套文案据此分流**（`explicit_new = new_limit is not None`）：
+  - 没显式要数量 + 剩余为 0 → `今日新词与复习目标均已完成` / `今日新词目标已完成，暂无到期复习`（前端判为「达标了，可以加码继续」）；
+  - 显式加码却仍为空 → `暂无可练习的单词（到期复习与新词均为空）`（真因是这本书没新词了，不能再拿目标当借口；前端判为「没得练，只能等明天」）。
+  ⚠ 这组文案是前后端的分流契约，`test_vocab_api.py::test_explicit_over_goal_reports_empty_book_not_goal_reached` 钉住，改动要同步 `practice.vue` 的判断。
 
 ### /api/assistant · /api/transcribe
 | 方法 | 路径 | 说明 |
@@ -227,7 +231,7 @@ HTTP 请求
 - `test_business_api.py`（23 项）：全链路业务测试——注册/登录/登出、账本创建与成员、邀请码生成/重置/关闭、邀请码加入/退出、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
 - `test_assistant.py`（23 项）：AI 助手多轮/压缩/计划确认/取消/转写。
 - `test_security.py`（3 项）：JWT 密钥解析优先级（环境变量 > .env > 默认）与 `.env.example` 键完整性。
-- `test_vocab_api.py`（34 项）：词汇模块契约——排课（含每日目标配额）/ 错次映射 Rating / FSRS 调度 / **连续答对掌握判定**（首次识词判断定档 3 或 5 次 / 答错清零 / 未达标 due 压到本地次日零点 / 只收藏过的词首次作答才定档 / 手动取消记住清 streak）/ 生词与收藏 / 详情页筛选排序 / 统计口径 / 每日背词目标（缺省与改值 / 越界 400 / 双配额封顶 / 达标拦截 / 显式配额覆盖 / 按用户隔离）。同样每项独立临时 SQLite。
+- `test_vocab_api.py`（35 项）：词汇模块契约——排课（含每日目标配额 / **显式加码越过目标且区分「达标」与「没词了」两种空队列文案**）/ 错次映射 Rating / FSRS 调度 / **连续答对掌握判定**（首次识词判断定档 3 或 5 次 / 答错清零 / 未达标 due 压到本地次日零点 / 只收藏过的词首次作答才定档 / 手动取消记住清 streak）/ 生词与收藏 / 详情页筛选排序 / 统计口径 / 每日背词目标（缺省与改值 / 越界 400 / 双配额封顶 / 达标拦截 / 显式配额覆盖 / 按用户隔离）。同样每项独立临时 SQLite。
 - 手工验收：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001` 后按契约调 `/api/auth/login` 等端点核对信封格式。
 
 ## 演进约束

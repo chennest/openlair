@@ -99,6 +99,26 @@ function onPractice(mode: VocabMode, bookId: number) {
   void router.push(`/vocab/practice/${bookId}?mode=${mode}`)
 }
 
+/** 今日任务入口的目标词书：优先挑有待复习的词书（最该练的那本），否则第一本 */
+const todayBook = computed(() => books.value.find((b) => b.due > 0) ?? books.value[0] ?? null)
+
+/** 今日任务是否全部完成（新词 + 复习两侧）—— 决定入口是「开始学习」还是加码「继续学习」 */
+const todayDone = computed(() => !!goal.value?.achieved && !!goal.value?.reviewAchieved)
+
+/**
+ * 今日任务入口：未达标就按「每日目标剩余量」开课（后端默认行为）；已达标则显式加码一组
+ * （extra=1，练习页会把 newLimit 设成今日新词目标数）。后端 start_session 里
+ * 「显式 newLimit 优先于目标剩余量」这条通道本就是留给「今天想多学一轮」的，这里只是把它接出来。
+ */
+function startToday() {
+  const book = todayBook.value
+  if (!book) {
+    openImport()
+    return
+  }
+  void router.push(`/vocab/practice/${book.id}?mode=follow${todayDone.value ? '&extra=1' : ''}`)
+}
+
 function onOpenBook(bookId: number) {
   void router.push(`/vocab/book/${bookId}`)
 }
@@ -172,13 +192,15 @@ onMounted(load)
       </Button>
     </div>
 
-    <!-- 每日背词目标：今日已记 / 目标，可就地改目标 -->
+    <!-- 每日背词目标：今日已记 / 目标，可就地改目标；卡底是今日任务入口（未完成「开始学习」/ 达标「继续学习」） -->
     <DailyGoalCard
       v-if="goal"
       :goal="goal"
       :saving="goalSaving"
       :error="goalError"
+      :can-start="books.length > 0"
       @save="onSaveGoal"
+      @start="startToday"
     />
 
     <!-- Tab：词书 / 错词本 / 收藏 -->

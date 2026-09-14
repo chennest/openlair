@@ -203,6 +203,9 @@ class VocabService:
         remaining_review: int | None = None
         if source == "book":
             remaining_new, remaining_review = self._remaining_quota(user_id, now, tz_offset)
+        # 调用方显式要了数量 = 「今天想多学一轮」：此时空队列不该再甩「目标已完成」的锅，
+        # 真因只可能是这个词书没词可发了（下方 not queue 分支据此换文案）。
+        explicit_new = new_limit is not None
 
         if new_limit is None:
             new_limit = remaining_new if remaining_new is not None else 0
@@ -243,7 +246,10 @@ class VocabService:
                     queue.append(self._queue_item(w, None))
             book_name = book.name
         if not queue:
-            if source == "book":
+            # 只有「没显式要数量」时，空队列才是每日目标封顶所致。
+            # 显式加码（explicit_new）却仍为空 → 是这本书真没新词了，走下面的通用文案，
+            # 让前端能区分「达标了，可以继续加码」与「没得练了，只能等明天」。
+            if source == "book" and not explicit_new:
                 if remaining_new == 0 and remaining_review == 0:
                     raise ApiError(400, "今日新词与复习目标均已完成")
                 if remaining_new == 0:

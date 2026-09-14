@@ -610,6 +610,8 @@ export default {
         let remainingReview: number | null = null
         if (source === 'book') [remainingNew, remainingReview] = remainingQuota(userId, tzOffset)
 
+        // 调用方显式要了数量 = 「今天想多学一轮」：空队列不该再甩「目标已完成」的锅
+        const explicitNew = body.newLimit !== undefined && body.newLimit !== null
         const rawNewLimit = body.newLimit ?? remainingNew ?? 0
         const newLimit = Math.min(100, Math.max(0, Number(rawNewLimit)))
         const rawReviewLimit = body.reviewLimit ?? remainingReview ?? DEFAULT_REVIEW_LIMIT
@@ -651,7 +653,8 @@ export default {
           }
         }
         if (!queue.length) {
-          if (source === 'book') {
+          // 只有「没显式要数量」时，空队列才是每日目标封顶所致；显式加码仍为空 → 这本书真没词了
+          if (source === 'book' && !explicitNew) {
             if (remainingNew === 0 && remainingReview === 0) return err(400, '今日新词与复习目标均已完成')
             if (remainingNew === 0) return err(400, '今日新词目标已完成，暂无到期复习')
           }

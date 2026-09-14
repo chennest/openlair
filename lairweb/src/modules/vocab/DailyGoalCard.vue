@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 每日背词目标卡：新词 / 复习两条并列进度（今日已做 N / 目标）+ 各自达标态，
-// 「修改目标」就地弹窗改两个数字。
+// 「修改目标」就地弹窗改两个数字；卡底是**今日任务入口**（动态文案，见下）。
+//
 // 数字口径：新词看进度表首学时间（今日新学的词），复习看今日回顾且首次学习更早的老词 ——
 // 都是「词数」不是「作答次数」，同一个词一节课里答多次只算 1 个。
 import { computed, ref, watch } from 'vue'
-import { Check, Pencil, Target } from '@lucide/vue'
+import { Check, Pencil, Play, Target } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,10 +16,13 @@ const props = defineProps<{
   goal: VocabDailyGoal
   saving: boolean
   error: string
+  /** 有没有可练的词书：没有就不摆入口（去词书墙的导入卡更合适） */
+  canStart: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'save', patch: { newTarget?: number; reviewTarget?: number }): void
+  (e: 'start'): void
 }>()
 
 const open = ref(false)
@@ -32,6 +36,18 @@ function pct(done: number, target: number): number {
 
 const newPct = computed(() => pct(props.goal.todayNew, props.goal.newTarget))
 const reviewPct = computed(() => pct(props.goal.todayReviewed, props.goal.reviewTarget))
+
+/** 今日任务是否全部完成（新词 + 复习两侧都达标）—— 入口文案与语义的唯一判据 */
+const allDone = computed(() => props.goal.achieved && props.goal.reviewAchieved)
+
+/** 未完成时列出还差什么；已完成时说明「还能接着学」 */
+const footHint = computed(() => {
+  if (allDone.value) return '今日任务已完成 · 想多学就接着来，不嫌多'
+  const parts: string[] = []
+  if (!props.goal.achieved) parts.push(`新词还差 ${props.goal.remaining} 个`)
+  if (!props.goal.reviewAchieved) parts.push(`复习还差 ${props.goal.reviewRemaining} 个`)
+  return parts.join(' · ')
+})
 
 function openEdit() {
   draftNew.value = String(props.goal.newTarget)
@@ -136,6 +152,16 @@ watch(
       </div>
     </div>
 
+    <!-- 今日任务入口：未完成 → 开始学习（今日任务）；已达标 → 继续学习。
+         不达标与达标都给出口，永不留「只剩一句完成提示」的死胡同。 -->
+    <div v-if="canStart" class="goal-foot">
+      <Button class="goal-cta rounded-full px-5 shadow-[var(--sh-cta)]" @click="emit('start')">
+        <Play v-if="!allDone" class="size-4" aria-hidden="true" />
+        {{ allDone ? '继续学习' : '开始学习（今日任务）' }}
+      </Button>
+      <span class="goal-cta-hint">{{ footHint }}</span>
+    </div>
+
     <BaseModal v-if="open" title="修改每日目标" @close="open = false">
       <form class="goal-form" @submit.prevent="submit">
         <div class="field">
@@ -147,7 +173,8 @@ watch(
           <Input id="goal-review" v-model="draftReview" type="number" min="1" max="100" step="1" inputmode="numeric" />
         </div>
         <p class="hint">
-          取值 1–100。两类都是「每日累计」：达标后该类别不再发放，另一类照常；错词本与收藏复习不受此限制。
+          取值 1–100。目标是默认配额、不是上限：达标后默认不再发放该类别，但可以用卡片的「继续学习」按组加码；
+          错词本与收藏复习不受此限制。
         </p>
 
         <p v-if="error" class="error">{{ error }}</p>
@@ -263,6 +290,35 @@ watch(
   margin: 7px 0 0;
   color: var(--text-3);
   font-size: 0.76rem;
+}
+
+/* 今日任务入口：与上方两条进度用 hairline 分段（信息区 / 操作区分离） */
+.goal-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+.goal-cta {
+  flex: none;
+}
+.goal-cta-hint {
+  color: var(--text-3);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 680px) {
+  .goal-foot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .goal-cta-hint {
+    text-align: center;
+  }
 }
 
 .goal-form {

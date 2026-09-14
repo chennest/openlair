@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 练习结束页：正确率 + 用时 + 每词下次复习时间，可再来一轮或返回词书
+// 练习结束页：正确率 + 用时 + 每词下次复习时间。
+// 主按钮随今日目标状态切换：未达标 → 「再来一轮」（仍按剩余配额）；已达标 → 「继续学习」（加码越过目标）。
 import { computed } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
@@ -11,8 +12,10 @@ const props = defineProps<{
   summary: VocabSessionSummary
   /** 每个练过的词与下次复习时间 */
   words: Array<{ word: string; due: string | null; correct: boolean }>
+  /** 今日任务是否已全部达标：决定主按钮文案与语义 */
+  goalDone: boolean
 }>()
-const emit = defineEmits<{ restart: []; back: [] }>()
+const emit = defineEmits<{ restart: []; continue: []; back: [] }>()
 
 const modeLabel = computed(() => VOCAB_MODES.find((m) => m.value === props.summary.mode)?.label ?? props.summary.mode)
 const accuracy = computed(() =>
@@ -42,7 +45,10 @@ function dueText(due: string | null): string {
 <template>
   <div class="result">
     <div class="result-card">
-      <p class="result-title">{{ modeLabel }}完成 🎉</p>
+      <div class="result-head">
+        <p class="result-title">{{ modeLabel }}完成 🎉</p>
+        <p v-if="goalDone" class="result-done">今日任务已完成 · 想多学就继续，不嫌多</p>
+      </div>
       <StatStrip bare :items="statItems" />
 
       <ul v-if="words.length" class="word-list">
@@ -53,7 +59,12 @@ function dueText(due: string | null): string {
       </ul>
 
       <div class="result-actions">
-        <Button class="rounded-full px-6 shadow-[var(--sh-cta)]" @click="emit('restart')">
+        <Button
+          v-if="goalDone"
+          class="rounded-full px-6 shadow-[var(--sh-cta)]"
+          @click="emit('continue')"
+        >继续学习</Button>
+        <Button v-else class="rounded-full px-6 shadow-[var(--sh-cta)]" @click="emit('restart')">
           <RotateCcw class="size-4" />
           再来一轮
         </Button>
@@ -84,6 +95,18 @@ function dueText(due: string | null): string {
   text-align: center;
   font-size: 1.2rem;
   font-weight: 700;
+}
+.result-head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.result-done {
+  margin: 0;
+  text-align: center;
+  color: var(--live);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .word-list {
