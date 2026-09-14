@@ -1,11 +1,16 @@
 <script setup lang="ts">
 // 词书卡片：进度条 + 待复习徽标 + 四模式入口；用户级词书带「我的」徽标和删除入口
+// 点整卡进词书详情页（模式按钮与删除按钮阻止冒泡，保持原行为）
 import { computed } from 'vue'
 import { BookOpen, Trash2 } from '@lucide/vue'
 import { VOCAB_MODES, type VocabBook, type VocabMode } from './api'
 
 const props = defineProps<{ book: VocabBook; canDelete: boolean }>()
-const emit = defineEmits<{ practice: [mode: VocabMode]; delete: [bookId: number] }>()
+const emit = defineEmits<{
+  practice: [mode: VocabMode]
+  delete: [bookId: number]
+  open: [bookId: number]
+}>()
 
 const learned = computed(() => props.book.learning + props.book.mastered)
 const percent = computed(() => (props.book.wordCount ? Math.round((learned.value / props.book.wordCount) * 100) : 0))
@@ -18,7 +23,14 @@ function onDelete() {
 </script>
 
 <template>
-  <div class="book-card">
+  <div
+    class="book-card"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看词书 ${book.name}`"
+    @click="emit('open', book.id)"
+    @keydown.enter="emit('open', book.id)"
+  >
     <div class="book-head">
       <span class="book-emoji">{{ book.emoji || '📖' }}</span>
       <div class="book-title">
@@ -33,7 +45,7 @@ function onDelete() {
         class="del-btn"
         type="button"
         aria-label="删除词书"
-        @click="onDelete"
+        @click.stop="onDelete"
       >
         <Trash2 class="size-4" />
       </button>
@@ -50,7 +62,13 @@ function onDelete() {
     </div>
 
     <div class="mode-row">
-      <button v-for="m in VOCAB_MODES" :key="m.value" class="mode-btn" type="button" @click="emit('practice', m.value)">
+      <button
+        v-for="m in VOCAB_MODES"
+        :key="m.value"
+        class="mode-btn"
+        type="button"
+        @click.stop="emit('practice', m.value)"
+      >
         <BookOpen class="size-3.5" />
         {{ m.label }}
       </button>
@@ -67,11 +85,16 @@ function onDelete() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  cursor: pointer;
   transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
 }
 .book-card:hover {
   transform: translateY(-3px);
   box-shadow: var(--sh-lift);
+}
+.book-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .book-head {

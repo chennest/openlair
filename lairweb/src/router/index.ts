@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/habits', name: 'habits', component: () => import('../modules/habits/index.vue'), meta: { title: '习惯' } },
     { path: '/days', name: 'days', component: () => import('../modules/days/index.vue'), meta: { title: '倒数日' } },
     { path: '/vocab', name: 'vocab', component: () => import('../modules/vocab/index.vue'), meta: { title: '词汇练习' } },
+    { path: '/vocab/book/:id', name: 'vocabBook', component: () => import('../modules/vocab/book.vue'), meta: { title: '词书详情' } },
     { path: '/vocab/practice/:bookId', name: 'vocabPractice', component: () => import('../modules/vocab/practice.vue'), meta: { title: '练习中' } },
     { path: '/assistant', name: 'assistant', component: () => import('../modules/assistant/index.vue'), meta: { title: 'AI 助手' } },
     { path: '/api-keys', name: 'apiKeys', component: () => import('../modules/apiKey/index.vue'), meta: { title: 'API Keys' } },

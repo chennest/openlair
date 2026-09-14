@@ -167,7 +167,8 @@ HTTP 请求
 | GET | /books | 可见词书列表（系统级 + 本人私有），附每本我的进度 learning/mastered/due |
 | POST | /books/import | 文本导入词书 `{name?, scope: user/system, lang?, text}`；用户级仅导入者可见，系统级所有人可见且仅首位用户可导入 |
 | DELETE | /books/{book_id} | 删除本人私有词书；系统级仅首位用户可删。仅删除词书与映射，保留全局词条和学习进度 |
-| GET | /books/{book_id}/words?limit=&offset= | 可见词书的单词分批拉取（带 total） |
+| GET | /books/{book_id}/words?limit=&offset=&status=&keyword=&sort= | 可见词书的单词分批拉取（详情页用）→ `{total(筛选后), totalAll(词书总词数), words:[{word..., progress?, practice}]}`。status：all/unlearned/learning/mastered/wrong/collected；keyword 按拼写模糊搜；sort：order(词书顺序)/freq/wrong(错次最多)/recent(最近练习过)。非法值回退默认 |
+| GET | /books/{book_id}/summary | 词书详情页头部汇总 → `{book, total, learned, learning, mastered, due, wrong, collected, unlearned}`（未学 = 总词数 − 已学；按词书成员资格归桶） |
 | POST | /practice/sessions | 开课+智能排课 `{bookId, mode, source?, newLimit?, reviewLimit?}` → `{id, bookId, bookName, source, mode, queue:[{word..., progress?}]}`；source=book（默认）复习池 = due≤now 且 learning（按 due 升序）+ 新词池；source=wrong/collect 直接练错词本/收藏（bookId 忽略，session.book_id=0） |
 | POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课） |
 | POST | /practice/sessions/{id}/finish | 结束会话 `{durationSec}`，落 finished_at |
@@ -177,6 +178,7 @@ HTTP 请求
 | GET | /stats | 今日 + 累计统计（`tzOffset` 为本地相对 UTC 分钟差，按客户端本地零点算“今日”；由 sessions/progress 聚合，无日表） |
 
 - **FSRS 调度**：进度按 (user, word) 全局唯一（跨词书不重复学），book_id 只记首次来源；FSRS 字段平铺进 `vocab_word_progress`（排课需 `WHERE due <= now` 索引）；SQLite 读回的 datetime 无 tzinfo，服务层统一按 UTC 归一化。
+- **词书详情**：单词行带 `progress`（本人进度，跨词书共享——同一词在不同词书里是同一份状态）与 `practice`（模式覆盖 `{follow, dictation, selfTest, spell, totalCount, lastAt}`）。模式覆盖由 `vocab_practice_logs` 按 (word_id, mode) 聚合，口径是**全局**的（不按词书/来源过滤：错词本与收藏练习的 `session.book_id` 记为 0，按词书过滤反而会漏）。
 - **词书导入**：页面可导入 ECDICT CSV、简单文本（`word` / `word,释义` / `word<TAB>释义`）和 Anki 的 **Notes in Plain Text** 文本导出（支持 `#separator`、`#deck`、`#html`，首列为单词、第二列为释义，`<br>` 拆为多条释义）。`.apkg` 二进制牌组暂不支持；需要先在 Anki 中导出为文本。大规模完整 ECDICT 仍建议运行 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4`。词条按小写拼写全局去重，已有释义不会被导入覆盖。
 
 ### /api/assistant · /api/transcribe

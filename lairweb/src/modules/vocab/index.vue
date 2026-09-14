@@ -62,6 +62,10 @@ function onPractice(mode: VocabMode, bookId: number) {
   void router.push(`/vocab/practice/${bookId}?mode=${mode}`)
 }
 
+function onOpenBook(bookId: number) {
+  void router.push(`/vocab/book/${bookId}`)
+}
+
 function practiceSource(source: 'wrong' | 'collect') {
   void router.push(`/vocab/practice/0?mode=follow&source=${source}`)
 }
@@ -186,6 +190,7 @@ onMounted(load)
         :book="b"
         :can-delete="b.ownerId === currentUserId || (b.ownerId === null && currentUserId === 1)"
         @practice="(m) => onPractice(m, b.id)"
+        @open="onOpenBook"
         @delete="onDeleteBook"
       />
       <div v-if="!books.length" class="placeholder empty"><div><p>还没有词书，点右上角「导入词书」添加</p></div></div>

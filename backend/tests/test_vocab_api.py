@@ -436,3 +436,109 @@ def test_vocab_requires_auth(tmp_path) -> None:
     r = client.get("/api/vocab/books")
     assert r.status_code == 401
     assert r.json()["code"] == 401
+
+
+# ---------- 词书详情（汇总 / 筛选 / 搜索 / 排序 / 模式覆盖） ----------
+
+def test_book_detail_summary_filters_and_practice_coverage(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "vocab20@openlair.dev")
+
+    # 初始汇总：8 个词全未学
+    s = client.get(f"/api/vocab/books/{BOOK_ID}/summary", headers=headers).json()["data"]
+    assert s["total"] == 8 and s["unlearned"] == 8
+    assert s["learned"] == 0 and s["wrong"] == 0 and s["collected"] == 0
+    assert s["book"]["slug"] == "demo"
+
+    # 未学筛选 = 全部；每词带 progress(null) 与 practice(全 0)
+    data = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"status": "unlearned", "limit": 50}, headers=headers
+    ).json()["data"]
+    assert data["total"] == 8 and data["totalAll"] == 8
+    assert data["words"][0]["progress"] is None
+    assert data["words"][0]["practice"] == {
+        "follow": 0,
+        "dictation": 0,
+        "selfTest": 0,
+        "spell": 0,
+        "totalCount": 0,
+        "lastAt": None,
+    }
+
+    # 跟打一轮：第一个词一次全对，第二个词错 2 次
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    session_id = session["id"]
+    w1, w2 = session["queue"][0]["id"], session["queue"][1]["id"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session_id}/answers",
+        json={"wordId": w1, "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+    client.post(
+        f"/api/vocab/practice/sessions/{session_id}/answers",
+        json={"wordId": w2, "correct": False, "wrongTimes": 2},
+        headers=headers,
+    )
+
+    # 听写一轮：练一个新词，验证「被听写过」这一维度
+    dictation = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "dictation"}, headers=headers
+    ).json()["data"]
+    w3 = dictation["queue"][0]["id"]
+    client.post(
+        f"/api/vocab/practice/sessions/{dictation['id']}/answers",
+        json={"wordId": w3, "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+
+    # 状态筛选：学习中 3 个、错词 1 个（错词能看到错次）
+    learning = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"status": "learning", "limit": 50}, headers=headers
+    ).json()["data"]
+    assert learning["total"] == 3
+    wrong = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"status": "wrong", "limit": 50}, headers=headers
+    ).json()["data"]
+    assert wrong["total"] == 1 and wrong["words"][0]["id"] == w2
+    assert wrong["words"][0]["progress"]["wrongCount"] == 2
+
+    # 关键词搜索（大小写不敏感）
+    hit = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"keyword": "CAN"}, headers=headers
+    ).json()["data"]
+    assert hit["total"] == 1 and hit["words"][0]["word"] == "cancel"
+
+    # 排序：错次最多的排最前
+    sorted_rows = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"sort": "wrong", "limit": 3}, headers=headers
+    ).json()["data"]
+    assert sorted_rows["words"][0]["id"] == w2
+
+    # 模式覆盖：w1 跟打过 1 次、w3 听写过 1 次
+    rows = client.get(f"/api/vocab/books/{BOOK_ID}/words", params={"limit": 50}, headers=headers).json()["data"]["words"]
+    by_id = {w["id"]: w for w in rows}
+    assert by_id[w1]["practice"]["follow"] == 1 and by_id[w1]["practice"]["totalCount"] == 1
+    assert by_id[w1]["practice"]["lastAt"] is not None
+    assert by_id[w2]["practice"]["follow"] == 1
+    assert by_id[w3]["practice"]["dictation"] == 1 and by_id[w3]["practice"]["follow"] == 0
+
+    # 汇总同步更新：已学 3、未学 5
+    s2 = client.get(f"/api/vocab/books/{BOOK_ID}/summary", headers=headers).json()["data"]
+    assert s2["learned"] == 3 and s2["learning"] == 3 and s2["wrong"] == 1 and s2["unlearned"] == 5
+
+    # 收藏后可被 collected 筛选命中
+    client.put(f"/api/vocab/progress/{w1}", json={"collected": True}, headers=headers)
+    collected = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"status": "collected", "limit": 50}, headers=headers
+    ).json()["data"]
+    assert collected["total"] == 1 and collected["words"][0]["id"] == w1
+    s3 = client.get(f"/api/vocab/books/{BOOK_ID}/summary", headers=headers).json()["data"]
+    assert s3["collected"] == 1
+
+    # 非法筛选/排序值回退默认，不报错
+    fallback = client.get(
+        f"/api/vocab/books/{BOOK_ID}/words", params={"status": "bogus", "sort": "bogus"}, headers=headers
+    ).json()["data"]
+    assert fallback["total"] == 8

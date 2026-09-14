@@ -86,6 +86,48 @@ export interface QueueItem extends VocabWord {
   progress: VocabProgress | null
 }
 
+/** 练习模式覆盖：该词在四种模式里各被练过多少次（全局口径，不区分词书/来源） */
+export interface VocabPracticeStat {
+  follow: number
+  dictation: number
+  selfTest: number
+  spell: number
+  totalCount: number
+  lastAt: string | null
+}
+
+/** 词书详情页单词：词条 + 本人进度 + 练习模式覆盖 */
+export interface BookWordItem extends VocabWord {
+  progress: VocabProgress | null
+  practice: VocabPracticeStat
+}
+
+/** 详情页状态筛选 */
+export type VocabWordFilter = 'all' | 'unlearned' | 'learning' | 'mastered' | 'wrong' | 'collected'
+
+/** 详情页排序：order 词书顺序 / freq 词频 / wrong 错次最多 / recent 最近练习过 */
+export type VocabWordSort = 'order' | 'freq' | 'wrong' | 'recent'
+
+export interface BookWordsResult {
+  /** 当前筛选条件下的条数 */
+  total: number
+  /** 词书总词数 */
+  totalAll: number
+  words: BookWordItem[]
+}
+
+export interface BookSummary {
+  book: VocabBook
+  total: number
+  learned: number
+  learning: number
+  mastered: number
+  due: number
+  wrong: number
+  collected: number
+  unlearned: number
+}
+
 /** 练习来源：book 词书排课 / wrong 错词本 / collect 收藏复习 */
 export type VocabSource = 'book' | 'wrong' | 'collect'
 
@@ -129,8 +171,21 @@ export const vocabApi = {
   importBooks: (input: { name?: string; scope: VocabImportScope; lang?: string; text: string }) =>
     post<ImportBooksResult>('/api/vocab/books/import', input),
   deleteBook: (bookId: number) => del<{ ok: boolean }>(`/api/vocab/books/${bookId}`),
-  bookWords: (bookId: number, limit = 100, offset = 0) =>
-    get<{ total: number; words: VocabWord[] }>(`/api/vocab/books/${bookId}/words?limit=${limit}&offset=${offset}`),
+  /** 词书内单词分页（详情页用）：带进度与模式覆盖，支持状态筛选 / 关键词 / 排序 */
+  bookWords: (
+    bookId: number,
+    limit = 100,
+    offset = 0,
+    filter: { status?: VocabWordFilter; keyword?: string; sort?: VocabWordSort } = {},
+  ) => {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (filter.status && filter.status !== 'all') qs.set('status', filter.status)
+    if (filter.keyword) qs.set('keyword', filter.keyword)
+    if (filter.sort) qs.set('sort', filter.sort)
+    return get<BookWordsResult>(`/api/vocab/books/${bookId}/words?${qs.toString()}`)
+  },
+  /** 词书详情页头部汇总（词书信息 + 各状态计数） */
+  bookSummary: (bookId: number) => get<BookSummary>(`/api/vocab/books/${bookId}/summary`),
   start: (input: { bookId: number; mode: VocabMode; source?: VocabSource; newLimit?: number; reviewLimit?: number }) =>
     post<StartSessionResult>('/api/vocab/practice/sessions', input),
   answer: (sessionId: number, input: AnswerInput) =>

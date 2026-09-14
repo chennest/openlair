@@ -162,6 +162,51 @@ class VocabRepository:
                 for book_id, learning, mastered, due in session.execute(stmt)
             }
 
+    def book_summary_counts(self, user_id: int, book_id: int, now: datetime) -> dict[str, int]:
+        """词书维度汇总（按词书成员资格归桶）：总词数 / 已学 / 学习中 / 已掌握 / 到期 / 错词 / 收藏。
+
+        与 book_progress_stats 的区别：这里额外给出「未学」（无进度行）与「错词/收藏」口径，
+        供词书详情页头部一次拿全，避免前端自己求差。
+        """
+        with self._session_factory() as session:
+            stmt = (
+                select(
+                    func.count(VocabBookWord.id),
+                    func.sum(case((VocabWordProgress.id.is_not(None), 1), else_=0)),
+                    func.sum(case((VocabWordProgress.status == "learning", 1), else_=0)),
+                    func.sum(case((VocabWordProgress.status == "mastered", 1), else_=0)),
+                    func.sum(
+                        case(
+                            (
+                                (VocabWordProgress.status == "learning")
+                                & VocabWordProgress.due.is_not(None)
+                                & (VocabWordProgress.due <= now),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    func.sum(case((VocabWordProgress.wrong_active.is_(True), 1), else_=0)),
+                    func.sum(case((VocabWordProgress.collected.is_(True), 1), else_=0)),
+                )
+                .select_from(VocabBookWord)
+                .outerjoin(
+                    VocabWordProgress,
+                    (VocabWordProgress.word_id == VocabBookWord.word_id) & (VocabWordProgress.user_id == user_id),
+                )
+                .where(VocabBookWord.book_id == book_id)
+            )
+            total, learned, learning, mastered, due, wrong, collected = session.execute(stmt).one()
+        return {
+            "total": int(total or 0),
+            "learned": int(learned or 0),
+            "learning": int(learning or 0),
+            "mastered": int(mastered or 0),
+            "due": int(due or 0),
+            "wrong": int(wrong or 0),
+            "collected": int(collected or 0),
+        }
+
     # ---------- 单词（全局共享） ----------
 
     def get_word(self, word_id: int) -> VocabWord | None:
@@ -179,6 +224,68 @@ class VocabRepository:
                 .offset(offset)
             )
             return list(session.scalars(stmt))
+
+    def _book_words_query(self, book_id: int, user_id: int, status: str, keyword: str):
+        """词书内单词查询骨架：左连接本人进度 + 可选状态/关键词条件（分页与计数共用）。"""
+        conds = [VocabBookWord.book_id == book_id]
+        if keyword:
+            conds.append(func.lower(VocabWord.word).like(f"%{keyword.lower()}%"))
+        if status == "unlearned":
+            conds.append(VocabWordProgress.id.is_(None))
+        elif status == "learning":
+            conds.append(VocabWordProgress.status == "learning")
+        elif status == "mastered":
+            conds.append(VocabWordProgress.status == "mastered")
+        elif status == "wrong":
+            conds.append(VocabWordProgress.wrong_active.is_(True))
+        elif status == "collected":
+            conds.append(VocabWordProgress.collected.is_(True))
+        return (
+            select(VocabWord)
+            .join(VocabBookWord, VocabBookWord.word_id == VocabWord.id)
+            .outerjoin(
+                VocabWordProgress,
+                (VocabWordProgress.word_id == VocabWord.id) & (VocabWordProgress.user_id == user_id),
+            )
+            .where(*conds)
+        )
+
+    def list_book_words_page(
+        self,
+        book_id: int,
+        user_id: int,
+        *,
+        status: str = "all",
+        keyword: str = "",
+        sort: str = "order",
+        limit: int,
+        offset: int,
+    ) -> tuple[list[VocabWord], int]:
+        """词书内单词分页查询，返回 (当前页词条, 筛选后总数)。
+
+        排序：order 词书顺序 / freq 词频 / wrong 错次最多 / recent 最近练习过。
+        """
+        base = self._book_words_query(book_id, user_id, status, keyword)
+        if sort == "freq":
+            ordered = base.order_by(VocabWord.freq.desc(), VocabBookWord.sort, VocabWord.id)
+        elif sort == "wrong":
+            ordered = base.order_by(
+                func.coalesce(VocabWordProgress.wrong_count, 0).desc(), VocabBookWord.sort, VocabWord.id
+            )
+        elif sort == "recent":
+            # last_review 为 NULL（从未练过）的排最后：先按 IS NULL 升序，再按时间倒序
+            ordered = base.order_by(
+                VocabWordProgress.last_review.is_(None),
+                VocabWordProgress.last_review.desc(),
+                VocabBookWord.sort,
+                VocabWord.id,
+            )
+        else:
+            ordered = base.order_by(VocabBookWord.sort, VocabWord.id)
+        with self._session_factory() as session:
+            total = session.scalar(select(func.count()).select_from(base.subquery()))
+            rows = list(session.scalars(ordered.limit(limit).offset(offset)))
+        return rows, int(total or 0)
 
     def list_new_words(self, book_id: int, user_id: int, *, limit: int) -> list[VocabWord]:
         """词书内该用户尚无进度记录的词（新词池），按词书顺序取。"""
@@ -216,6 +323,21 @@ class VocabRepository:
         with self._session_factory() as session:
             stmt = select(VocabWordProgress).where(VocabWordProgress.user_id == user_id)
             return list(session.scalars(stmt))
+
+    def list_progress_by_word_ids(self, user_id: int, word_ids: list[int]) -> dict[int, VocabWordProgress]:
+        """按单词 id 批量取本人进度（词书详情列表用），返回 {word_id: progress}。"""
+        if not word_ids:
+            return {}
+        out: dict[int, VocabWordProgress] = {}
+        with self._session_factory() as session:
+            for i in range(0, len(word_ids), 500):
+                chunk = word_ids[i : i + 500]
+                stmt = select(VocabWordProgress).where(
+                    VocabWordProgress.user_id == user_id, VocabWordProgress.word_id.in_(chunk)
+                )
+                for p in session.scalars(stmt):
+                    out[p.word_id] = p
+        return out
 
     def list_due_progress(self, user_id: int, now: datetime, *, limit: int) -> list[VocabWordProgress]:
         """到期复习池：due <= now 且未标记已掌握，按 due 升序。"""
@@ -329,3 +451,39 @@ class VocabRepository:
             session.commit()
             session.refresh(item)
             return item
+
+    def practice_mode_stats(self, user_id: int, word_ids: list[int]) -> dict[int, dict]:
+        """按 (word_id, mode) 聚合练习明细，返回 {word_id: {follow, dictation, self_test, spell, totalCount, lastAt}}。
+
+        「这个字有没有被听写过」这类覆盖情况只能从明细表推（进度表不区分模式）。
+        口径是全局的：不按词书或练习来源过滤——进度本身就是 (user, word) 全局唯一，
+        且错词本/收藏练习的 session.book_id 记为 0，按词书过滤反而会漏。
+        """
+        if not word_ids:
+            return {}
+        out: dict[int, dict] = {}
+        with self._session_factory() as session:
+            for i in range(0, len(word_ids), 500):
+                chunk = word_ids[i : i + 500]
+                stmt = (
+                    select(
+                        VocabPracticeLog.word_id,
+                        VocabPracticeLog.mode,
+                        func.count(VocabPracticeLog.id),
+                        func.max(VocabPracticeLog.created_at),
+                    )
+                    .where(VocabPracticeLog.user_id == user_id, VocabPracticeLog.word_id.in_(chunk))
+                    .group_by(VocabPracticeLog.word_id, VocabPracticeLog.mode)
+                )
+                for word_id, mode, count, last_at in session.execute(stmt):
+                    row = out.setdefault(
+                        word_id,
+                        {"follow": 0, "dictation": 0, "self_test": 0, "spell": 0, "totalCount": 0, "lastAt": None},
+                    )
+                    hits = int(count or 0)
+                    if mode in ("follow", "dictation", "self_test", "spell"):
+                        row[mode] = hits
+                    row["totalCount"] += hits
+                    if last_at is not None and (row["lastAt"] is None or last_at > row["lastAt"]):
+                        row["lastAt"] = last_at
+        return out

@@ -139,6 +139,26 @@ function getProgress(userId: number, wordId: number): VocabProgressRow | undefin
   return store.vocabProgress.find((p) => p.userId === userId && p.wordId === wordId)
 }
 
+// ---------- 词书详情（分页筛选 + 模式覆盖 + 汇总，与后端同构） ----------
+
+const STATUS_FILTERS = ['all', 'unlearned', 'learning', 'mastered', 'wrong', 'collected']
+const WORD_SORTS = ['order', 'freq', 'wrong', 'recent']
+
+/** 模式覆盖：按 (word, mode) 聚合练习明细（全局口径，不区分词书/来源） */
+function practiceStat(userId: number, wordId: number) {
+  const out = { follow: 0, dictation: 0, selfTest: 0, spell: 0, totalCount: 0, lastAt: null as string | null }
+  for (const log of store.vocabLogs) {
+    if (log.userId !== userId || log.wordId !== wordId) continue
+    out.totalCount += 1
+    if (log.mode === 'follow') out.follow += 1
+    else if (log.mode === 'dictation') out.dictation += 1
+    else if (log.mode === 'self_test') out.selfTest += 1
+    else if (log.mode === 'spell') out.spell += 1
+    if (!out.lastAt || String(log.createdAt) > out.lastAt) out.lastAt = log.createdAt
+  }
+  return out
+}
+
 // ---------- 导入解析（与后端 services/vocab_import.py 同构，简化版） ----------
 
 const WORD_RE = /[a-z]/
@@ -399,7 +419,7 @@ export default {
     ),
   }),
 
-  // 词书单词分页（他人用户级词书按不存在处理）
+  // 词书单词分页（他人用户级词书按不存在处理）：带进度 + 模式覆盖，支持状态筛选 / 关键词 / 排序
   bookWords: defineMock({
     url: '/api/vocab/books/:bookId/words',
     method: 'GET',
@@ -411,12 +431,78 @@ export default {
         if (!book || !(book.ownerId === null || book.ownerId === userId)) return err(404, '词书不存在')
         const limit = Math.min(500, Math.max(1, Number(req.query?.limit) || 100))
         const offset = Math.max(0, Number(req.query?.offset) || 0)
-        const ordered = store.vocabBookWords
+        const rawStatus = String(req.query?.status ?? 'all')
+        const rawSort = String(req.query?.sort ?? 'order')
+        const status = STATUS_FILTERS.includes(rawStatus) ? rawStatus : 'all'
+        const sort = WORD_SORTS.includes(rawSort) ? rawSort : 'order'
+        const keyword = String(req.query?.keyword ?? '').trim().toLowerCase().slice(0, 50)
+
+        const progressOf = new Map(
+          store.vocabProgress.filter((p) => p.userId === userId).map((p) => [p.wordId, p]),
+        )
+        let rows = store.vocabBookWords
           .filter((bw) => bw.bookId === bookId)
           .sort((a, b) => a.sort - b.sort)
-          .map((bw) => store.vocabWords.find((w) => w.id === bw.wordId))
-          .filter((w): w is VocabWordItem => !!w)
-        return ok({ total: book.wordCount, words: ordered.slice(offset, offset + limit).map(wordDto) })
+          .flatMap((bw) => {
+            const w = store.vocabWords.find((x) => x.id === bw.wordId)
+            return w ? [{ sort: bw.sort, w, p: progressOf.get(w.id) ?? null }] : []
+          })
+
+        if (keyword) rows = rows.filter((r) => r.w.word.toLowerCase().includes(keyword))
+        if (status === 'unlearned') rows = rows.filter((r) => !r.p)
+        else if (status === 'learning') rows = rows.filter((r) => r.p?.status === 'learning')
+        else if (status === 'mastered') rows = rows.filter((r) => r.p?.status === 'mastered')
+        else if (status === 'wrong') rows = rows.filter((r) => r.p?.wrongActive)
+        else if (status === 'collected') rows = rows.filter((r) => r.p?.collected)
+
+        const total = rows.length
+        if (sort === 'freq') rows.sort((a, b) => b.w.freq - a.w.freq || a.sort - b.sort)
+        else if (sort === 'wrong') {
+          rows.sort((a, b) => (b.p?.wrongCount ?? 0) - (a.p?.wrongCount ?? 0) || a.sort - b.sort)
+        } else if (sort === 'recent') {
+          rows.sort((a, b) => {
+            if (!a.p?.lastReview && !b.p?.lastReview) return a.sort - b.sort
+            if (!a.p?.lastReview) return 1
+            if (!b.p?.lastReview) return -1
+            return String(b.p.lastReview).localeCompare(String(a.p.lastReview))
+          })
+        }
+
+        return ok({
+          total,
+          totalAll: book.wordCount,
+          words: rows
+            .slice(offset, offset + limit)
+            .map((r) => ({ ...wordDto(r.w), progress: progressDto(r.p), practice: practiceStat(userId, r.w.id) })),
+        })
+      }),
+    ),
+  }),
+
+  // 词书详情汇总：词书信息 + 各状态计数（未学 = 总词数 - 已学）
+  bookSummary: defineMock({
+    url: '/api/vocab/books/:bookId/summary',
+    method: 'GET',
+    response: respond(
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
+        const book = store.vocabBooks.find((b) => b.id === Number(req.params?.bookId))
+        if (!book || !(book.ownerId === null || book.ownerId === userId)) return err(404, '词书不存在')
+        const stats = bookStats(userId)[book.id] ?? { learning: 0, mastered: 0, due: 0 }
+        const wordIds = store.vocabBookWords.filter((bw) => bw.bookId === book.id).map((bw) => bw.wordId)
+        const learnedSet = new Set(wordIds)
+        const rows = store.vocabProgress.filter((p) => p.userId === userId && learnedSet.has(p.wordId))
+        return ok({
+          book: { ...bookDto(book), learning: stats.learning, mastered: stats.mastered, due: stats.due },
+          total: wordIds.length,
+          learned: rows.length,
+          learning: stats.learning,
+          mastered: stats.mastered,
+          due: stats.due,
+          wrong: rows.filter((p) => p.wrongActive).length,
+          collected: rows.filter((p) => p.collected).length,
+          unlearned: Math.max(0, wordIds.length - rows.length),
+        })
       }),
     ),
   }),

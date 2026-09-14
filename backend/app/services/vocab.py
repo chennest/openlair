@@ -22,6 +22,8 @@ MODES = ("follow", "dictation", "self_test", "spell")
 SOURCES = ("book", "wrong", "collect")  # book 词书排课 / wrong 错词本 / collect 收藏
 SCOPES = ("system", "user")  # 导入级别：system 系统级（仅站长）/ user 用户级
 STATUSES = ("learning", "mastered")
+STATUS_FILTERS = ("all", "unlearned", "learning", "mastered", "wrong", "collected")  # 详情页状态筛选
+WORD_SORTS = ("order", "freq", "wrong", "recent")  # 详情页排序：词书顺序 / 词频 / 错次 / 最近练习
 
 DEFAULT_NEW_LIMIT = 10  # 每次练习的新词配额
 DEFAULT_REVIEW_LIMIT = 30  # 每次练习的到期复习配额
@@ -97,16 +99,69 @@ class VocabService:
         self._repo.delete_book(book_id)
         return {"ok": True}
 
-    # ---------- 词书单词 ----------
+    # ---------- 词书单词（详情页） ----------
 
-    def list_book_words(self, book_id: int, limit: int, offset: int, user_id: int | None = None) -> dict:
+    def list_book_words(
+        self,
+        book_id: int,
+        limit: int,
+        offset: int,
+        user_id: int | None = None,
+        status: str = "all",
+        keyword: str = "",
+        sort: str = "order",
+    ) -> dict:
+        """词书内单词列表：每词带本人进度与练习模式覆盖，支持状态筛选 / 关键词 / 排序。
+
+        进度按 (user, word) 全局唯一，跨词书共享——同一词在多本词书里看到的是同一份状态。
+        total 是当前筛选条件下的条数，totalAll 是词书总词数。
+        """
         book = self._repo.get_book(book_id)
         if book is None or (user_id is not None and not self._visible(book, user_id)):
             raise ApiError(404, "词书不存在")
         limit = max(1, min(limit, 500))
         offset = max(0, offset)
-        words = self._repo.list_words_by_book(book_id, limit=limit, offset=offset)
-        return {"total": book.word_count, "words": [self._word_dto(w) for w in words]}
+        if status not in STATUS_FILTERS:
+            status = "all"
+        if sort not in WORD_SORTS:
+            sort = "order"
+        keyword = (keyword or "").strip()[:50]
+        words, total = self._repo.list_book_words_page(
+            book_id, user_id or 0, status=status, keyword=keyword, sort=sort, limit=limit, offset=offset
+        )
+        word_ids = [w.id for w in words]
+        progress_map = self._repo.list_progress_by_word_ids(user_id, word_ids) if user_id else {}
+        mode_stats = self._repo.practice_mode_stats(user_id, word_ids) if user_id else {}
+        items: list[dict] = []
+        for w in words:
+            item = self._word_dto(w)
+            item["progress"] = self._progress_dto(progress_map.get(w.id))
+            item["practice"] = self._practice_dto(mode_stats.get(w.id))
+            items.append(item)
+        return {"total": total, "totalAll": book.word_count, "words": items}
+
+    def book_summary(self, *, book_id: int, user_id: int) -> dict:
+        """词书详情页头部汇总：词书信息 + 各状态计数（未学 = 总词数 - 已学）。"""
+        book = self._repo.get_book(book_id)
+        if book is None or not self._visible(book, user_id):
+            raise ApiError(404, "词书不存在")
+        counts = self._repo.book_summary_counts(user_id, book_id, self._utcnow())
+        dto = self._book_dto(
+            book,
+            {book.id: counts["total"]},
+            {book.id: {"learning": counts["learning"], "mastered": counts["mastered"], "due": counts["due"]}},
+        )
+        return {
+            "book": dto,
+            "total": counts["total"],
+            "learned": counts["learned"],
+            "learning": counts["learning"],
+            "mastered": counts["mastered"],
+            "due": counts["due"],
+            "wrong": counts["wrong"],
+            "collected": counts["collected"],
+            "unlearned": max(0, counts["total"] - counts["learned"]),
+        }
 
     # ---------- 练习会话 ----------
 
@@ -371,6 +426,19 @@ class VocabService:
             "stability": p.stability,
             "difficulty": p.difficulty,
             "updatedAt": iso_z(self._as_utc(p.updated_at)),
+        }
+
+    def _practice_dto(self, stat: dict | None) -> dict:
+        """练习模式覆盖 DTO：各模式的练习次数 + 累计次数 + 最近一次（无记录时全 0 / null）。"""
+        s = stat or {}
+        last_at = self._as_utc(s.get("lastAt"))
+        return {
+            "follow": int(s.get("follow", 0)),
+            "dictation": int(s.get("dictation", 0)),
+            "selfTest": int(s.get("self_test", 0)),
+            "spell": int(s.get("spell", 0)),
+            "totalCount": int(s.get("totalCount", 0)),
+            "lastAt": iso_z(last_at) if last_at else None,
         }
 
     def _queue_item(self, word: VocabWord, progress: VocabWordProgress | None) -> dict:

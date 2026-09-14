@@ -49,11 +49,29 @@ async def list_book_words(
     book_id: int,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    status: str = Query(default="all", description="all/unlearned/learning/mastered/wrong/collected"),
+    keyword: str = Query(default="", max_length=50, description="按拼写模糊搜索"),
+    sort: str = Query(default="order", description="order/freq/wrong/recent"),
     user: User = Depends(get_current_user),
 ) -> dict:
     return ok_response(
-        request.app.state.vocab_service.list_book_words(book_id, limit=limit, offset=offset, user_id=user.id)
+        request.app.state.vocab_service.list_book_words(
+            book_id,
+            limit=limit,
+            offset=offset,
+            user_id=user.id,
+            status=status,
+            keyword=keyword,
+            sort=sort,
+        )
     )
+
+
+@vocabulary_router.get("/books/{book_id}/summary")
+async def vocab_book_summary(
+    request: Request, book_id: int, user: User = Depends(get_current_user)
+) -> dict:
+    return ok_response(request.app.state.vocab_service.book_summary(book_id=book_id, user_id=user.id))
 
 
 @vocabulary_router.post("/practice/sessions")
