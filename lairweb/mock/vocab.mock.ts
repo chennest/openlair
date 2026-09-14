@@ -33,6 +33,10 @@ function progressDto(p: VocabProgressRow | null) {
     wrongCount: p.wrongCount,
     rightCount: p.rightCount,
     wrongActive: p.wrongActive,
+    // 掌握口径：连续答对次数（答对 +1 / 答错清零），与后端 _progress_dto 同契约
+    correctStreak: p.correctStreak,
+    requiredStreak: p.requiredStreak,
+    identifyResult: p.identifyResult,
     due: p.due ?? null,
     lastReview: p.lastReview ?? null,
     lastWrongAt: p.lastWrongAt ?? null,
@@ -78,6 +82,14 @@ function schedule(p: VocabProgressRow | null, correct: boolean, wrongTimes: numb
     lastReview: nowISO(),
   }
 }
+
+// ---------- 掌握判定：连续答对次数（与后端 STREAK_FAMILIAR / STREAK_UNFAMILIAR 同值） ----------
+//
+// 掌握与否不看 FSRS 的 stability —— 若看它，一次全对就被排到 2 天后、再对一次到 11 天，
+// 「再连对 N 次」根本没机会发生，体感就是「答对一次 = 已掌握」。
+// 改成显式连续答对计数：首次识词判断对 → 需再连对 2 次（合计 3）；判断错 / 点「不认识」→ 连对 5 次。
+const STREAK_FAMILIAR = 3
+const STREAK_UNFAMILIAR = 5
 
 // ---------- 排课（与后端 VocabService.start_session 同构） ----------
 
@@ -675,13 +687,20 @@ export default {
         const session = store.vocabSessions.find((s) => s.id === Number(req.params?.sessionId))
         if (!session || session.userId !== userId) return err(404, '练习会话不存在')
         if (session.finishedAt) return err(400, '会话已结束')
-        const body = (req.body ?? {}) as { wordId?: number; correct?: boolean; wrongTimes?: number; durationMs?: number }
+        const body = (req.body ?? {}) as {
+          wordId?: number
+          correct?: boolean
+          wrongTimes?: number
+          durationMs?: number
+          tzOffset?: number
+        }
         const word = store.vocabWords.find((w) => w.id === Number(body.wordId))
         if (!word) return err(404, '单词不存在')
 
         const correct = Boolean(body.correct)
         const wrongTimes = correct ? Math.max(0, Number(body.wrongTimes) || 0) : Math.max(1, Number(body.wrongTimes) || 0)
         const passed = correct && wrongTimes === 0
+        const tzOffset = clampTz(body.tzOffset)
         const now = nowISO()
 
         let progress = getProgress(userId, word.id)
@@ -696,6 +715,9 @@ export default {
             wrongCount: 0,
             rightCount: 0,
             wrongActive: false,
+            correctStreak: 0,
+            requiredStreak: 0,
+            identifyResult: '',
             state: 0,
             createdAt: now,
             updatedAt: now,
@@ -705,10 +727,26 @@ export default {
         // 首次真正作答即「记住这个词」的时点（与后端 submit_answer 同构）；
         // 只收藏/标过已掌握的空进度行在这里补上首学时间，已有值不覆盖。
         const firstLearn = progress.firstLearnedAt ? null : now
-        Object.assign(progress, schedule(progress, correct, wrongTimes), {
+        const scheduled = schedule(progress, correct, wrongTimes)
+        // 首次识词判断（requiredStreak 还是 0）就用本次作答定档；之后答对 +1、答错清零
+        const firstIdentify = progress.requiredStreak <= 0
+        const requiredStreak = firstIdentify ? (passed ? STREAK_FAMILIAR : STREAK_UNFAMILIAR) : progress.requiredStreak
+        const identifyResult = firstIdentify ? (passed ? 'know' : 'unsure') : progress.identifyResult
+        const correctStreak = firstIdentify ? (passed ? 1 : 0) : passed ? progress.correctStreak + 1 : 0
+        const mastered = correctStreak >= requiredStreak
+        // 没达标就「最晚本地次日再来」：否则一次全对排到十几天后，「再连对 N 次」根本轮不到发生
+        if (!mastered) {
+          const cap = dayStartMs(tzOffset) + DAY_MS
+          if (new Date(scheduled.due).getTime() > cap) scheduled.due = new Date(cap).toISOString()
+        }
+        Object.assign(progress, scheduled, {
           rightCount: progress.rightCount + (passed ? 1 : 0),
           wrongCount: progress.wrongCount + wrongTimes,
           wrongActive: !passed,
+          correctStreak,
+          requiredStreak,
+          identifyResult,
+          status: mastered ? 'mastered' : progress.status,
           lastWrongAt: passed ? progress.lastWrongAt : now,
           updatedAt: now,
         })
@@ -828,6 +866,9 @@ export default {
             wrongCount: 0,
             rightCount: 0,
             wrongActive: false,
+            correctStreak: 0,
+            requiredStreak: 0,
+            identifyResult: '',
             state: 0,
             createdAt: nowISO(),
             updatedAt: nowISO(),
@@ -838,6 +879,8 @@ export default {
         // 注意：这里刻意不写 firstLearnedAt —— 只收藏/只标已掌握不算「记住这个词」，
         // 否则「今日已记」会被虚高的空进度行灌水。首学时间只由 answer 落。
         if (body.status === 'learning' || body.status === 'mastered') progress.status = body.status
+        // 手动「取消记住」= 重新开始计数，否则下次答对会立刻被自动标回已记住（与后端同构）
+        if (body.status === 'learning') progress.correctStreak = 0
         if (body.collected !== undefined && body.collected !== null) progress.collected = Boolean(body.collected)
         if (body.dismissWrong) progress.wrongActive = false
         progress.updatedAt = now

@@ -255,6 +255,12 @@ export interface VocabProgressRow {
   rightCount: number
   /** 是否在错词本中 */
   wrongActive: boolean
+  /** 连续答对次数：答对 +1、答错清零。掌握与否由它决定（不看 FSRS 的 stability） */
+  correctStreak: number
+  /** 该词要求的连续答对次数：首次识词判断对=3 / 判断错或点「不认识」=5；0=还没做过首次判断 */
+  requiredStreak: number
+  /** 首次识词判断结果：'' 未判断 / know 眼熟 / unsure 不熟悉 */
+  identifyResult: '' | 'know' | 'unsure'
   lastWrongAt?: string
   /** FSRS 下次到期 */
   due?: string

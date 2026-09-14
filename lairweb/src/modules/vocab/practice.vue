@@ -11,6 +11,7 @@ import {
   VOCAB_MODES,
   type QueueItem,
   type VocabMode,
+  type VocabProgress,
   type VocabSessionSummary,
   type VocabSource,
   type VocabWord,
@@ -36,7 +37,9 @@ const pool = ref<VocabWord[]>([])
 
 const results = ref<Array<{ word: string; due: string | null; correct: boolean }>>([])
 const summary = ref<VocabSessionSummary | null>(null)
-const reveal = ref<{ item: QueueItem; correct: boolean; due: string | null } | null>(null)
+const reveal = ref<{ item: QueueItem; correct: boolean; due: string | null; progress: VocabProgress | null } | null>(
+  null,
+)
 
 const startedAt = ref(Date.now())
 const elapsedSec = ref(0)
@@ -90,7 +93,12 @@ async function onDone(payload: { correct: boolean; wrongTimes: number; durationM
   if (!item) return
   try {
     const res = await vocabApi.answer(sessionId.value, { wordId: item.id, ...payload })
-    reveal.value = { item, correct: payload.correct && payload.wrongTimes === 0, due: res.item.due }
+    reveal.value = {
+      item,
+      correct: payload.correct && payload.wrongTimes === 0,
+      due: res.item.due,
+      progress: res.item,
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : '提交失败'
   }
@@ -199,6 +207,7 @@ onBeforeUnmount(() => {
       :item="reveal.item"
       :correct="reveal.correct"
       :due="reveal.due"
+      :progress="reveal.progress"
       @continue="onContinue"
     />
   </div>

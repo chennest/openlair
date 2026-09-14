@@ -100,7 +100,7 @@ HTTP 请求
 | `vocab_books` | 词书：`owner_id=NULL` 为系统级（所有用户可见），非空为导入者私有；slug（唯一）、name、lang、word_count、sort；系统全量数据仍可由 `app/scripts/import_vocab.py` 从 ECDICT 导入 |
 | `vocab_words` | 单词（全局去重，word 唯一）：音标、translations/sentences/phrases/synos/rel_words（JSON）、freq 词频 |
 | `vocab_book_words` | 词书↔单词多对多：book_id + word_id（唯一），sort 词书内顺序 |
-| `vocab_word_progress` | 学习进度（FSRS 卡片，每用户每词一条）：status(learning/mastered)、collected、wrong/right_count、wrong_active（错词本）、due（排课索引）+ FSRS 平铺字段 stability/difficulty/state/step/last_review；`first_learned_at` = 首次真正作答的时刻，是「今日已记 N 个」的唯一计数依据（只收藏/标已掌握不写） |
+| `vocab_word_progress` | 学习进度（FSRS 卡片，每用户每词一条）：status(learning/mastered)、collected、wrong/right_count、wrong_active（错词本）、due（排课索引）+ FSRS 平铺字段 stability/difficulty/state/step/last_review；`correct_streak`/`required_streak`/`identify_result` 是**掌握判定的唯一依据**（见下「掌握判定」）；`first_learned_at` = 首次真正作答的时刻，是「今日已记 N 个」的唯一计数依据（只收藏/标已掌握不写） |
 | `vocab_practice_sessions` | 练习会话：book_id、mode(follow/dictation/self_test/spell)、total/correct/wrong_count、duration_sec、finished_at |
 | `vocab_practice_logs` | 练习明细（只插入）：session_id、word_id、is_correct、wrong_times、duration_ms |
 | `vocab_daily_goals` | 每日背词目标（每用户一条，`user_id` 唯一）：new_target（每日新词目标，缺省 10）、review_target（每日复习目标，缺省 30）。两者都是**每日累计**配额；未设过的用户不建行、直接回缺省值 |
@@ -171,7 +171,7 @@ HTTP 请求
 | GET | /books/{book_id}/words?limit=&offset=&status=&keyword=&sort= | 可见词书的单词分批拉取（详情页用）→ `{total(筛选后), totalAll(词书总词数), words:[{word..., progress?, practice}]}`。status：all/unlearned/learning/mastered/wrong/collected；keyword 按拼写模糊搜；sort：order(词书顺序)/freq/wrong(错次最多)/recent(最近练习过)。非法值回退默认 |
 | GET | /books/{book_id}/summary | 词书详情页头部汇总 → `{book, total, learned, learning, mastered, due, wrong, collected, unlearned}`（未学 = 总词数 − 已学；按词书成员资格归桶） |
 | POST | /practice/sessions | 开课+智能排课 `{bookId, mode, source?, newLimit?, reviewLimit?, tzOffset?}` → `{id, bookId, bookName, source, mode, queue:[{word..., progress?}]}`；source=book（默认）复习池 = due≤now 且 learning（按 due 升序）+ 新词池；source=wrong/collect 直接练错词本/收藏（bookId 忽略，session.book_id=0）。**不传 newLimit/reviewLimit 时按每日目标剩余量发放**（见下），显式传值仍优先，`reviewLimit=0` 表示「只要新词」 |
-| POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课） |
+| POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs, tzOffset}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课）。`tzOffset` 用于把「没掌握」的词压到**客户端本地次日零点**再复习（不带时区会把 UTC 零点算成东八区的当天 08:00） |
 | POST | /practice/sessions/{id}/finish | 结束会话 `{durationSec}`，落 finished_at |
 | GET | /review/wrong | 错词本（wrong_active 且 learning） |
 | GET | /review/collect | 收藏列表 |
@@ -181,6 +181,13 @@ HTTP 请求
 | PUT | /daily-goal | 改每日目标（upsert）`{newTarget?, reviewTarget?}`，只覆盖出现的字段，改完回读完整视图；对进行中的会话无影响（已排队列不重排，下一节课按新目标算剩余量）。越界（不在 1–100）返回**统一信封的 400** + 中文 message（区间校验刻意放服务层，而不是 Pydantic 的 `Field(ge=,le=)` —— 后者走 FastAPI 默认 422 裸 `{"detail":[...]}`，那个形状被 laircli 依赖） |
 
 - **FSRS 调度**：进度按 (user, word) 全局唯一（跨词书不重复学），book_id 只记首次来源；FSRS 字段平铺进 `vocab_word_progress`（排课需 `WHERE due <= now` 索引）；SQLite 读回的 datetime 无 tzinfo，服务层统一按 UTC 归一化。
+- **掌握判定（不看 FSRS stability）**：已记住与否由**连续答对次数**决定 —— 看 stability 时「一次全对」会被排到 2 天后、再对一次到 11 天，「再连对 N 次」根本没机会发生，体感就成了「答对一次 = 已掌握」。改为显式计数（跨会话累计，无日切）：
+  - `required_streak == 0`（还没做过首次识词判断）→ **本次作答就是那次判断**：判断对（`correct && wrongTimes==0`，即一次选对）记 `required_streak=3`、`identify_result='know'`、`correct_streak=1`（眼熟，再连对 2 次即掌握）；判断错 / 自测点「不认识」→ `required_streak=5`、`identify_result='unsure'`、`correct_streak=0`（不熟悉，需连对 5 次）。
+  - 之后每次复习：**答对 +1，答错清零**（严格重来，宁可多记几遍，不衰减回退）。
+  - `correct_streak >= required_streak` → 自动写 `status='mastered'`，此后不再进复习池。
+  - **未达标的词一律把 `due` 压到「本地次日零点」为上限**（`_day_start(now, tz_offset) + 1 天`），否则一次 Hard/Good 就排到 11 天甚至 45 天后。达标（mastered）则不压，保留 FSRS 的正常天级值仅作记录。
+  - 手动「取消记住」（PUT /progress 传 `status='learning'`）会同时**把 `correct_streak` 清零**，否则下次答对会立刻被自动标回已记住。
+  - 常量：`STREAK_FAMILIAR=3` / `STREAK_UNFAMILIAR=5`（`services/vocab.py`）。参考实现为 `zyronon/TypeWords`（Nuxt + ts-fsrs）——**它的「掌握」不是算出来的**，而是用户显式点「认识/不认识/已掌握」把词加进全局忽略集；评分则由**本会话累计错次**推导（0→Easy / ≤3→Good / ≤6→Hard / >6→Again）。我们只借用「显式判断 + 连续答对」这一确定性更强的思路。
 - **词书详情**：单词行带 `progress`（本人进度，跨词书共享——同一词在不同词书里是同一份状态）与 `practice`（模式覆盖 `{follow, dictation, selfTest, spell, totalCount, lastAt}`）。模式覆盖由 `vocab_practice_logs` 按 (word_id, mode) 聚合，口径是**全局**的（不按词书/来源过滤：错词本与收藏练习的 `session.book_id` 记为 0，按词书过滤反而会漏）。
 - **词书导入**：页面可导入 ECDICT CSV、简单文本（`word` / `word,释义` / `word<TAB>释义`）和 Anki 的 **Notes in Plain Text** 文本导出（支持 `#separator`、`#deck`、`#html`，首列为单词、第二列为释义，`<br>` 拆为多条释义）。`.apkg` 二进制牌组暂不支持；需要先在 Anki 中导出为文本。大规模完整 ECDICT 仍建议运行 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4`。词条按小写拼写全局去重，已有释义不会被导入覆盖。
 - **每日背词目标**：目标按用户存在 `vocab_daily_goals`，`start_session`（source=book）不传配额时用「各自目标 − 今日已完成量」当新词/复习配额，于是「每天记 N 个、复习 M 个」自动生效、达标后该类不再发放（另一类照常）。两侧都达标而队列仍空时返回 400「今日新词与复习目标均已完成」；只有新词达标时返回「今日新词目标已完成，暂无到期复习」。**错词本与收藏复习是纠错通道，刻意不受每日目标限制。**「今日已记」只看 `vocab_word_progress.first_learned_at`（由 `submit_answer` 首次作答时落），只收藏/只标已掌握不计数；若该词此前只被收藏过、这次真的作答了，会在本次补上首学时间。「今日复习」则要求 `last_review >= 今日零点` 且首次学习更早（今天才学的词当天再练不算「复习」）。「今日」边界一律用 `_day_start(now, tz_offset)` 按客户端本地零点折算（否则 UTC+8 用户早上 8 点前练的词会算进「昨天」）。
@@ -220,7 +227,7 @@ HTTP 请求
 - `test_business_api.py`（23 项）：全链路业务测试——注册/登录/登出、账本创建与成员、邀请码生成/重置/关闭、邀请码加入/退出、账本数据隔离、流水 CRUD、分类、趋势、预算、todo/calendar/notes/habits/overview；每项测试用独立临时 SQLite 文件，`create_app(database_url=...)` 注入。
 - `test_assistant.py`（23 项）：AI 助手多轮/压缩/计划确认/取消/转写。
 - `test_security.py`（3 项）：JWT 密钥解析优先级（环境变量 > .env > 默认）与 `.env.example` 键完整性。
-- `test_vocab_api.py`（28 项）：词汇模块契约——排课（含每日目标配额）/ 错次映射 Rating / FSRS 调度 / 生词与收藏 / 详情页筛选排序 / 统计口径 / 每日背词目标（缺省与改值 / 越界 400 / 双配额封顶 / 达标拦截 / 显式配额覆盖 / 按用户隔离）。同样每项独立临时 SQLite。
+- `test_vocab_api.py`（34 项）：词汇模块契约——排课（含每日目标配额）/ 错次映射 Rating / FSRS 调度 / **连续答对掌握判定**（首次识词判断定档 3 或 5 次 / 答错清零 / 未达标 due 压到本地次日零点 / 只收藏过的词首次作答才定档 / 手动取消记住清 streak）/ 生词与收藏 / 详情页筛选排序 / 统计口径 / 每日背词目标（缺省与改值 / 越界 400 / 双配额封顶 / 达标拦截 / 显式配额覆盖 / 按用户隔离）。同样每项独立临时 SQLite。
 - 手工验收：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001` 后按契约调 `/api/auth/login` 等端点核对信封格式。
 
 ## 演进约束

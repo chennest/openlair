@@ -104,6 +104,7 @@ async def submit_practice_answer(
             correct=payload.correct,
             wrong_times=payload.wrongTimes,
             duration_ms=payload.durationMs,
+            tz_offset=payload.tzOffset,
         )
     )
 

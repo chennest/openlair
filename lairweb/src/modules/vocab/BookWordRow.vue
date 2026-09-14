@@ -8,6 +8,7 @@ import { playSentence, playWord } from './audio'
 import {
   MASTER_LABEL,
   UNMASTER_LABEL,
+  masteryText,
   reviewDueText,
   statusMeta,
   tone,
@@ -33,6 +34,9 @@ const isMastered = computed(() => progress.value?.status === 'mastered')
 const meaning = computed(() => wordMeaning(props.item.translations))
 
 const dueText = computed(() => reviewDueText(progress.value?.due))
+
+/** 掌握进度：已连对 N/M · 还差 K 次；已记住的词不再重复展示复习时间 */
+const mastery = computed(() => masteryText(progress.value))
 
 /** 模式覆盖 chip：练过的显示次数，没练过的显示「–」并置灰 */
 const modeChips = computed(() => {
@@ -79,7 +83,8 @@ const hasDetail = computed(
           对 <b>{{ progress.rightCount }}</b> 错 <b>{{ progress.wrongCount }}</b>
         </span>
         <span v-else class="counts none">尚无练习记录</span>
-        <span v-if="dueText" class="due">{{ dueText }}</span>
+        <span v-if="dueText && !isMastered" class="due">{{ dueText }}</span>
+        <span v-if="mastery" class="mastery" :class="{ done: isMastered }">{{ mastery }}</span>
       </div>
 
       <div class="modes" title="练习次数为全局口径：该词在全部练习里的练过次数（含错词本/收藏练习）">
@@ -202,6 +207,14 @@ const hasDetail = computed(
 }
 .due {
   color: var(--heat);
+  font-weight: 600;
+}
+/* 掌握进度：灰色 trailing 提示，已记住转绿（与 statusMeta 的 green 同源） */
+.mastery {
+  color: var(--text-4);
+}
+.mastery.done {
+  color: #0a5a2c;
   font-weight: 600;
 }
 

@@ -214,6 +214,9 @@ class SubmitAnswerInput(BaseModel):
     correct: bool
     wrongTimes: int = Field(default=0, ge=0, le=100)
     durationMs: int = Field(default=0, ge=0)
+    # 本地相对 UTC 的分钟差（东区为正）。未掌握的词要压到「次日」再复习，
+    # 没有它就不知道用户的「次日零点」在哪（UTC+8 用户会被算到当天 08:00）。
+    tzOffset: int = Field(default=0, ge=-840, le=840)
 
 
 class FinishSessionInput(BaseModel):

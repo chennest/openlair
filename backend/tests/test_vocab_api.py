@@ -101,21 +101,25 @@ def test_practice_flow_correct_answer_and_finish(tmp_path) -> None:
     assert len(data["queue"]) == 8  # 全部是新词
     assert all(item["progress"] is None for item in data["queue"])
 
-    # 第一个词一次全对：Good → due ≈ 2 天后，进入 Review 态
+    # 第一个词一次全对：首次识词判断算「眼熟」→ 需要连对 3 次（本次算第 1 次）
     word_id = data["queue"][0]["id"]
     r = client.post(
         f"/api/vocab/practice/sessions/{session_id}/answers",
-        json={"wordId": word_id, "correct": True, "wrongTimes": 0, "durationMs": 4200},
+        json={"wordId": word_id, "correct": True, "wrongTimes": 0, "durationMs": 4200, "tzOffset": 0},
         headers=headers,
     )
     assert r.status_code == 200
     progress = r.json()["data"]["item"]
     assert progress["wordId"] == word_id
-    assert progress["state"] == 2  # Review
+    assert progress["state"] == 2  # FSRS 态仍是 Review（间隔由掌握判定另外封顶）
     assert progress["rightCount"] == 1 and progress["wrongCount"] == 0
     assert progress["wrongActive"] is False
+    assert progress["identifyResult"] == "know"
+    assert progress["requiredStreak"] == 3 and progress["correctStreak"] == 1
+    assert progress["status"] == "learning"  # 还没连对够，不自动掌握
+    # 没达标 → due 被压到「次日零点」（tzOffset=0 即次日 UTC 零点），不再放任 FSRS 的 2 天
     due = datetime.fromisoformat(progress["due"].replace("Z", "+00:00"))
-    assert due > datetime.now(UTC) + timedelta(days=1)
+    assert datetime.now(UTC) < due <= datetime.now(UTC) + timedelta(days=1, seconds=5)
 
     # 结束会话
     r = client.post(f"/api/vocab/practice/sessions/{session_id}/finish", json={"durationSec": 66}, headers=headers)
@@ -885,3 +889,185 @@ def test_daily_goal_requires_auth_and_accepts_tz_offset(tmp_path) -> None:
     assert r.json()["data"]["todayNew"] == 0
     # 越界 tzOffset 由 Query 校验拦下
     assert client.get("/api/vocab/daily-goal", params={"tzOffset": 9999}, headers=headers).status_code == 422
+
+
+# ---------- 掌握判定：连续答对次数 ----------
+
+def start(client: TestClient, headers: dict, mode: str = "follow", **body) -> dict:
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": mode, **body}, headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()["data"]
+
+
+def answer(client: TestClient, headers: dict, session_id: int, word_id: int, *, correct=True, wrong_times=0, tz=0) -> dict:
+    """作答并返回更新后的进度 DTO（顺带把词置为「已到期」，下次开课必进复习池）。"""
+    r = client.post(
+        f"/api/vocab/practice/sessions/{session_id}/answers",
+        json={"wordId": word_id, "correct": correct, "wrongTimes": wrong_times, "tzOffset": tz},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["data"]["item"]
+
+
+def review(client: TestClient, headers: dict, word_id: int, *, correct=True, wrong_times=0) -> dict:
+    """开一节新课复习该词（先把它改成到期），返回作答后的进度。"""
+    row = read_progress(client, word_id, headers)
+    force_due(client, row.id, datetime.now(UTC) - timedelta(minutes=1))
+    session = start(client, headers)
+    assert word_id in [item["id"] for item in session["queue"]]  # 到期必出现在复习池
+    return answer(client, headers, session["id"], word_id, correct=correct, wrong_times=wrong_times)
+
+
+def read_progress(client: TestClient, word_id: int, headers: dict) -> VocabWordProgress:
+    with client.app.state.session_factory() as session:
+        user_id = client.get("/api/auth/me", headers=headers).json()["data"]["id"]
+        return (
+            session.query(VocabWordProgress)
+            .filter(VocabWordProgress.user_id == user_id, VocabWordProgress.word_id == word_id)
+            .one()
+        )
+
+
+def test_streak_familiar_word_masters_after_three_correct(tmp_path) -> None:
+    """首次识词判断答对 → 只需再连对 2 次就自动掌握（跨会话累计）。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak1@openlair.dev")
+
+    session = start(client, headers, mode="self_test")
+    word_id = session["queue"][0]["id"]
+
+    p = answer(client, headers, session["id"], word_id)
+    assert (p["identifyResult"], p["requiredStreak"], p["correctStreak"]) == ("know", 3, 1)
+    assert p["status"] == "learning"  # 第 1 次答对还不够
+
+    for expected in (2, 3):
+        p = review(client, headers, word_id)
+        assert p["correctStreak"] == expected
+    # 第 3 次连对达标 → 自动置已记住
+    assert p["status"] == "mastered"
+    assert p["requiredStreak"] == 3
+
+    # 已记住的词不再进复习池（即使强行把它改成到期）
+    row = read_progress(client, word_id, headers)
+    force_due(client, row.id, datetime.now(UTC) - timedelta(minutes=1))
+    assert word_id not in [item["id"] for item in start(client, headers)["queue"]]
+
+    stats = client.get("/api/vocab/stats", headers=headers).json()["data"]
+    assert stats["total"]["mastered"] == 1 and stats["total"]["due"] == 0
+
+
+def test_streak_unfamiliar_word_needs_five_correct(tmp_path) -> None:
+    """首次识词判断答错 / 不认识 → 要连对 5 次才掌握，中途答错清零重来。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak2@openlair.dev")
+
+    session = start(client, headers, mode="self_test")
+    word_id = session["queue"][0]["id"]
+
+    # 首次就答错 → 视为「不熟悉」
+    p = answer(client, headers, session["id"], word_id, correct=False, wrong_times=1)
+    assert (p["identifyResult"], p["requiredStreak"], p["correctStreak"]) == ("unsure", 5, 0)
+    assert p["wrongActive"] is True  # 进错词本
+    assert p["status"] == "learning"
+
+    # 连对 4 次还不够
+    for expected in (1, 2, 3, 4):
+        p = review(client, headers, word_id)
+        assert p["correctStreak"] == expected and p["status"] == "learning"
+    assert p["requiredStreak"] == 5
+
+    # 第 5 次达标
+    p = review(client, headers, word_id)
+    assert p["correctStreak"] == 5 and p["status"] == "mastered"
+
+
+def test_wrong_answer_resets_streak_to_zero(tmp_path) -> None:
+    """答错把连续次数清零（严格重来，宁可多记几遍）。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak3@openlair.dev")
+
+    session = start(client, headers, mode="self_test")
+    word_id = session["queue"][0]["id"]
+    assert answer(client, headers, session["id"], word_id)["correctStreak"] == 1
+
+    assert review(client, headers, word_id)["correctStreak"] == 2
+
+    # 答错 → 归零，required 不变（不会因为一次失误就把要求抬高）
+    p = review(client, headers, word_id, correct=False, wrong_times=1)
+    assert p["correctStreak"] == 0 and p["requiredStreak"] == 3
+    assert p["wrongActive"] is True
+
+    # 重新从 1 数起
+    p = review(client, headers, word_id)
+    assert p["correctStreak"] == 1 and p["status"] == "learning"
+
+
+def test_unmastered_due_capped_to_next_local_midnight(tmp_path) -> None:
+    """没掌握期间 due 压到「本地次日零点」；达标后交回 FSRS 的常规天级间隔。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak4@openlair.dev")
+    tz = 480  # UTC+8
+
+    session = start(client, headers, mode="self_test")
+    word_id = session["queue"][0]["id"]
+    p = answer(client, headers, session["id"], word_id, tz=tz)
+
+    now = datetime.now(UTC)
+    due = datetime.fromisoformat(p["due"].replace("Z", "+00:00"))
+    local_now = now + timedelta(minutes=tz)
+    next_local_midnight = datetime(local_now.year, local_now.month, local_now.day, tzinfo=UTC) + timedelta(days=1)
+    expected = next_local_midnight - timedelta(minutes=tz)  # 换算回 UTC
+    assert abs((due - expected).total_seconds()) < 5
+    assert p["status"] == "learning"
+
+    # 连对到第 3 次达标 → due 不再被压，回到 FSRS 的天级间隔（2 天）
+    review(client, headers, word_id)
+    p = review(client, headers, word_id)
+    assert p["status"] == "mastered"
+    due = datetime.fromisoformat(p["due"].replace("Z", "+00:00"))
+    assert due > datetime.now(UTC) + timedelta(days=1)
+
+
+def test_collect_only_word_gets_judged_on_first_answer(tmp_path) -> None:
+    """只收藏过、从没作答的词：required_streak 保持 0，首次作答才充当那次识词判断。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak5@openlair.dev")
+    word_id = start(client, headers, mode="self_test")["queue"][0]["id"]
+
+    # 只收藏（不产生作答）
+    r = client.put(f"/api/vocab/progress/{word_id}", json={"collected": True}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["data"]["item"]["requiredStreak"] == 0
+
+    row = read_progress(client, word_id, headers)
+    assert (row.required_streak, row.correct_streak, row.identify_result) == (0, 0, "")
+
+    # 首次作答答错 → 视为不熟悉，要求连对 5 次
+    # 注意：它有进度行但没有 due，词书排课的两个池子都不收它（既有行为），
+    # 所以走「收藏复习」这条正确的入口。
+    session = start(client, headers, mode="self_test", source="collect")
+    assert word_id in [item["id"] for item in session["queue"]]
+    p = answer(client, headers, session["id"], word_id, correct=False, wrong_times=1)
+    assert (p["identifyResult"], p["requiredStreak"], p["correctStreak"]) == ("unsure", 5, 0)
+
+
+def test_manual_unmaster_resets_streak(tmp_path) -> None:
+    """手动取消记住 = 重新开始计数，否则下次答对会立刻被自动标回已记住。"""
+    client = make_client(tmp_path)
+    headers = register(client, "streak6@openlair.dev")
+
+    session = start(client, headers, mode="self_test")
+    word_id = session["queue"][0]["id"]
+    answer(client, headers, session["id"], word_id)
+    review(client, headers, word_id)
+    assert review(client, headers, word_id)["status"] == "mastered"
+
+    r = client.put(f"/api/vocab/progress/{word_id}", json={"status": "learning"}, headers=headers)
+    item = r.json()["data"]["item"]
+    assert item["status"] == "learning" and item["correctStreak"] == 0
+    # required 保留（它记录的是这个词的难度档），所以还要重新连对 3 次
+    assert item["requiredStreak"] == 3
+
+    p = review(client, headers, word_id)
+    assert p["correctStreak"] == 1 and p["status"] == "learning"

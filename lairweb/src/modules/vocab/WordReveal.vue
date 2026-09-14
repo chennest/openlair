@@ -6,18 +6,21 @@ import { Volume2 } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { playSentence, playWord } from './audio'
-import { tone } from './status'
-import type { QueueItem } from './api'
+import { masteryText, tone } from './status'
+import type { QueueItem, VocabProgress } from './api'
 
 const props = defineProps<{
   item: QueueItem
   correct: boolean
-  /** 作答响应里带回来的下次到期时间（新答错的词约 1 天后） */
+  /** 作答响应里带回来的下次到期时间（没掌握的词一律压到次日） */
   due: string | null
+  /** 作答响应里带回来的最新进度：用来显示「还差 N 次答对」 */
+  progress: VocabProgress | null
 }>()
 const emit = defineEmits<{ continue: [] }>()
 
 const firstSentence = computed(() => props.item.sentences[0] ?? null)
+const mastery = computed(() => masteryText(props.progress))
 
 const dueText = computed(() => {
   if (!props.due) return null
@@ -71,7 +74,10 @@ onMounted(() => {
       </div>
 
       <div class="reveal-foot">
-        <span class="due">{{ dueText ?? '' }}</span>
+        <div class="foot-meta">
+          <span class="due">{{ dueText ?? '' }}</span>
+          <span v-if="mastery" class="mastery" :class="{ done: progress?.status === 'mastered' }">{{ mastery }}</span>
+        </div>
         <Button class="rounded-full px-6 shadow-[var(--sh-cta)]" @click="emit('continue')">
           继续 ⏎
         </Button>
@@ -152,10 +158,26 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-top: 6px;
+}
+.foot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .due {
   font-size: 0.8rem;
   color: var(--text-3);
+}
+/* 掌握进度：还差 N 次时走次级色，已记住转绿（与 statusMeta 的 green 同源语义） */
+.mastery {
+  font-size: 0.76rem;
+  color: var(--text-4);
+}
+.mastery.done {
+  color: #0a5a2c;
+  font-weight: 600;
 }
 </style>

@@ -72,6 +72,12 @@ export interface VocabProgress {
   wrongCount: number
   rightCount: number
   wrongActive: boolean
+  /** 连续答对次数：答对 +1，答错清零。掌握与否由它决定，不看 FSRS 的 stability */
+  correctStreak: number
+  /** 该词要求的连续答对次数：首次识词判断对=3、判断错/不认识=5；0=还没做过首次判断 */
+  requiredStreak: number
+  /** 首次识词判断结果：'' 未判断 / know 选对（眼熟）/ unsure 选错或点了不认识 */
+  identifyResult: '' | 'know' | 'unsure'
   due: string | null
   lastReview: string | null
   lastWrongAt: string | null
@@ -233,7 +239,11 @@ export const vocabApi = {
   start: (input: { bookId: number; mode: VocabMode; source?: VocabSource; newLimit?: number; reviewLimit?: number }) =>
     post<StartSessionResult>('/api/vocab/practice/sessions', { tzOffset: tzOffsetMinutes(), ...input }),
   answer: (sessionId: number, input: AnswerInput) =>
-    post<{ item: VocabProgress }>(`/api/vocab/practice/sessions/${sessionId}/answers`, input),
+    // tzOffset 必传：没掌握的词要压到「本地次日零点」再复习，不带时区就不知道次日零点在哪
+    post<{ item: VocabProgress }>(`/api/vocab/practice/sessions/${sessionId}/answers`, {
+      tzOffset: tzOffsetMinutes(),
+      ...input,
+    }),
   finish: (sessionId: number, durationSec: number) =>
     post<{ item: VocabSessionSummary }>(`/api/vocab/practice/sessions/${sessionId}/finish`, { durationSec }),
   wrong: () => get<{ words: QueueItem[] }>('/api/vocab/review/wrong'),

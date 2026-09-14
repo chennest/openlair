@@ -39,6 +39,19 @@ function pick(option: { word: { id: number }; correct: boolean }) {
   }
 }
 
+/**
+ * 「不认识」：不做四选一，直接认输看释义。
+ * 与「选错」同义（correct=false）—— 两者都会被后端判为不熟悉，首次判断时 requiredStreak=5。
+ * 已经点过错项时带上累计错次，避免把这次的错抹掉。
+ */
+function dontKnow() {
+  emit('done', {
+    correct: false,
+    wrongTimes: Math.max(1, wrongTimes.value),
+    durationMs: Date.now() - startedAt,
+  })
+}
+
 onMounted(() => playWord(props.item.word))
 </script>
 
@@ -71,6 +84,8 @@ onMounted(() => playWord(props.item.word))
         {{ meaningOf(opt) }}
       </button>
     </div>
+
+    <button class="dont-know" type="button" @click="dontKnow">不认识 · 直接看释义</button>
   </div>
 </template>
 
@@ -147,5 +162,26 @@ onMounted(() => playWord(props.item.word))
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--text-3);
+}
+
+/* 「不认识」：弱化存在感，hover 才转暖色，避免喧宾夺主抢了四选一 */
+.dont-know {
+  margin-top: 4px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--r-chip);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.dont-know:hover {
+  color: var(--heat);
+  background: rgba(0, 0, 0, 0.04);
+}
+.dont-know:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 </style>

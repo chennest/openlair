@@ -5,7 +5,7 @@ import { computed } from 'vue'
 import { Volume2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { playWord } from './audio'
-import { MASTER_LABEL, reviewDueText, wordMeaning } from './status'
+import { MASTER_LABEL, masteryText, reviewDueText, wordMeaning } from './status'
 import type { QueueItem } from './api'
 
 const props = defineProps<{
@@ -21,6 +21,8 @@ const emit = defineEmits<{
 
 const meaning = computed(() => wordMeaning(props.item.translations))
 const dueText = computed(() => reviewDueText(props.item.progress?.due))
+/** 掌握进度：已连对 N/M · 还差 K 次（未做过识词判断的词为空串） */
+const mastery = computed(() => masteryText(props.item.progress))
 </script>
 
 <template>
@@ -40,6 +42,11 @@ const dueText = computed(() => reviewDueText(props.item.progress?.due))
         <span class="w">{{ item.word }}</span>
         <span v-if="item.phoneticUs || item.phoneticUk" class="p">/{{ item.phoneticUs || item.phoneticUk }}/</span>
         <span v-if="dueText" class="due">{{ dueText }}</span>
+        <span
+          v-if="mastery"
+          class="mastery"
+          :class="{ done: item.progress?.status === 'mastered' }"
+        >{{ mastery }}</span>
       </div>
       <p class="m">{{ meaning }}</p>
     </div>
@@ -107,6 +114,15 @@ const dueText = computed(() => reviewDueText(props.item.progress?.due))
 .due {
   font-size: 0.72rem;
   color: var(--heat);
+  font-weight: 600;
+}
+/* 掌握进度：灰色 trailing 提示，已记住转绿（与 statusMeta 的 green 同源） */
+.mastery {
+  font-size: 0.72rem;
+  color: var(--text-4);
+}
+.mastery.done {
+  color: #0a5a2c;
   font-weight: 600;
 }
 .m {

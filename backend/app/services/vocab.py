@@ -2,6 +2,10 @@
 
 调度语义（py-fsrs v6，空学习步 = 纯天级排课）：
 - Rating 由作答质量自动推导，用户无感评分：答错=Again；答对但打错过=Hard；一次全对=Good
+- 「是否掌握」不看 FSRS 的 stability，而看显式的连续答对次数（correct_streak / required_streak）：
+  首次识词判断答对 → 需要连对 3 次；答错 / 不认识 → 需要连对 5 次。答错把连续次数清零。
+  达标即自动置 status='mastered'，此后不再排课。未达标期间 due 被压到「最晚次日」，
+  否则 FSRS 的 2→11→45 天曲线会让「再复习两遍」变成两个月。
 - 进度按 (user, word) 全局唯一，跨词书不重复学；book_id 只记首次学习来源
 - 复习池 = due <= now 且 learning；新词池 = 词书内无进度记录的词
 词书可见性：owner_id 为 NULL 的系统级词书人人可见；用户级词书仅导入者可见。
@@ -30,6 +34,15 @@ DEFAULT_REVIEW_LIMIT = 30  # 每日复习目标缺省值（也是「每次练习
 MAX_QUEUE_LIMIT = 100
 MIN_DAILY_TARGET = 1  # 每日目标下限（0 个没有意义，想「今天只复习」请把新词练完即可）
 MAX_DAILY_TARGET = MAX_QUEUE_LIMIT
+
+# ── 「掌握」的判定：连续答对次数（跨会话累计，不依赖 FSRS 的 stability）──────────
+# 首次识词判断答对 → 认为比较熟悉，本次算第 1 次，之后再连对 2 次即掌握。
+STREAK_FAMILIAR = 3
+# 首次识词判断答错 / 点「不认识」/ 没把握 → 视为不熟悉，要连对 5 次才掌握。
+STREAK_UNFAMILIAR = 5
+# 未掌握期间的复习间隔上限：FSRS 会把间隔拉到 2→11→45 天，那样「再连对 2 次」
+# 要等两个月才能发生。所以没达标前一律「最晚次日再来」，达标后才交回 FSRS 曲线。
+UNMASTERED_MAX_INTERVAL = timedelta(days=1)
 
 # 练习会话/进度记录允许更新的字段白名单
 _SESSION_PATCH_KEYS = {"total_count", "correct_count", "wrong_count", "duration_sec", "finished_at"}
@@ -241,7 +254,17 @@ class VocabService:
         session = self._repo.create_session(user_id=user_id, book_id=book.id if book else 0, mode=mode)
         return {"id": session.id, "bookId": session.book_id, "bookName": book_name, "source": source, "mode": mode, "queue": queue}
 
-    def submit_answer(self, *, user_id: int, session_id: int, word_id: int, correct: bool, wrong_times: int, duration_ms: int) -> dict:
+    def submit_answer(
+        self,
+        *,
+        user_id: int,
+        session_id: int,
+        word_id: int,
+        correct: bool,
+        wrong_times: int,
+        duration_ms: int,
+        tz_offset: int = 0,
+    ) -> dict:
         session = self._repo.get_session(session_id)
         if session is None or session.user_id != user_id:
             raise ApiError(404, "练习会话不存在")
@@ -275,6 +298,22 @@ class VocabService:
         card, _ = self._scheduler.review_card(self._card_from(progress), rating, now)
 
         passed = correct and wrong_times == 0
+
+        # ── 连续答对次数：掌握与否的唯一判据（跨会话累计）────────────────────────
+        # required_streak == 0 表示这个词还没做过「首次识词判断」——就把本次当那次判断：
+        # 判断对 → 认为眼熟，需再连对 2 次（合计 3）；判断错 / 不认识 → 视为不熟悉，需连对 5 次。
+        required_streak = progress.required_streak
+        identify_result = progress.identify_result
+        if required_streak <= 0:
+            required_streak = STREAK_FAMILIAR if passed else STREAK_UNFAMILIAR
+            identify_result = "know" if passed else "unsure"
+            correct_streak = 1 if passed else 0
+        # 之后每次复习：答对 +1；答错清零（严格重来，宁可多记几遍）
+        else:
+            correct_streak = progress.correct_streak + 1 if passed else 0
+        # 达标 → 自动置已记住，此后不再排课
+        mastered = required_streak > 0 and correct_streak >= required_streak
+
         patch: dict = {
             "due": card.due,
             "stability": card.stability,
@@ -285,7 +324,20 @@ class VocabService:
             "right_count": progress.right_count + (1 if passed else 0),
             "wrong_count": progress.wrong_count + wrong_times,
             "wrong_active": not passed,
+            "correct_streak": correct_streak,
+            "required_streak": required_streak,
+            "identify_result": identify_result,
         }
+        if mastered:
+            # 达标 → 自动置已记住，此后不进复习池；due 保留 FSRS 的正常天级值（仅作记录）
+            patch["status"] = "mastered"
+        elif self._as_utc(card.due) is not None:
+            # 没达标就「最晚次日再来」：否则一次 Hard/Good 就排到 11 天甚至 45 天后，
+            # 「再连对 2 次」根本轮不到发生，体感就变成「答对一次 = 已掌握」。
+            # 用客户端本地零点算「次日」，保证晚上练的词第二天一早就到期（UTC 零点会算成当天 08:00）。
+            cap = self._day_start(now, tz_offset) + UNMASTERED_MAX_INTERVAL
+            if self._as_utc(card.due) > cap:
+                patch["due"] = cap
         if not passed:
             patch["last_wrong_at"] = now
         if first_learn_time is not None:
@@ -340,6 +392,9 @@ class VocabService:
         clean: dict = {}
         if patch.get("status") in STATUSES:
             clean["status"] = patch["status"]
+            # 手动「取消记住」= 重新开始计数，否则下次答对会立刻被自动标回已记住。
+            if patch["status"] == "learning":
+                clean["correct_streak"] = 0
         if "collected" in patch and patch["collected"] is not None:
             clean["collected"] = bool(patch["collected"])
         if patch.get("dismissWrong"):
@@ -517,6 +572,10 @@ class VocabService:
             "wrongCount": p.wrong_count,
             "rightCount": p.right_count,
             "wrongActive": p.wrong_active,
+            # 掌握进度：required=0 表示还没做过首次识词判断；剩余次数给 UI 显示「还差 N 次」
+            "correctStreak": p.correct_streak,
+            "requiredStreak": p.required_streak,
+            "identifyResult": p.identify_result,
             "due": iso_z(self._as_utc(p.due)) if p.due else None,
             "lastReview": iso_z(self._as_utc(p.last_review)) if p.last_review else None,
             "lastWrongAt": iso_z(self._as_utc(p.last_wrong_at)) if p.last_wrong_at else None,

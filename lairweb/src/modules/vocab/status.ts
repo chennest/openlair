@@ -65,3 +65,17 @@ export function reviewDueText(due?: string | null): string {
   if (days === 1) return '明天复习'
   return `${days} 天后复习`
 }
+
+/**
+ * 掌握进度文案：「已连对 1/3 · 还差 2 次」/「已记住 · 不再安排复习」。
+ *
+ * 掌握与否由**连续答对次数**决定（答对 +1、答错清零），不看 FSRS 的 stability ——
+ * 否则一次答对就会被排到很久以后，体感等同于「一次就对就掌握了」。
+ * requiredStreak=0 表示还没做过首次识词判断，返回空串（不展示）。
+ */
+export function masteryText(p?: VocabProgress | null): string {
+  if (!p || p.requiredStreak <= 0) return ''
+  if (p.status === 'mastered') return '已记住 · 不再安排复习'
+  const left = Math.max(0, p.requiredStreak - p.correctStreak)
+  return `已连对 ${p.correctStreak}/${p.requiredStreak} · 还差 ${left} 次`
+}

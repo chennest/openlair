@@ -103,6 +103,14 @@ class VocabWordProgress(Base):
     # 这是「今日已记 N 个单词」的唯一计数依据：只认真正练过的词，
     # 不会被「仅点了收藏 / 标记已掌握但没做过题」的进度行污染（update_progress 不写本列）。
     first_learned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    # ── 「是否掌握」的显式计数（不依赖 FSRS 的 stability）─────────────────────
+    # 连续答对次数：答对 +1，答错归零。用户手动「取消记住」也会清零。
+    correct_streak: Mapped[int] = mapped_column(Integer, default=0)
+    # 该词要求的连续答对次数：由「首次识词判断」决定 —— 判断对=3（再连对 2 次即掌握）、
+    # 判断错/不认识=5。0 表示还没做过首次判断，下一次作答就充当那次判断。
+    required_streak: Mapped[int] = mapped_column(Integer, default=0)
+    # 首次识词判断的结果：'' 未判断 / 'know' 选对（眼熟）/ 'unsure' 选错或点了不认识
+    identify_result: Mapped[str] = mapped_column(String(10), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
