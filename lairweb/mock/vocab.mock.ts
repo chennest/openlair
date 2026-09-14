@@ -1,6 +1,7 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
 import {
   store,
+  type VocabBookItem,
   type VocabProgressRow,
   type VocabSessionRow,
   type VocabWordItem,
@@ -138,8 +139,142 @@ function getProgress(userId: number, wordId: number): VocabProgressRow | undefin
   return store.vocabProgress.find((p) => p.userId === userId && p.wordId === wordId)
 }
 
+// ---------- 导入解析（与后端 services/vocab_import.py 同构，简化版） ----------
+
+const WORD_RE = /[a-z]/
+const POS_RE = /^(n|v|vt|vi|adj|adv|prep|conj|pron|art|num|interj|aux)\.\s*(.+)$/i
+
+function cleanWord(raw: string): string {
+  const w = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^[.,;:!?' "() [\]{}、，。；：]+|[.,;:!?' "() [\]{}、，。；：]+$/g, '')
+  if (!w || w.length > 40 || w.includes(' ') || !WORD_RE.test(w)) return ''
+  return w
+}
+
+function simpleSenses(raw: string): Array<{ pos: string; cn: string }> {
+  const out: Array<{ pos: string; cn: string }> = []
+  const htmlStripped = String(raw ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\\n/g, '\n')
+  for (const line of htmlStripped.split('\n')) {
+    const s = line.trim()
+    if (!s) continue
+    const m = POS_RE.exec(s)
+    if (m) out.push({ pos: m[1].toLowerCase() + '.', cn: m[2].trim() })
+    else out.push({ pos: '', cn: s })
+    if (out.length >= 6) break
+  }
+  return out
+}
+
+/** 引号感知的 CSV 行切分 */
+function splitCsvLine(line: string): string[] {
+  const cols: string[] = []
+  let cur = ''
+  let inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') {
+        cur += '"'
+        i++
+      } else inQ = !inQ
+    } else if (ch === ',' && !inQ) {
+      cols.push(cur)
+      cur = ''
+    } else cur += ch
+  }
+  cols.push(cur)
+  return cols
+}
+
+interface ParsedImport {
+  format: string
+  deckName: string
+  words: Array<{ word: string; phonetic: string; translations: Array<{ pos: string; cn: string }> }>
+}
+
+function parseImportText(text: string): ParsedImport {
+  const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n')
+  const head = String(text ?? '').slice(0, 500).toLowerCase()
+  const firstLine = (head.split('\n')[0] ?? '').trim()
+  const words: ParsedImport['words'] = []
+  let deckName = ''
+
+  if (firstLine.startsWith('word') && firstLine.includes('translation')) {
+    // ECDICT CSV：按表头定位列，引号感知切分
+    const headers = (lines[0] ?? '').split(',').map((h) => h.trim())
+    const col = (name: string) => headers.indexOf(name)
+    for (const line of lines.slice(1)) {
+      if (!line.trim()) continue
+      const cols = splitCsvLine(line)
+      const word = cleanWord(cols[col('word')] ?? '')
+      if (!word) continue
+      words.push({ word, phonetic: (cols[col('phonetic')] ?? '').trim(), translations: simpleSenses(cols[col('translation')] ?? '') })
+    }
+    return finalize('ecdict', deckName, words)
+  }
+
+  const isAnki = head
+    .split('\n')
+    .some((l) => ['#separator', '#deck', '#html', '#notetype', '#tags'].some((p) => l.trim().startsWith(p)))
+  let sep = '\t'
+  if (isAnki) {
+    for (const line of lines) {
+      const s = line.trim()
+      if (s.toLowerCase().startsWith('#separator:')) {
+        const v = s.split(':')[1]?.trim().toLowerCase()
+        sep = ({ tab: '\t', comma: ',', semicolon: ';', pipe: '|', colon: ':', space: ' ' } as Record<string, string>)[v] ?? '\t'
+      } else if (s.toLowerCase().startsWith('#deck:')) {
+        deckName = s.split(':').slice(1).join(':').trim()
+      }
+    }
+  } else {
+    sep = lines.some((l) => l.includes('\t')) ? '\t' : lines.some((l) => l.includes(',')) ? ',' : ' '
+  }
+  for (const line of lines) {
+    const s = line.trim()
+    if (!s || s.startsWith('#')) continue
+    const parts = s.split(sep)
+    const word = cleanWord(parts[0] ?? '')
+    if (!word) continue
+    words.push({ word, phonetic: '', translations: simpleSenses((parts[1] ?? '').trim()) }) // Anki Basic：第二列=背面
+  }
+  return finalize(isAnki ? 'anki' : 'simple', deckName, words)
+
+  function finalize(format: string, deck: string, list: ParsedImport['words']): ParsedImport {
+    const seen = new Set<string>()
+    const uniq = list.filter((w) => {
+      if (seen.has(w.word)) return false
+      seen.add(w.word)
+      return true
+    })
+    return { format, deckName: deck, words: uniq.slice(0, 50000) }
+  }
+}
+
+function bookDto(b: VocabBookItem) {
+  return {
+    id: b.id,
+    slug: b.slug,
+    name: b.name,
+    lang: b.lang,
+    emoji: b.emoji,
+    description: b.description,
+    ownerId: b.ownerId,
+    wordCount: b.wordCount,
+    learning: 0,
+    mastered: 0,
+    due: 0,
+    createdAt: b.createdAt,
+  }
+}
+
 export default {
-  // 词书列表（附我的进度）
+  // 词书列表（系统级 + 本人用户级，附我的进度）
   books: defineMock({
     url: '/api/vocab/books',
     method: 'GET',
@@ -149,7 +284,7 @@ export default {
         const stats = bookStats(userId)
         return ok({
           books: store.vocabBooks
-            .filter((b) => b.isEnabled)
+            .filter((b) => b.isEnabled && (b.ownerId === null || b.ownerId === userId))
             .sort((a, b) => a.sort - b.sort || a.id - b.id)
             .map((b) => {
               const s = stats[b.id] ?? { learning: 0, mastered: 0, due: 0 }
@@ -160,6 +295,7 @@ export default {
                 lang: b.lang,
                 emoji: b.emoji,
                 description: b.description,
+                ownerId: b.ownerId,
                 wordCount: b.wordCount,
                 learning: s.learning,
                 mastered: s.mastered,
@@ -172,15 +308,107 @@ export default {
     ),
   }),
 
-  // 词书单词分页
+  // 导入词书（Anki 导出文本 / ECDICT CSV / 简单行格式）
+  importBook: defineMock({
+    url: '/api/vocab/books/import',
+    method: 'POST',
+    response: respond(
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
+        const body = (req.body ?? {}) as { name?: string; scope?: string; lang?: string; text?: string }
+        const scope = ['system', 'user'].includes(String(body.scope)) ? String(body.scope) : 'user'
+        if (scope === 'system' && userId !== 1) return err(403, '只有站长（首位用户）可以导入系统级词书')
+        let name = String(body.name || '').trim()
+        const parsed = parseImportText(String(body.text || ''))
+        if (!name) name = parsed.deckName
+        if (!name) return err(400, '词书名称不能为空')
+        if (!parsed.words.length) return err(400, '未解析到有效单词，请检查格式')
+
+        const t = nowISO()
+        const book: VocabBookItem = {
+          id: nextId(store.vocabBooks),
+          slug: `${scope === 'system' ? 'sys' : `u${userId}`}-${Date.now().toString(36)}`,
+          name,
+          lang: String(body.lang || 'en'),
+          emoji: scope === 'system' ? '📚' : '📖',
+          description: `导入格式 ${parsed.format}`,
+          ownerId: scope === 'system' ? null : userId,
+          wordCount: parsed.words.length,
+          sort: 0,
+          isEnabled: true,
+          createdAt: t,
+          updatedAt: t,
+        }
+        store.vocabBooks.push(book)
+
+        // 词条全局去重 upsert：已有词条不覆盖释义，只补空字段
+        let newCount = 0
+        const wordIds: number[] = []
+        for (const pw of parsed.words) {
+          let row = store.vocabWords.find((w) => w.word === pw.word)
+          if (!row) {
+            row = {
+              id: nextId(store.vocabWords),
+              word: pw.word,
+              phoneticUk: pw.phonetic,
+              phoneticUs: '',
+              translations: pw.translations,
+              sentences: [],
+              phrases: [],
+              synos: [],
+              relWords: { root: '', rels: [] },
+              freq: 0,
+              createdAt: t,
+              updatedAt: t,
+            }
+            store.vocabWords.push(row)
+            newCount++
+          } else {
+            if (!row.phoneticUk && pw.phonetic) row.phoneticUk = pw.phonetic
+            if (!row.translations.length && pw.translations.length) row.translations = pw.translations
+          }
+          wordIds.push(row.id)
+        }
+        let bwId = nextId(store.vocabBookWords)
+        for (const [sort, wordId] of wordIds.entries()) {
+          store.vocabBookWords.push({ id: bwId++, bookId: book.id, wordId, sort, createdAt: t })
+        }
+        return ok({ book: bookDto(book), imported: parsed.words.length, newWords: newCount, format: parsed.format })
+      }),
+    ),
+  }),
+
+  // 删除词书（系统级仅站长；用户级仅本人；词条全局池与进度保留）
+  deleteBook: defineMock({
+    url: '/api/vocab/books/:bookId',
+    method: 'DELETE',
+    response: respond(
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
+        const book = store.vocabBooks.find((b) => b.id === Number(req.params?.bookId))
+        if (!book) return err(404, '词书不存在')
+        if (book.ownerId === null) {
+          if (userId !== 1) return err(403, '只有站长可以删除系统级词书')
+        } else if (book.ownerId !== userId) {
+          return err(404, '词书不存在')
+        }
+        store.vocabBooks = store.vocabBooks.filter((b) => b.id !== book.id)
+        store.vocabBookWords = store.vocabBookWords.filter((bw) => bw.bookId !== book.id)
+        return ok({ ok: true })
+      }),
+    ),
+  }),
+
+  // 词书单词分页（他人用户级词书按不存在处理）
   bookWords: defineMock({
     url: '/api/vocab/books/:bookId/words',
     method: 'GET',
     response: respond(
-      guard((req) => {
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
         const bookId = Number(req.params?.bookId)
         const book = store.vocabBooks.find((b) => b.id === bookId)
-        if (!book) return err(404, '词书不存在')
+        if (!book || !(book.ownerId === null || book.ownerId === userId)) return err(404, '词书不存在')
         const limit = Math.min(500, Math.max(1, Number(req.query?.limit) || 100))
         const offset = Math.max(0, Number(req.query?.offset) || 0)
         const ordered = store.vocabBookWords
@@ -231,7 +459,7 @@ export default {
           sessionBookId = 0
         } else {
           const book = store.vocabBooks.find((b) => b.id === Number(body.bookId))
-          if (!book) return err(404, '词书不存在')
+          if (!book || !(book.ownerId === null || book.ownerId === userId)) return err(404, '词书不存在')
           sessionBookId = book.id
           bookName = book.name
           for (const p of reviewPool(userId, reviewLimit)) {

@@ -276,6 +276,138 @@ def test_stats_accepts_tz_offset(tmp_path) -> None:
     assert r.json()["data"]["today"]["sessions"] == 0
 
 
+# ---------- 词书导入（系统级 / 用户级） ----------
+
+def test_user_import_visibility_and_delete(tmp_path) -> None:
+    client = make_client(tmp_path)
+    h1 = register(client, "imp1@openlair.dev")
+    h2 = register(client, "imp2@openlair.dev")
+
+    r = client.post(
+        "/api/vocab/books/import",
+        json={"name": "我的生词本", "scope": "user", "text": "serendipity\nubiquitous,无处不在\n### 注释行\n1234"},
+        headers=h1,
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["imported"] == 2  # 注释与纯数字行被过滤
+    book = data["book"]
+    assert book["ownerId"] is not None and book["wordCount"] == 2
+
+    book_id = book["id"]
+    # 本人可见，他人不可见
+    names1 = [b["name"] for b in client.get("/api/vocab/books", headers=h1).json()["data"]["books"]]
+    names2 = [b["name"] for b in client.get("/api/vocab/books", headers=h2).json()["data"]["books"]]
+    assert "我的生词本" in names1 and "我的生词本" not in names2
+    # 他人访问单词/开课/删除都按不存在处理
+    assert client.get(f"/api/vocab/books/{book_id}/words", headers=h2).status_code == 404
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": book_id, "mode": "follow"}, headers=h2)
+    assert r.status_code == 404
+    assert client.delete(f"/api/vocab/books/{book_id}", headers=h2).status_code == 404
+    # 本人可删除
+    assert client.delete(f"/api/vocab/books/{book_id}", headers=h1).json()["data"]["ok"] is True
+    assert client.get(f"/api/vocab/books/{book_id}/words", headers=h1).status_code == 404
+
+
+def test_system_import_permission(tmp_path) -> None:
+    client = make_client(tmp_path)
+    h_admin = login(client, "test1@openlair.dev")  # user 1 = 站长
+    h_other = register(client, "imp3@openlair.dev")
+
+    r = client.post(
+        "/api/vocab/books/import",
+        json={"name": "站长的精选词书", "scope": "system", "text": "ephemeral,短暂的"},
+        headers=h_other,
+    )
+    assert r.status_code == 403
+
+    r = client.post(
+        "/api/vocab/books/import",
+        json={"name": "站长的精选词书", "scope": "system", "text": "ephemeral,短暂的"},
+        headers=h_admin,
+    )
+    assert r.status_code == 200
+    book = r.json()["data"]["book"]
+    assert book["ownerId"] is None  # 系统级
+
+    # 系统词书人人可见
+    names = [b["name"] for b in client.get("/api/vocab/books", headers=h_other).json()["data"]["books"]]
+    assert "站长的精选词书" in names
+    # 他人不能删系统词书，站长可以
+    assert client.delete(f"/api/vocab/books/{book['id']}", headers=h_other).status_code == 403
+    assert client.delete(f"/api/vocab/books/{book['id']}", headers=h_admin).json()["data"]["ok"] is True
+
+
+def test_import_ecdict_and_dedup(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "imp4@openlair.dev")
+    ecdict_text = (
+        "word,phonetic,definition,translation,pos,collins,oxford,tag,bnc,frq,exchange,detail,audio\n"
+        'flabbergast,"flæbəɡɑːst","",'
+        '"vt. 使大吃一惊\\nn. 吃惊","",0,0,"",0,0,"0:","","",\n'
+        'multi word phrase,"","",  "n. 词组","",0,0,"",0,0,"0:","","",\n'
+    )
+    r = client.post(
+        "/api/vocab/books/import",
+        json={"name": "ECDICT 测试书", "scope": "user", "text": ecdict_text},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["imported"] == 1  # 词组被过滤
+    assert data["format"] == "ecdict"
+    book_id = data["book"]["id"]
+
+    words = client.get(f"/api/vocab/books/{book_id}/words", headers=headers).json()["data"]["words"]
+    assert words[0]["word"] == "flabbergast"
+    assert words[0]["phoneticUk"] == "flæbəɡɑːst"
+    assert words[0]["translations"][0]["pos"] == "vt."
+
+    # 重复导入：全局词条去重，不新增词条
+    r2 = client.post(
+        "/api/vocab/books/import",
+        json={"name": "ECDICT 测试书2", "scope": "user", "text": "flabbergast\nbrandnew,全新"},
+        headers=headers,
+    )
+    assert r2.json()["data"]["newWords"] == 1  # 只有 brandnew 是新词条
+
+    # 解析不到单词 → 400
+    r3 = client.post(
+        "/api/vocab/books/import",
+        json={"name": "空书", "scope": "user", "text": "### 只有注释\n,,, "},
+        headers=headers,
+    )
+    assert r3.status_code == 400
+
+
+def test_import_anki_format(tmp_path) -> None:
+    """Anki 导出文本（Notes in Plain Text）：#deck 自动命名 + <br> 拆释义 + 标签列忽略。"""
+    client = make_client(tmp_path)
+    headers = register(client, "imp5@openlair.dev")
+    anki_text = (
+        "#separator:tab\n"
+        "#html:true\n"
+        "#deck:我的 Anki 牌组\n"
+        "obliterate\tvt. 抹掉<br>n. 毁灭者\t考研 雅思\n"
+        "ephemeral\tadj. 短暂的\n"
+    )
+    r = client.post("/api/vocab/books/import", json={"scope": "user", "text": anki_text}, headers=headers)
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["format"] == "anki"
+    assert data["book"]["name"] == "我的 Anki 牌组"  # 未填名称时自动取 #deck
+    assert data["imported"] == 2
+    book_id = data["book"]["id"]
+
+    words = client.get(f"/api/vocab/books/{book_id}/words", headers=headers).json()["data"]["words"]
+    by_word = {w["word"]: w for w in words}
+    assert by_word["obliterate"]["translations"] == [
+        {"pos": "vt.", "cn": "抹掉"},
+        {"pos": "n.", "cn": "毁灭者"},
+    ]
+    assert by_word["ephemeral"]["translations"][0]["cn"] == "短暂的"  # 标签列没有混进释义
+
+
 # ---------- 校验与鉴权 ----------
 
 def test_session_validation_errors(tmp_path) -> None:

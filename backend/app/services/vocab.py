@@ -1,11 +1,13 @@
-"""词汇打字练习服务：智能排课（FSRS + 错次自动映射）、会话管理、生词管理、统计。
+"""词汇打字练习服务：智能排课（FSRS + 错次自动映射）、会话管理、生词管理、词书导入、统计。
 
 调度语义（py-fsrs v6，空学习步 = 纯天级排课）：
 - Rating 由作答质量自动推导，用户无感评分：答错=Again；答对但打错过=Hard；一次全对=Good
 - 进度按 (user, word) 全局唯一，跨词书不重复学；book_id 只记首次学习来源
 - 复习池 = due <= now 且 learning；新词池 = 词书内无进度记录的词
+词书可见性：owner_id 为 NULL 的系统级词书人人可见；用户级词书仅导入者可见。
 """
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 from fsrs import Card, Rating, Scheduler, State
@@ -14,9 +16,11 @@ from app.core.envelope import ApiError
 from app.models.vocab import VocabBook, VocabPracticeSession, VocabWord, VocabWordProgress
 from app.repositories.vocab import VocabRepository
 from app.services import iso_z
+from app.services.vocab_import import parse_import_text
 
 MODES = ("follow", "dictation", "self_test", "spell")
 SOURCES = ("book", "wrong", "collect")  # book 词书排课 / wrong 错词本 / collect 收藏
+SCOPES = ("system", "user")  # 导入级别：system 系统级（仅站长）/ user 用户级
 STATUSES = ("learning", "mastered")
 
 DEFAULT_NEW_LIMIT = 10  # 每次练习的新词配额
@@ -37,34 +41,67 @@ class VocabService:
 
     def list_books(self, user_id: int) -> dict:
         now = self._utcnow()
-        books = self._repo.list_books()
+        books = self._repo.list_visible_books(user_id)
         word_counts = self._repo.count_words_by_book()
         stats = self._repo.book_progress_stats(user_id, now)
-        dtos = []
-        for b in books:
-            s = stats.get(b.id, {})
-            dtos.append(
-                {
-                    "id": b.id,
-                    "slug": b.slug,
-                    "name": b.name,
-                    "lang": b.lang,
-                    "emoji": b.emoji,
-                    "description": b.description,
-                    "wordCount": word_counts.get(b.id, 0),
-                    "learning": s.get("learning", 0),
-                    "mastered": s.get("mastered", 0),
-                    "due": s.get("due", 0),
-                    "createdAt": iso_z(b.created_at),
-                }
-            )
-        return {"books": dtos}
+        return {"books": [self._book_dto(b, word_counts, stats) for b in books]}
+
+    def import_book(self, *, user_id: int, name: str, scope: str, lang: str = "en", text: str) -> dict:
+        """导入词书：system 系统级（仅站长，人人可见）/ user 用户级（仅本人可见）。
+
+        文本自动识别 ECDICT CSV 与简单行格式（每行一个单词，可选释义）。
+        词条按小写拼写全局去重 upsert，同一词可属多本词书。
+        """
+        if scope not in SCOPES:
+            raise ApiError(400, "不支持的导入级别")
+        if scope == "system" and user_id != 1:
+            raise ApiError(403, "只有站长（首位用户）可以导入系统级词书")
+        name = (name or "").strip()
+        try:
+            fmt, words, deck_name = parse_import_text(text or "")
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        if not name:
+            name = deck_name  # Anki #deck 头可自动命名
+        if not name:
+            raise ApiError(400, "词书名称不能为空")
+        if not words:
+            raise ApiError(400, "未解析到有效单词，请检查格式（每行一个单词，可选“单词,释义”）")
+
+        now = self._utcnow()
+        prefix = "sys" if scope == "system" else f"u{user_id}"
+        slug = f"{prefix}-{hashlib.md5((name + now.isoformat()).encode()).hexdigest()[:12]}"
+        book = self._repo.create_book(
+            slug=slug,
+            name=name,
+            lang=lang or "en",
+            emoji="📚" if scope == "system" else "📖",
+            description=f"导入格式 {fmt}",
+            owner_id=None if scope == "system" else user_id,
+        )
+        word_map, new_count = self._repo.upsert_words(words)
+        self._repo.replace_book_words(book.id, [word_map[p.word] for p in words])
+        self._repo.set_word_count(book.id, len(words))
+        return {"book": self._book_dto(book, {book.id: len(words)}, {}), "imported": len(words), "newWords": new_count, "format": fmt}
+
+    def delete_book(self, *, user_id: int, book_id: int) -> dict:
+        """删除词书（系统级仅站长；用户级仅本人）。词条全局池与学习进度保留。"""
+        book = self._repo.get_book(book_id)
+        if book is None:
+            raise ApiError(404, "词书不存在")
+        if book.owner_id is None:
+            if user_id != 1:
+                raise ApiError(403, "只有站长可以删除系统级词书")
+        elif book.owner_id != user_id:
+            raise ApiError(404, "词书不存在")  # 他人词书按不存在处理，不暴露存在性
+        self._repo.delete_book(book_id)
+        return {"ok": True}
 
     # ---------- 词书单词 ----------
 
-    def list_book_words(self, book_id: int, limit: int, offset: int) -> dict:
+    def list_book_words(self, book_id: int, limit: int, offset: int, user_id: int | None = None) -> dict:
         book = self._repo.get_book(book_id)
-        if book is None:
+        if book is None or (user_id is not None and not self._visible(book, user_id)):
             raise ApiError(404, "词书不存在")
         limit = max(1, min(limit, 500))
         offset = max(0, offset)
@@ -109,7 +146,7 @@ class VocabService:
             book_name = "收藏复习"
         else:
             book = self._repo.get_book(book_id)
-            if book is None:
+            if book is None or not self._visible(book, user_id):
                 raise ApiError(404, "词书不存在")
             due_rows = self._repo.list_due_progress(user_id, now, limit=review_limit)
             due_words = {w.id: w for w in self._repo.list_words_by_ids([p.word_id for p in due_rows])}
@@ -255,6 +292,11 @@ class VocabService:
     # ---------- 内部：FSRS 卡片转换 ----------
 
     @staticmethod
+    def _visible(book: VocabBook, user_id: int) -> bool:
+        """系统级词书（owner_id 为 NULL）人人可见；用户级仅导入者本人。"""
+        return book.owner_id is None or book.owner_id == user_id
+
+    @staticmethod
     def _utcnow() -> datetime:
         return datetime.now(UTC)
 
@@ -279,6 +321,23 @@ class VocabService:
         return Card()  # 尚未形成记忆状态的新卡
 
     # ---------- 内部：DTO ----------
+
+    def _book_dto(self, b: VocabBook, word_counts: dict[int, int], stats: dict[int, dict]) -> dict:
+        s = stats.get(b.id, {})
+        return {
+            "id": b.id,
+            "slug": b.slug,
+            "name": b.name,
+            "lang": b.lang,
+            "emoji": b.emoji,
+            "description": b.description,
+            "ownerId": b.owner_id,  # null=系统级词书；非空=用户级（导入者 id）
+            "wordCount": word_counts.get(b.id, 0),
+            "learning": s.get("learning", 0),
+            "mastered": s.get("mastered", 0),
+            "due": s.get("due", 0),
+            "createdAt": iso_z(b.created_at),
+        }
 
     def _word_dto(self, w: VocabWord) -> dict:
         return {

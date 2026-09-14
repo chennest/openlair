@@ -1,21 +1,19 @@
-"""词库导入脚本：从 ECDICT（https://github.com/skywind3000/ECDICT，MIT 协议）CSV 构建词书。
+"""词库导入脚本：从 ECDICT（https://github.com/skywind3000/ECDICT，MIT 协议）CSV 构建系统级词书。
 
 用法（在 backend/ 下）：
     uv run python -m app.scripts.import_vocab --csv path/to/ecdict.csv --book cet4
     uv run python -m app.scripts.import_vocab --csv ecdict.csv --book ky --limit 5000
 
+适合整库大文件导入；页面上还有交互式导入（系统级/用户级）见 /api/vocab/books/import。
 - 按 ECDICT 的 tag 列筛词构建词书（tag 以 / 分隔，如 "cet4/cet6/ky"）
-- 释义解析自 translation 列（每行一条 "vt. 取消"，按换行拆分 → [{pos, cn}]）
-- 例句 ECDICT 不提供，sentences 留空（后续可用 Tatoeba 等 CC 协议数据源补充）
+- 解析逻辑复用 app/services/vocab_import.py
 - 幂等：单词按小写拼写全局去重 upsert，词书重复导入只刷新映射与计数
 - 仅支持 SQLite/MySQL/PostgreSQL 中由 DATABASE_URL 指定的库，schema 缺失时先建表
 """
 
 import argparse
-import csv
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -23,6 +21,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.session import create_database_engine, create_session_factory, init_database
 from app.models.vocab import VocabBook, VocabBookWord, VocabWord
+from app.services.vocab_import import MAX_WORD_LEN, ParsedWord, parse_translation
 
 # 词书 slug → ECDICT tag 标记（tag 列以 / 分隔）
 BOOK_TAGS: dict[str, str] = {
@@ -47,31 +46,7 @@ BOOK_META: dict[str, dict[str, str]] = {
     "zhongkao": {"name": "中考英语核心词汇", "emoji": "✏️"},
 }
 
-MAX_WORD_LEN = 40
 MAX_SENSES = 6  # 每词最多保留的释义条数
-
-
-@dataclass
-class ParsedWord:
-    word: str
-    phonetic: str
-    translations: list[dict]
-    freq: int  # 词频排名（越小越常用，0=未知）
-
-
-def parse_translation(raw: str) -> list[dict]:
-    """ECDICT translation 列：'vt. 取消\\nn. 撤销' → [{pos, cn}]。"""
-    senses: list[dict] = []
-    for line in (raw or "").replace("\r\n", "\n").replace("\\n", "\n").split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        pos, sep, cn = line.partition(" ")
-        if sep and pos.endswith(".") and len(pos) <= 6:
-            senses.append({"pos": pos, "cn": cn.strip()})
-        else:
-            senses.append({"pos": "", "cn": line})
-    return senses[:MAX_SENSES]
 
 
 def parse_rows(csv_path: str, tag: str) -> Iterator[ParsedWord]:

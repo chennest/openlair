@@ -97,7 +97,7 @@ HTTP 请求
 | `assistant_messages` | AI 助手消息（transcript）：role(user/assistant)、type(text/confirm_request/tool_result)、content、meta |
 | `assistant_plans` | AI 记账计划执行日志：plan_id、args、status(pending/executed/cancelled/failed) |
 | `days` | 倒数日 / 纪念日：title、emoji、date、repeat(once/yearly/monthly)、pinned |
-| `vocab_books` | 词书（全局共享）：slug（唯一）、name、lang、word_count、sort；全量数据由 `app/scripts/import_vocab.py` 从 ECDICT 导入 |
+| `vocab_books` | 词书：`owner_id=NULL` 为系统级（所有用户可见），非空为导入者私有；slug（唯一）、name、lang、word_count、sort；系统全量数据仍可由 `app/scripts/import_vocab.py` 从 ECDICT 导入 |
 | `vocab_words` | 单词（全局去重，word 唯一）：音标、translations/sentences/phrases/synos/rel_words（JSON）、freq 词频 |
 | `vocab_book_words` | 词书↔单词多对多：book_id + word_id（唯一），sort 词书内顺序 |
 | `vocab_word_progress` | 学习进度（FSRS 卡片，每用户每词一条）：status(learning/mastered)、collected、wrong/right_count、wrong_active（错词本）、due（排课索引）+ FSRS 平铺字段 stability/difficulty/state/step/last_review |
@@ -164,8 +164,10 @@ HTTP 请求
 ### /api/vocab（词汇打字练习）
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | /books | 词书列表（附每本我的进度 learning/mastered/due） |
-| GET | /books/{book_id}/words?limit=&offset= | 词书单词分批拉取（带 total） |
+| GET | /books | 可见词书列表（系统级 + 本人私有），附每本我的进度 learning/mastered/due |
+| POST | /books/import | 文本导入词书 `{name?, scope: user/system, lang?, text}`；用户级仅导入者可见，系统级所有人可见且仅首位用户可导入 |
+| DELETE | /books/{book_id} | 删除本人私有词书；系统级仅首位用户可删。仅删除词书与映射，保留全局词条和学习进度 |
+| GET | /books/{book_id}/words?limit=&offset= | 可见词书的单词分批拉取（带 total） |
 | POST | /practice/sessions | 开课+智能排课 `{bookId, mode, source?, newLimit?, reviewLimit?}` → `{id, bookId, bookName, source, mode, queue:[{word..., progress?}]}`；source=book（默认）复习池 = due≤now 且 learning（按 due 升序）+ 新词池；source=wrong/collect 直接练错词本/收藏（bookId 忽略，session.book_id=0） |
 | POST | /practice/sessions/{id}/answers | 逐词上报 `{wordId, correct, wrongTimes, durationMs}` → 更新进度返回 item；错次自动映射 Rating：答错=Again / 答对但打错过=Hard / 一次全对=Good（py-fsrs v6，空学习步按天排课） |
 | POST | /practice/sessions/{id}/finish | 结束会话 `{durationSec}`，落 finished_at |
@@ -175,7 +177,7 @@ HTTP 请求
 | GET | /stats | 今日 + 累计统计（`tzOffset` 为本地相对 UTC 分钟差，按客户端本地零点算“今日”；由 sessions/progress 聚合，无日表） |
 
 - **FSRS 调度**：进度按 (user, word) 全局唯一（跨词书不重复学），book_id 只记首次来源；FSRS 字段平铺进 `vocab_word_progress`（排课需 `WHERE due <= now` 索引）；SQLite 读回的 datetime 无 tzinfo，服务层统一按 UTC 归一化。
-- **词库数据**：词书/单词为全局共享表，不走启动 seed（seed 仅注入一本 8 词演示词书）；正式词库用 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4` 从 ECDICT（MIT）导入，例句留空待后续数据源补充。
+- **词书导入**：页面可导入 ECDICT CSV、简单文本（`word` / `word,释义` / `word<TAB>释义`）和 Anki 的 **Notes in Plain Text** 文本导出（支持 `#separator`、`#deck`、`#html`，首列为单词、第二列为释义，`<br>` 拆为多条释义）。`.apkg` 二进制牌组暂不支持；需要先在 Anki 中导出为文本。大规模完整 ECDICT 仍建议运行 `uv run python -m app.scripts.import_vocab --csv <ecdict.csv> --book cet4`。词条按小写拼写全局去重，已有释义不会被导入覆盖。
 
 ### /api/assistant · /api/transcribe
 | 方法 | 路径 | 说明 |

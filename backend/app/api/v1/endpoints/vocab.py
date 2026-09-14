@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.api.v1.deps import get_current_user
 from app.api.v1.schemas import (
     FinishSessionInput,
+    ImportBooksInput,
     StartSessionInput,
     SubmitAnswerInput,
     UpdateVocabProgressInput,
@@ -20,15 +21,39 @@ async def list_vocab_books(request: Request, user: User = Depends(get_current_us
     return ok_response(request.app.state.vocab_service.list_books(user.id))
 
 
+@vocabulary_router.post("/books/import")
+async def import_vocab_book(
+    request: Request, payload: ImportBooksInput, user: User = Depends(get_current_user)
+) -> dict:
+    return ok_response(
+        request.app.state.vocab_service.import_book(
+            user_id=user.id,
+            name=payload.name,
+            scope=payload.scope,
+            lang=payload.lang,
+            text=payload.text,
+        )
+    )
+
+
+@vocabulary_router.delete("/books/{book_id}")
+async def delete_vocab_book(
+    request: Request, book_id: int, user: User = Depends(get_current_user)
+) -> dict:
+    return ok_response(request.app.state.vocab_service.delete_book(user_id=user.id, book_id=book_id))
+
+
 @vocabulary_router.get("/books/{book_id}/words")
 async def list_book_words(
     request: Request,
     book_id: int,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
-    return ok_response(request.app.state.vocab_service.list_book_words(book_id, limit=limit, offset=offset))
+    return ok_response(
+        request.app.state.vocab_service.list_book_words(book_id, limit=limit, offset=offset, user_id=user.id)
+    )
 
 
 @vocabulary_router.post("/practice/sessions")

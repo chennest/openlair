@@ -48,7 +48,7 @@
 - 运行后端测试（业务 API 测试套件每个用例使用独立的 SQLite 文件）：`uv run pytest`
 - 启动本地后端开发服务（端口 8001）：`uv run uvicorn app.main:app --host 127.0.0.1 --port 8001`
 - 数据库迁移（Alembic，在 `backend/` 下执行）：生成 `uv run alembic revision --autogenerate -m "..."`，应用 `uv run alembic upgrade head`，回退一步 `uv run alembic downgrade -1`。启动时的 `create_all` 仍会引导全新 SQLite；此后 schema 演进由迁移管理。
-- 词库导入（vocab 模块，在 `backend/` 下执行）：`uv run python -m app.scripts.import_vocab --csv <ECDICT解压后的ecdict.csv路径> --book cet4`。从 ECDICT（MIT，https://github.com/skywind3000/ECDICT）按 tag 构建词书，可选 slug：cet4/cet6/kaoyan/ielts/toefl/gre/gaokao/zhongkao，`--limit N` 截断。幂等可重复执行；例句字段留空（后续数据源补）。依赖 `fsrs`（py-fsrs v6，`uv add fsrs` 已入 pyproject）。
+- 词库导入（vocab 模块，在 `backend/` 下执行）：`uv run python -m app.scripts.import_vocab --csv <ECDICT解压后的ecdict.csv路径> --book cet4`。从 ECDICT（MIT，https://github.com/skywind3000/ECDICT）按 tag 构建系统词书，可选 slug：cet4/cet6/kaoyan/ielts/toefl/gre/gaokao/zhongkao，`--limit N` 截断。幂等可重复执行；例句字段留空（后续数据源补）。Web 端「导入词书」支持用户级/系统级（系统级仅首位用户）、Anki Notes in Plain Text、ECDICT CSV 和简单行文本；`.apkg` 暂不支持，完整大词库仍建议用 CLI。依赖 `fsrs`（py-fsrs v6，`uv add fsrs` 已入 pyproject）。
 - 配置（`app/core/config.py`，pydantic-settings）读取优先级：进程环境变量 → `backend/.env` → 默认值。键：`OPENLAIR_JWT_SECRET`、`DATABASE_URL`。模板：`backend/.env.example`。
 
 在 `lairweb/` 下执行（包管理统一用 pnpm）：

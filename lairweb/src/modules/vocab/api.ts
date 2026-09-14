@@ -1,4 +1,4 @@
-import { get, post, put } from '../../api/request'
+import { get, post, put, del } from '../../api/request'
 
 /** 练习模式：follow 跟打 / dictation 听写 / self_test 自测 / spell 默写 */
 export type VocabMode = 'follow' | 'dictation' | 'self_test' | 'spell'
@@ -17,6 +17,8 @@ export interface VocabBook {
   lang: string
   emoji: string
   description: string
+  /** null=系统级词书（人人可见）；非空=用户级词书（ ownerId 即导入者 id） */
+  ownerId: number | null
   wordCount: number
   /** 进度统计由后端按词书成员资格计算（mock 同契约） */
   learning: number
@@ -24,6 +26,18 @@ export interface VocabBook {
   /** 到期待复习数 */
   due: number
   createdAt: string
+}
+
+export type VocabImportScope = 'system' | 'user'
+
+export interface ImportBooksResult {
+  book: VocabBook
+  /** 导入的单词数（文本内去重后） */
+  imported: number
+  /** 全局词库中新建的词条数（已存在的词不重复建） */
+  newWords: number
+  /** 识别的格式：anki / ecdict / simple */
+  format: string
 }
 
 export interface VocabTranslation {
@@ -112,6 +126,9 @@ export interface AnswerInput {
 
 export const vocabApi = {
   books: () => get<{ books: VocabBook[] }>('/api/vocab/books'),
+  importBooks: (input: { name?: string; scope: VocabImportScope; lang?: string; text: string }) =>
+    post<ImportBooksResult>('/api/vocab/books/import', input),
+  deleteBook: (bookId: number) => del<{ ok: boolean }>(`/api/vocab/books/${bookId}`),
   bookWords: (bookId: number, limit = 100, offset = 0) =>
     get<{ total: number; words: VocabWord[] }>(`/api/vocab/books/${bookId}/words?limit=${limit}&offset=${offset}`),
   start: (input: { bookId: number; mode: VocabMode; source?: VocabSource; newLimit?: number; reviewLimit?: number }) =>

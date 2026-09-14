@@ -14,7 +14,11 @@ from app.db.base import Base
 
 
 class VocabBook(Base):
-    """vocab_books 表：词书（如 CET-4 / 考研），全局共享，导入脚本维护。"""
+    """vocab_books 表：词书（如 CET-4 / 考研），导入维护。
+
+    owner_id 为 NULL = 系统级词书（所有用户可见，仅站长/首位用户可导入和删除）；
+    非 NULL = 用户级词书（仅导入者本人可见，本人可删）。
+    """
 
     __tablename__ = "vocab_books"
 
@@ -24,6 +28,7 @@ class VocabBook(Base):
     lang: Mapped[str] = mapped_column(String(10), default="en")  # 预留多语言
     emoji: Mapped[str] = mapped_column(String(8), default="")
     description: Mapped[str] = mapped_column(String(255), default="")
+    owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # NULL=系统级；非空=用户级（逻辑关联 users.id，无硬外键）
     word_count: Mapped[int] = mapped_column(Integer, default=0)  # 冗余计数，导入脚本维护
     sort: Mapped[int] = mapped_column(Integer, default=0)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

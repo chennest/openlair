@@ -1,14 +1,20 @@
 <script setup lang="ts">
-// 词书卡片：进度条 + 待复习徽标 + 四模式入口
+// 词书卡片：进度条 + 待复习徽标 + 四模式入口；用户级词书带「我的」徽标和删除入口
 import { computed } from 'vue'
-import { BookOpen } from '@lucide/vue'
+import { BookOpen, Trash2 } from '@lucide/vue'
 import { VOCAB_MODES, type VocabBook, type VocabMode } from './api'
 
-const props = defineProps<{ book: VocabBook }>()
-const emit = defineEmits<{ practice: [mode: VocabMode] }>()
+const props = defineProps<{ book: VocabBook; canDelete: boolean }>()
+const emit = defineEmits<{ practice: [mode: VocabMode]; delete: [bookId: number] }>()
 
 const learned = computed(() => props.book.learning + props.book.mastered)
 const percent = computed(() => (props.book.wordCount ? Math.round((learned.value / props.book.wordCount) * 100) : 0))
+
+function onDelete() {
+  if (window.confirm(`确定删除词书「${props.book.name}」吗？学习进度会保留。`)) {
+    emit('delete', props.book.id)
+  }
+}
 </script>
 
 <template>
@@ -16,9 +22,21 @@ const percent = computed(() => (props.book.wordCount ? Math.round((learned.value
     <div class="book-head">
       <span class="book-emoji">{{ book.emoji || '📖' }}</span>
       <div class="book-title">
-        <h3>{{ book.name }}</h3>
+        <h3>
+          {{ book.name }}
+          <span v-if="book.ownerId !== null" class="mine-badge">我的</span>
+        </h3>
         <p class="book-desc">{{ book.description || `${book.wordCount} 个单词` }}</p>
       </div>
+      <button
+        v-if="canDelete"
+        class="del-btn"
+        type="button"
+        aria-label="删除词书"
+        @click="onDelete"
+      >
+        <Trash2 class="size-4" />
+      </button>
     </div>
 
     <div class="book-progress">
@@ -69,6 +87,38 @@ const percent = computed(() => (props.book.wordCount ? Math.round((learned.value
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mine-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.del-btn {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  padding: 7px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.del-btn:hover {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.08);
+}
+.del-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .book-desc {
   margin: 3px 0 0;

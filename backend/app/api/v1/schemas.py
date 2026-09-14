@@ -212,3 +212,10 @@ class UpdateVocabProgressInput(BaseModel):
     status: str | None = None  # learning / mastered
     collected: bool | None = None
     dismissWrong: bool | None = None  # true=移出错词本
+
+
+class ImportBooksInput(BaseModel):
+    name: str = Field(default="", max_length=100)  # 留空时 Anki #deck 头可自动命名
+    scope: str = "user"  # system 系统级（仅站长，人人可见）/ user 用户级（仅本人）
+    lang: str = Field(default="en", max_length=10)
+    text: str = Field(min_length=1)  # Anki 导出文本 / ECDICT CSV / 简单行格式（每行一个单词，可选释义）

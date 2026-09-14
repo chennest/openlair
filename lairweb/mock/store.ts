@@ -200,7 +200,7 @@ export interface VocabSyno {
   ws: string[]
 }
 
-/** vocab_books 表：词书（全局共享，正式词库由导入脚本维护） */
+/** vocab_books 表：词书（系统级 ownerId=null 人人可见；用户级仅导入者可见） */
 export interface VocabBookItem {
   id: number
   slug: string
@@ -208,6 +208,7 @@ export interface VocabBookItem {
   lang: string
   emoji: string
   description: string
+  ownerId: number | null
   wordCount: number
   sort: number
   isEnabled: boolean
@@ -624,7 +625,8 @@ function seed(): StoreShape {
         name: '演示词书',
         lang: 'en',
         emoji: '📖',
-        description: '内置演示词汇，正式词库用后端导入脚本添加',
+        description: '内置演示词汇，也可点「导入词书」添加自己的词书',
+        ownerId: null,
         wordCount: VOCAB_DEMO_WORDS.length,
         sort: 0,
         isEnabled: true,

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import case, func, select
 
@@ -19,29 +19,118 @@ class VocabRepository:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
-    # ---------- 词书（全局共享） ----------
+    # ---------- 词书（系统级共享 + 用户级私有） ----------
 
-    def list_books(self) -> list[VocabBook]:
+    def list_visible_books(self, user_id: int) -> list[VocabBook]:
+        """系统级（owner_id 为 NULL）+ 本人用户级词书，按 sort/id 排序。"""
         with self._session_factory() as session:
-            stmt = select(VocabBook).where(VocabBook.is_enabled.is_(True)).order_by(VocabBook.sort, VocabBook.id)
+            stmt = (
+                select(VocabBook)
+                .where(
+                    VocabBook.is_enabled.is_(True),
+                    (VocabBook.owner_id.is_(None)) | (VocabBook.owner_id == user_id),
+                )
+                .order_by(VocabBook.sort, VocabBook.id)
+            )
             return list(session.scalars(stmt))
 
     def get_book(self, book_id: int) -> VocabBook | None:
         with self._session_factory() as session:
             return session.get(VocabBook, book_id)
 
-    def create_book(self, *, slug: str, name: str, lang: str = "en", emoji: str = "", description: str = "", sort: int = 0) -> VocabBook:
+    def create_book(
+        self, *, slug: str, name: str, lang: str = "en", emoji: str = "", description: str = "", sort: int = 0, owner_id: int | None = None
+    ) -> VocabBook:
         with self._session_factory() as session:
-            item = VocabBook(slug=slug, name=name, lang=lang, emoji=emoji, description=description, sort=sort)
+            item = VocabBook(slug=slug, name=name, lang=lang, emoji=emoji, description=description, sort=sort, owner_id=owner_id)
             session.add(item)
             session.commit()
             session.refresh(item)
             return item
 
+    def delete_book(self, book_id: int) -> bool:
+        """删除词书及其单词映射（全局词条与学习进度保留）。"""
+        with self._session_factory() as session:
+            item = session.get(VocabBook, book_id)
+            if item is None:
+                return False
+            for row in session.query(VocabBookWord).filter(VocabBookWord.book_id == book_id):
+                session.delete(row)
+            session.delete(item)
+            session.commit()
+            return True
+
     def count_words_by_book(self) -> dict[int, int]:
         with self._session_factory() as session:
             stmt = select(VocabBookWord.book_id, func.count(VocabBookWord.id)).group_by(VocabBookWord.book_id)
             return {book_id: count for book_id, count in session.execute(stmt)}
+
+    def upsert_words(self, parsed: list) -> tuple[dict[str, int], int]:
+        """按小写拼写全局去重 upsert 词条：已存在且字段为空的补齐，缺失的插入。
+
+        返回 (word → id 映射, 新插入数量)。分块查询避免 SQLite IN 变量上限。
+        """
+        now = datetime.now(UTC)
+        result: dict[str, int] = {}
+        new_count = 0
+        with self._session_factory() as session:
+            all_words = [p.word for p in parsed]
+            existing: dict[str, VocabWord] = {}
+            for i in range(0, len(all_words), 500):
+                chunk = all_words[i : i + 500]
+                for w in session.query(VocabWord).filter(VocabWord.word.in_(chunk)):
+                    existing[w.word] = w
+            for p in parsed:
+                row = existing.get(p.word)
+                if row is None:
+                    row = VocabWord(
+                        word=p.word,
+                        phonetic_uk=p.phonetic,
+                        phonetic_us="",
+                        translations=p.translations,
+                        sentences=[],
+                        phrases=[],
+                        synos=[],
+                        rel_words={},
+                        freq=p.freq,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    session.add(row)
+                    session.flush()
+                    existing[p.word] = row
+                    new_count += 1
+                else:
+                    # 补齐空字段（不覆盖已有释义）
+                    if not row.phonetic_uk and p.phonetic:
+                        row.phonetic_uk = p.phonetic
+                    if not row.translations and p.translations:
+                        row.translations = p.translations
+                    if not row.freq and p.freq:
+                        row.freq = p.freq
+                result[p.word] = row.id
+            session.commit()
+        return result, new_count
+
+    def replace_book_words(self, book_id: int, word_ids: list[int]) -> None:
+        """重建词书↔单词映射（sort = 列表顺序）。"""
+        with self._session_factory() as session:
+            for row in session.query(VocabBookWord).filter(VocabBookWord.book_id == book_id):
+                session.delete(row)
+            session.flush()
+            now = datetime.now(UTC)
+            session.add_all(
+                VocabBookWord(book_id=book_id, word_id=word_id, sort=sort, created_at=now)
+                for sort, word_id in enumerate(word_ids)
+            )
+            session.commit()
+
+    def set_word_count(self, book_id: int, count: int) -> None:
+        with self._session_factory() as session:
+            item = session.get(VocabBook, book_id)
+            if item is not None:
+                item.word_count = count
+                session.commit()
 
     def book_progress_stats(self, user_id: int, now: datetime) -> dict[int, dict[str, int]]:
         """每本词书的学习统计（按词书成员资格归桶，而非进度行的来源 book_id）：

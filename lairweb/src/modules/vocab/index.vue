@@ -2,18 +2,25 @@
 // 词汇练习主页：学习统计条 + 词书墙 / 错词本 / 收藏 三个 Tab
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { getUser } from '@/api/request'
+import { Plus } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   vocabApi,
+  type ImportBooksResult,
   type QueueItem,
   type VocabBook,
+  type VocabImportScope,
   type VocabMode,
   type VocabStats,
 } from './api'
 import BookCard from './BookCard.vue'
 import VocabWordRow from './VocabWordRow.vue'
+import VocabImportDialog from './VocabImportDialog.vue'
 
 const router = useRouter()
+const currentUserId = Number((getUser() as { id?: number } | null)?.id ?? 0)
 
 const loading = ref(true)
 const error = ref('')
@@ -24,6 +31,12 @@ const collectedWords = ref<QueueItem[]>([])
 
 type Filter = 'books' | 'wrong' | 'collect'
 const filter = ref<Filter>('books')
+
+// ---------- 导入词书弹窗 ----------
+const importOpen = ref(false)
+const importing = ref(false)
+const importResult = ref<ImportBooksResult | null>(null)
+const importError = ref('')
 
 const accuracy = computed(() => {
   const t = stats.value?.today
@@ -51,6 +64,34 @@ function onPractice(mode: VocabMode, bookId: number) {
 
 function practiceSource(source: 'wrong' | 'collect') {
   void router.push(`/vocab/practice/0?mode=follow&source=${source}`)
+}
+
+async function onImport(input: { name: string; scope: VocabImportScope; lang: string; text: string }) {
+  importing.value = true
+  importError.value = ''
+  try {
+    importResult.value = await vocabApi.importBooks(input)
+    await load()
+  } catch (e) {
+    importError.value = e instanceof Error ? e.message : '导入失败'
+  } finally {
+    importing.value = false
+  }
+}
+
+function openImport() {
+  importResult.value = null
+  importError.value = ''
+  importOpen.value = true
+}
+
+async function onDeleteBook(bookId: number) {
+  try {
+    await vocabApi.deleteBook(bookId)
+    await load()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '删除失败'
+  }
 }
 
 async function onDismissWrong(wordId: number) {
@@ -101,6 +142,10 @@ onMounted(load)
           <span class="label">已掌握</span>
         </div>
       </div>
+      <Button size="sm" class="import-btn rounded-full px-4" @click="openImport">
+        <Plus class="size-4" />
+        导入词书
+      </Button>
     </div>
 
     <!-- Tab：词书 / 错词本 / 收藏 -->
@@ -135,8 +180,15 @@ onMounted(load)
 
     <!-- 词书墙 -->
     <div v-if="filter === 'books'" class="card-wall">
-      <BookCard v-for="b in books" :key="b.id" :book="b" @practice="(m) => onPractice(m, b.id)" />
-      <div v-if="!books.length" class="placeholder empty"><div><p>还没有词书，用后端导入脚本添加</p></div></div>
+      <BookCard
+        v-for="b in books"
+        :key="b.id"
+        :book="b"
+        :can-delete="b.ownerId === currentUserId || (b.ownerId === null && currentUserId === 1)"
+        @practice="(m) => onPractice(m, b.id)"
+        @delete="onDeleteBook"
+      />
+      <div v-if="!books.length" class="placeholder empty"><div><p>还没有词书，点右上角「导入词书」添加</p></div></div>
     </div>
 
     <!-- 错词本 -->
@@ -163,6 +215,16 @@ onMounted(load)
       />
       <div v-if="!collectedWords.length" class="placeholder empty"><div><p>还没有收藏的单词</p></div></div>
     </div>
+
+    <!-- 导入词书弹窗 -->
+    <VocabImportDialog
+      :open="importOpen"
+      :importing="importing"
+      :result="importResult"
+      :error="importError"
+      @close="importOpen = false"
+      @submit="onImport"
+    />
   </div>
 </template>
 
@@ -210,6 +272,9 @@ onMounted(load)
 .label {
   font-size: 0.72rem;
   color: var(--text-3);
+}
+.import-btn {
+  box-shadow: var(--sh-cta);
 }
 
 .toolbar {
