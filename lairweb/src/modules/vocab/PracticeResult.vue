@@ -63,7 +63,7 @@ function dueText(due: string | null): string {
           v-if="goalDone"
           class="rounded-full px-6 shadow-[var(--sh-cta)]"
           @click="emit('continue')"
-        >继续学习</Button>
+        >继续学习（再来一组）</Button>
         <Button v-else class="rounded-full px-6 shadow-[var(--sh-cta)]" @click="emit('restart')">
           <RotateCcw class="size-4" />
           再来一轮

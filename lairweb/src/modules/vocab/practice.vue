@@ -197,22 +197,22 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <!-- 完成态：达标了就给「继续学习」，而不是只留一句完成提示 -->
+  <!-- 完成态：达标了就给「继续学习（再来一组）」，而不是只留一句完成提示 -->
   <div v-else-if="blocked" class="practice-page">
     <div class="done-card">
       <p class="done-title">{{ blocked === 'goal' ? '今日任务已完成' : '暂时没有可练的词' }}</p>
-      <p class="done-sub">
-        <template v-if="blocked === 'goal'">
-          新词与复习都达标了 —— 状态好就再来一组（{{ groupSize }} 个），不嫌多
-        </template>
-        <template v-else>{{ blockedMsg }}</template>
+      <!-- 直接用后端原话：它已经区分了「两侧都达标」与「新词达标但没到期复习」，
+           这里另写一句「都达标了」会在后一种情况下说假话 -->
+      <p class="done-sub">{{ blockedMsg }}</p>
+      <p v-if="blocked === 'goal'" class="done-sub">
+        每组 {{ groupSize }} 个词 · 想学多少都行
       </p>
       <div class="done-actions">
         <Button
           v-if="blocked === 'goal'"
           class="rounded-full px-6 shadow-[var(--sh-cta)]"
           @click="startPractice({ over: true })"
-        >继续学习</Button>
+        >继续学习（再来一组）</Button>
         <Button variant="outline" class="rounded-full px-6" @click="router.push('/vocab')">返回词书</Button>
       </div>
     </div>

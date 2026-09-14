@@ -18,6 +18,8 @@ const props = defineProps<{
   error: string
   /** 有没有可练的词书：没有就不摆入口（去词书墙的导入卡更合适） */
   canStart: boolean
+  /** 目标词书当前有几个到期复习 —— 入口要靠它判断「还欠着但没货」 */
+  dueInBook: number
 }>()
 
 const emit = defineEmits<{
@@ -37,16 +39,26 @@ function pct(done: number, target: number): number {
 const newPct = computed(() => pct(props.goal.todayNew, props.goal.newTarget))
 const reviewPct = computed(() => pct(props.goal.todayReviewed, props.goal.reviewTarget))
 
-/** 今日任务是否全部完成（新词 + 复习两侧都达标）—— 入口文案与语义的唯一判据 */
-const allDone = computed(() => props.goal.achieved && props.goal.reviewAchieved)
+/**
+ * 入口是否该切到「继续学习」——判据不是「两侧都达标」那么简单。
+ *
+ * 还要看「这本书有没有到期复习」：新词已达标但复习没达标、且这本书一个到期词都没有时，
+ * 默认配额（复习剩多少发多少 + 新词剩 0）必然发不出东西，点了只会撞「今日新词目标已完成」。
+ * 这种「欠着却无货」的状态必须当下就切成加码，否则按钮说的和做的不一致。
+ */
+const fullyDone = computed(
+  () => props.goal.achieved && (props.goal.reviewAchieved || props.dueInBook === 0),
+)
 
 /** 未完成时列出还差什么；已完成时说明「还能接着学」 */
 const footHint = computed(() => {
-  if (allDone.value) return '今日任务已完成 · 想多学就接着来，不嫌多'
-  const parts: string[] = []
-  if (!props.goal.achieved) parts.push(`新词还差 ${props.goal.remaining} 个`)
-  if (!props.goal.reviewAchieved) parts.push(`复习还差 ${props.goal.reviewRemaining} 个`)
-  return parts.join(' · ')
+  if (!props.goal.achieved) {
+    const parts = [`新词还差 ${props.goal.remaining} 个`]
+    if (!props.goal.reviewAchieved) parts.push(`复习还差 ${props.goal.reviewRemaining} 个`)
+    return parts.join(' · ')
+  }
+  if (fullyDone.value) return '今日任务已完成 · 多学也不嫌多'
+  return `新词已达标 · 复习还差 ${props.goal.reviewRemaining} 个`
 })
 
 function openEdit() {
@@ -152,12 +164,13 @@ watch(
       </div>
     </div>
 
-    <!-- 今日任务入口：未完成 → 开始学习（今日任务）；已达标 → 继续学习。
-         不达标与达标都给出口，永不留「只剩一句完成提示」的死胡同。 -->
+    <!-- 今日任务入口：未完成 → 开始学习（今日任务）；已达标/无事可做 → 继续学习（再来一组）。
+         两种状态都给出口，永不留「只剩一句完成提示」的死胡同。
+         达标态写「（再来一组）」而不是光秃秃的「继续学习」：明说会另开一组，不跟「今日任务」混。 -->
     <div v-if="canStart" class="goal-foot">
       <Button class="goal-cta rounded-full px-5 shadow-[var(--sh-cta)]" @click="emit('start')">
-        <Play v-if="!allDone" class="size-4" aria-hidden="true" />
-        {{ allDone ? '继续学习' : '开始学习（今日任务）' }}
+        <Play v-if="!fullyDone" class="size-4" aria-hidden="true" />
+        {{ fullyDone ? '继续学习（再来一组）' : '开始学习（今日任务）' }}
       </Button>
       <span class="goal-cta-hint">{{ footHint }}</span>
     </div>
@@ -173,7 +186,7 @@ watch(
           <Input id="goal-review" v-model="draftReview" type="number" min="1" max="100" step="1" inputmode="numeric" />
         </div>
         <p class="hint">
-          取值 1–100。目标是默认配额、不是上限：达标后默认不再发放该类别，但可以用卡片的「继续学习」按组加码；
+          取值 1–100。目标是默认配额、不是上限：达标后默认不再发放该类别，但可以用卡片的「继续学习（再来一组）」按组加码；
           错词本与收藏复习不受此限制。
         </p>
 
