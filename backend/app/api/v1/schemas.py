@@ -193,8 +193,20 @@ class StartSessionInput(BaseModel):
     bookId: int = 0  # source=wrong/collect 时忽略，可为 0
     mode: str = "follow"  # follow 跟打 / dictation 听写 / self_test 自测 / spell 默写
     source: str = "book"  # book 词书排课 / wrong 错词本 / collect 收藏复习
-    newLimit: int | None = Field(default=None, ge=0, le=100)
-    reviewLimit: int | None = Field(default=None, ge=1, le=100)
+    newLimit: int | None = Field(default=None, ge=0, le=100)  # 不传=按每日目标剩余量发新词
+    reviewLimit: int | None = Field(default=None, ge=0, le=100)  # 不传=按每日复习目标剩余量发复习
+    tzOffset: int = Field(default=0, ge=-840, le=840)  # 本地相对 UTC 分钟差，用于折算「今天」边界
+
+
+class UpdateDailyGoalInput(BaseModel):
+    """/daily-goal 的请求体：两个字段都可选，只更新出现的字段。
+
+    区间（1-100）刻意不在 schema 上校验：越界要返回统一信封的 400 + 中文提示，
+    而不是 FastAPI 默认的 422 裸 {"detail":[...]}（那个形状被 laircli 依赖，不能改）。
+    """
+
+    newTarget: int | None = None  # 每日新词目标
+    reviewTarget: int | None = None  # 每日复习目标
 
 
 class SubmitAnswerInput(BaseModel):

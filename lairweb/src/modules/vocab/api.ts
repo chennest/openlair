@@ -154,8 +154,45 @@ export interface VocabSessionSummary {
 }
 
 export interface VocabStats {
-  today: { sessions: number; words: number; correct: number; wrong: number; durationSec: number }
+  /**
+   * newLearned/reviewed 来自进度表首学时间（不是作答次数）：
+   * 同一个词在一节课里答多次只算「记了 1 个」，与每日目标口径一致。
+   */
+  today: {
+    sessions: number
+    words: number
+    correct: number
+    wrong: number
+    durationSec: number
+    newLearned: number
+    reviewed: number
+  }
   total: { sessions: number; words: number; correct: number; wrong: number; durationSec: number; learned: number; mastered: number; due: number }
+}
+
+/**
+ * 每日背词目标（每用户一条，未设过则回缺省值 newTarget=10 / reviewTarget=30）。
+ * 新词 / 复习两侧字段完全对称，两者都是「每日累计」配额：达标后该类词不再发放。
+ */
+export interface VocabDailyGoal {
+  /** 每日新词目标 */
+  newTarget: number
+  /** 每日复习目标 */
+  reviewTarget: number
+  /** 今日已真正记住的新词数（首学时间落在今日的进度行） */
+  todayNew: number
+  /** 今日已复习的旧词数（今日回顾、且首次学习更早的词） */
+  todayReviewed: number
+  /** 今日新词还差几个达标（下限 0） */
+  remaining: number
+  /** 今日新词是否已达标 */
+  achieved: boolean
+  /** 今日复习还差几个达标（下限 0） */
+  reviewRemaining: number
+  /** 今日复习是否已达标 */
+  reviewAchieved: boolean
+  /** 从未改过目标时为 null */
+  updatedAt: string | null
 }
 
 export interface AnswerInput {
@@ -165,6 +202,9 @@ export interface AnswerInput {
   wrongTimes: number
   durationMs: number
 }
+
+/** 本地相对 UTC 的分钟差（东区为正）：后端据此折算「今天」零点与每日目标 */
+const tzOffsetMinutes = () => -new Date().getTimezoneOffset()
 
 export const vocabApi = {
   books: () => get<{ books: VocabBook[] }>('/api/vocab/books'),
@@ -186,8 +226,12 @@ export const vocabApi = {
   },
   /** 词书详情页头部汇总（词书信息 + 各状态计数） */
   bookSummary: (bookId: number) => get<BookSummary>(`/api/vocab/books/${bookId}/summary`),
+  /**
+   * 开课排课。不传 newLimit 时后端按「每日目标剩余量」发新词（达标后只发到期复习）；
+   * 显式传值仍优先（留给「今天想多学一轮」）。tzOffset 默认带上，避免东区算错「今天」。
+   */
   start: (input: { bookId: number; mode: VocabMode; source?: VocabSource; newLimit?: number; reviewLimit?: number }) =>
-    post<StartSessionResult>('/api/vocab/practice/sessions', input),
+    post<StartSessionResult>('/api/vocab/practice/sessions', { tzOffset: tzOffsetMinutes(), ...input }),
   answer: (sessionId: number, input: AnswerInput) =>
     post<{ item: VocabProgress }>(`/api/vocab/practice/sessions/${sessionId}/answers`, input),
   finish: (sessionId: number, durationSec: number) =>
@@ -197,5 +241,10 @@ export const vocabApi = {
   updateProgress: (wordId: number, patch: { status?: 'learning' | 'mastered'; collected?: boolean; dismissWrong?: boolean }) =>
     put<{ item: VocabProgress }>(`/api/vocab/progress/${wordId}`, patch),
   /** tzOffset：本地相对 UTC 的分钟差（东区为正），后端按本地零点算“今日” */
-  stats: () => get<VocabStats>(`/api/vocab/stats?tzOffset=${-new Date().getTimezoneOffset()}`),
+  stats: () => get<VocabStats>(`/api/vocab/stats?tzOffset=${tzOffsetMinutes()}`),
+  /** 每日背词目标 + 今日进度 */
+  dailyGoal: () => get<VocabDailyGoal>(`/api/vocab/daily-goal?tzOffset=${tzOffsetMinutes()}`),
+  /** 改每日目标（只提交出现的字段），返回改后的完整视图 */
+  setDailyGoal: (patch: { newTarget?: number; reviewTarget?: number }) =>
+    put<VocabDailyGoal>(`/api/vocab/daily-goal?tzOffset=${tzOffsetMinutes()}`, patch),
 }

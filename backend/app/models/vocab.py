@@ -1,7 +1,7 @@
-"""词汇打字练习模块：词书 / 单词 / 关联 / 学习进度（FSRS）/ 练习会话 / 练习明细。
+"""词汇打字练习模块：词书 / 单词 / 关联 / 学习进度（FSRS）/ 练习会话 / 练习明细 / 每日目标。
 
 词书与单词是全局共享数据（不带 user_id，由导入脚本维护）；
-进度、会话、明细按用户隔离。FSRS 字段平铺进 progress 表（排课需 WHERE due <= now 索引），
+进度、会话、明细、每日目标按用户隔离。FSRS 字段平铺进 progress 表（排课需 WHERE due <= now 索引），
 字段与 py-fsrs v6 的 Card 一一对应（state/step/stability/difficulty/due/last_review）。
 """
 
@@ -99,6 +99,10 @@ class VocabWordProgress(Base):
     state: Mapped[int] = mapped_column(Integer, default=0)  # FSRS State：0 哨兵 / 1 / 2 / 3
     step: Mapped[int | None] = mapped_column(Integer, nullable=True)  # FSRS 学习步（Review 态为 None）
     last_review: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 首次「真正作答」的时刻（submit_answer 在新建进度行时写入，之后不再覆盖）。
+    # 这是「今日已记 N 个单词」的唯一计数依据：只认真正练过的词，
+    # 不会被「仅点了收藏 / 标记已掌握但没做过题」的进度行污染（update_progress 不写本列）。
+    first_learned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
@@ -139,3 +143,24 @@ class VocabPracticeLog(Base):
     wrong_times: Mapped[int] = mapped_column(Integer, default=0)  # 本次作答打错次数
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class VocabDailyGoal(Base):
+    """vocab_daily_goals 表：每人一条的背词每日目标（每用户每行，user_id 唯一）。
+
+    不预先为每个用户建行——取不到时服务层回退到 DEFAULT_NEW_LIMIT / DEFAULT_REVIEW_LIMIT，
+    这样「用户改过目标」才有痕迹，也省掉一次无意义的写。
+    「今日已记」不落库，而是按 vocab_word_progress.first_learned_at 在本地零点后聚合，
+    避免「计数列 + 明细」双写不一致。
+    """
+
+    __tablename__ = "vocab_daily_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)  # 逻辑关联 users.id（无硬外键）
+    new_target: Mapped[int] = mapped_column(Integer, default=10)  # 每日新词目标（对齐 DEFAULT_NEW_LIMIT）
+    review_target: Mapped[int] = mapped_column(Integer, default=30)  # 每日复习目标（对齐 DEFAULT_REVIEW_LIMIT）
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )

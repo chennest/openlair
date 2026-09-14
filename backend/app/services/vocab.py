@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from fsrs import Card, Rating, Scheduler, State
 
 from app.core.envelope import ApiError
-from app.models.vocab import VocabBook, VocabPracticeSession, VocabWord, VocabWordProgress
+from app.models.vocab import VocabBook, VocabDailyGoal, VocabPracticeSession, VocabWord, VocabWordProgress
 from app.repositories.vocab import VocabRepository
 from app.services import iso_z
 from app.services.vocab_import import parse_import_text
@@ -25,9 +25,11 @@ STATUSES = ("learning", "mastered")
 STATUS_FILTERS = ("all", "unlearned", "learning", "mastered", "wrong", "collected")  # 详情页状态筛选
 WORD_SORTS = ("order", "freq", "wrong", "recent")  # 详情页排序：词书顺序 / 词频 / 错次 / 最近练习
 
-DEFAULT_NEW_LIMIT = 10  # 每次练习的新词配额
-DEFAULT_REVIEW_LIMIT = 30  # 每次练习的到期复习配额
+DEFAULT_NEW_LIMIT = 10  # 每日新词目标缺省值（也是「每次练习新词配额」的兜底）
+DEFAULT_REVIEW_LIMIT = 30  # 每日复习目标缺省值（也是「每次练习复习配额」的兜底）
 MAX_QUEUE_LIMIT = 100
+MIN_DAILY_TARGET = 1  # 每日目标下限（0 个没有意义，想「今天只复习」请把新词练完即可）
+MAX_DAILY_TARGET = MAX_QUEUE_LIMIT
 
 # 练习会话/进度记录允许更新的字段白名单
 _SESSION_PATCH_KEYS = {"total_count", "correct_count", "wrong_count", "duration_sec", "finished_at"}
@@ -174,14 +176,28 @@ class VocabService:
         new_limit: int | None = None,
         review_limit: int | None = None,
         source: str = "book",
+        tz_offset: int = 0,
     ) -> dict:
         if mode not in MODES:
             raise ApiError(400, "不支持的练习模式")
         if source not in SOURCES:
             raise ApiError(400, "不支持的练习来源")
         now = self._utcnow()
-        review_limit = max(1, min(review_limit or DEFAULT_REVIEW_LIMIT, MAX_QUEUE_LIMIT))
-        new_limit = max(0, min(new_limit if new_limit is not None else DEFAULT_NEW_LIMIT, MAX_QUEUE_LIMIT))
+        # 词书排课：未显式指定配额时按「每日目标剩余量」发新词/复习 —— 「每天记 N 个、复习 M 个」
+        # 由此自动生效（两者都达标后再开课就发不出东西了）。显式传值仍优先（留给「今天想多学一轮」）。
+        # 错词本 / 收藏复习是「纠错」通道，刻意不受每日目标限制（也不为此多打两次聚合查询）。
+        remaining_new: int | None = None
+        remaining_review: int | None = None
+        if source == "book":
+            remaining_new, remaining_review = self._remaining_quota(user_id, now, tz_offset)
+
+        if new_limit is None:
+            new_limit = remaining_new if remaining_new is not None else 0
+        new_limit = max(0, min(int(new_limit), MAX_QUEUE_LIMIT))
+
+        if review_limit is None:
+            review_limit = remaining_review if remaining_review is not None else DEFAULT_REVIEW_LIMIT
+        review_limit = max(0, min(int(review_limit), MAX_QUEUE_LIMIT))
 
         queue: list[dict] = []
         book = None
@@ -214,6 +230,12 @@ class VocabService:
                     queue.append(self._queue_item(w, None))
             book_name = book.name
         if not queue:
+            if source == "book":
+                if remaining_new == 0 and remaining_review == 0:
+                    raise ApiError(400, "今日新词与复习目标均已完成")
+                if remaining_new == 0:
+                    raise ApiError(400, "今日新词目标已完成，暂无到期复习")
+                # remaining_review == 0 且还有新词额度时队列不可能为空，无需单列文案
             raise ApiError(400, "暂无可练习的单词（到期复习与新词均为空）" if source == "book" else "暂无可练习的单词")
 
         session = self._repo.create_session(user_id=user_id, book_id=book.id if book else 0, mode=mode)
@@ -236,7 +258,12 @@ class VocabService:
 
         progress = self._repo.get_progress(user_id, word_id)
         if progress is None:
-            progress = self._repo.create_progress(user_id=user_id, word_id=word_id, book_id=session.book_id)
+            # 首次作答即「记住这个词」的时点，与进度行同时落库
+            progress = self._repo.create_progress(
+                user_id=user_id, word_id=word_id, book_id=session.book_id, first_learned_at=now
+            )
+        # 已存在但从未真正作答过的进度行（例如当初只点了收藏/标记已掌握）→ 本次补上首学时间
+        first_learn_time = now if progress.first_learned_at is None else None
 
         # 错次自动映射 Rating：答错=Again；答对但打错过=Hard；一次全对=Good
         if not correct:
@@ -261,6 +288,8 @@ class VocabService:
         }
         if not passed:
             patch["last_wrong_at"] = now
+        if first_learn_time is not None:
+            patch["first_learned_at"] = first_learn_time
         self._repo.update_progress(progress.id, patch)
 
         self._repo.update_session(
@@ -306,6 +335,8 @@ class VocabService:
         if progress is None:
             # 从未学过的词也可直接标记（如收藏、标记已掌握）
             progress = self._repo.create_progress(user_id=user_id, word_id=word_id)
+        # 注意：这里刻意不写 first_learned_at —— 只收藏/只标已掌握不算「记住这个词」，
+        # 否则「今日已记」会被虚高的空进度行灌水。首学时间只由 submit_answer 落。
         clean: dict = {}
         if patch.get("status") in STATUSES:
             clean["status"] = patch["status"]
@@ -321,13 +352,14 @@ class VocabService:
 
     def stats(self, user_id: int, tz_offset: int = 0) -> dict:
         now = self._utcnow()
-        # “今日”边界按客户端本地零点算：tz_offset 为本地相对 UTC 的分钟差（东区为正）。
-        # 直接用 UTC 零点会让 UTC+8 用户早上 8 点前练的词算进“昨天”。
-        tz_offset = max(-840, min(840, int(tz_offset or 0)))
-        local_midnight_utc = (now + timedelta(minutes=tz_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
-        day_start = local_midnight_utc - timedelta(minutes=tz_offset)
+        # “今日”边界按客户端本地零点算（见 _day_start）。直接用 UTC 零点会让 UTC+8
+        # 用户早上 8 点前练的词算进“昨天”。
+        day_start = self._day_start(now, tz_offset)
         today_sessions = self._repo.list_sessions_since(user_id, day_start)
         all_sessions = self._repo.list_sessions_since(user_id, datetime(2000, 1, 1, tzinfo=UTC))
+        # 词数口径来自进度表（首次真正作答的时刻），不是会话的作答次数 —— 后者同一次会话里
+        # 一个词可能答多次，拿来当「记了多少个词」会虚高。
+        today_learned = self._repo.count_today_learned(user_id, day_start)
         progress_rows = self._repo.list_progress(user_id)
         learned = len(progress_rows)
         mastered = sum(1 for p in progress_rows if p.status == "mastered")
@@ -342,7 +374,48 @@ class VocabService:
                 "durationSec": sum(r.duration_sec for r in rows),
             }
 
-        return {"today": _sum(today_sessions), "total": {**_sum(all_sessions), "learned": learned, "mastered": mastered, "due": due}}
+        return {
+            "today": {**_sum(today_sessions), **today_learned},
+            "total": {**_sum(all_sessions), "learned": learned, "mastered": mastered, "due": due},
+        }
+
+    # ---------- 每日背词目标 ----------
+
+    def daily_goal(self, user_id: int, tz_offset: int = 0) -> dict:
+        """当前目标 + 今日进度。未设过目标的用户不建行，直接回退缺省值。"""
+        now = self._utcnow()
+        goal = self._repo.get_daily_goal(user_id)
+        counts = self._repo.count_today_learned(user_id, self._day_start(now, tz_offset))
+        return self._daily_goal_dto(goal, counts)
+
+    def set_daily_goal(self, *, user_id: int, patch: dict, tz_offset: int = 0) -> dict:
+        """改每日目标（upsert）。只接受出现的字段，改完回读带今日进度的完整视图。
+
+        对进行中的练习会话无影响：已排好的队列不重排，下一节课按新目标算剩余量。
+        """
+        clean: dict = {}
+        # 请求体是 camelCase（与前端契约一致），这里映射到列名。与 update_progress 的
+        # 「dismissWrong」同样沿用「schema 直传、服务层认 camelCase」的既有做法。
+        #
+        # 区间校验刻意放在这里而不是 Pydantic 的 Field(ge=, le=)：schema 层越界会走 FastAPI
+        # 默认的 422 裸 {"detail":[...]}（core/envelope.py 不接管 RequestValidationError，
+        # laircli 依赖这个形状），前端拿不到统一信封里的中文 message。放服务层则统一 400 + 信封，
+        # 与 mock 的 err(400, ...) 完全一致。
+        for field, column in (("newTarget", "new_target"), ("reviewTarget", "review_target")):
+            value = patch.get(field)
+            if value is None:
+                continue
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                raise ApiError(400, "每日目标必须是整数")
+            if not (MIN_DAILY_TARGET <= value <= MAX_DAILY_TARGET):
+                raise ApiError(400, f"每日目标需在 {MIN_DAILY_TARGET}-{MAX_DAILY_TARGET} 之间")
+            clean[column] = value
+        if not clean:
+            raise ApiError(400, "没有需要更新的目标")
+        self._repo.upsert_daily_goal(user_id=user_id, patch=clean)
+        return self.daily_goal(user_id, tz_offset=tz_offset)
 
     # ---------- 内部：FSRS 卡片转换 ----------
 
@@ -361,6 +434,31 @@ class VocabService:
         if value is None:
             return None
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+    @staticmethod
+    def _day_start(now: datetime, tz_offset: int) -> datetime:
+        """客户端「今天零点」对应的 UTC 时刻。
+
+        tz_offset 为本地相对 UTC 的分钟差（东区为正）：先平移到本地时间取零点，再平移回 UTC。
+        直接用 UTC 零点会让 UTC+8 用户早上 8 点前做的事算进「昨天」。
+        """
+        offset = max(-840, min(840, int(tz_offset or 0)))
+        local_midnight = (now + timedelta(minutes=offset)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return local_midnight - timedelta(minutes=offset)
+
+    def _remaining_quota(self, user_id: int, now: datetime, tz_offset: int) -> tuple[int, int]:
+        """今日剩余的新词 / 复习配额 = 各自目标 − 今日已完成量（下限 0）。
+
+        一次聚合同时算出两者，避免为两个配额各打一遍 count_today_learned。
+        """
+        goal = self._repo.get_daily_goal(user_id)
+        new_target = int(goal.new_target) if goal else DEFAULT_NEW_LIMIT
+        review_target = int(goal.review_target) if goal else DEFAULT_REVIEW_LIMIT
+        counts = self._repo.count_today_learned(user_id, self._day_start(now, tz_offset))
+        return (
+            max(0, new_target - counts["newLearned"]),
+            max(0, review_target - counts["reviewed"]),
+        )
 
     def _card_from(self, progress: VocabWordProgress) -> Card:
         """从进度行重建 py-fsrs Card（字段平铺的反向操作）。state=0 为未复习哨兵 → 全新卡。"""
@@ -454,6 +552,27 @@ class VocabService:
             if word is not None:
                 dtos.append(self._queue_item(word, p))
         return dtos
+
+    def _daily_goal_dto(self, goal: VocabDailyGoal | None, counts: dict[str, int]) -> dict:
+        """每日目标视图。goal 为 None = 从未改过目标，此时回缺省值且 updatedAt 为 null。
+
+        新词 / 复习两侧字段完全对称（remaining/achieved 各有各的），前端可直接用。
+        """
+        new_target = int(goal.new_target) if goal else DEFAULT_NEW_LIMIT
+        review_target = int(goal.review_target) if goal else DEFAULT_REVIEW_LIMIT
+        today_new = int(counts.get("newLearned", 0))
+        today_reviewed = int(counts.get("reviewed", 0))
+        return {
+            "newTarget": new_target,
+            "reviewTarget": review_target,
+            "todayNew": today_new,
+            "todayReviewed": today_reviewed,
+            "remaining": max(0, new_target - today_new),
+            "achieved": today_new >= new_target,
+            "reviewRemaining": max(0, review_target - today_reviewed),
+            "reviewAchieved": today_reviewed >= review_target,
+            "updatedAt": iso_z(self._as_utc(goal.updated_at)) if goal is not None else None,
+        }
 
     def _session_dto(self, s: VocabPracticeSession) -> dict:
         return {

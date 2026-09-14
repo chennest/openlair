@@ -38,6 +38,22 @@ def force_due(client: TestClient, progress_id: int, due: datetime) -> None:
         session.commit()
 
 
+def make_old_due_word(client: TestClient, word_id: int, days_ago: int = 3) -> None:
+    """把一个词造成「几天前学过、现在到期」的状态。
+
+    必须把 first_learned_at 也推到过去：后端「今日复习」的口径是
+    `last_review >= 今日零点 且 首次学习更早`，只改 due 的话它仍会被算成今天新学的词。
+    """
+    now = datetime.now(UTC)
+    with client.app.state.session_factory() as session:
+        row = session.query(VocabWordProgress).filter(VocabWordProgress.word_id == word_id).one()
+        row.status = "learning"
+        row.first_learned_at = now - timedelta(days=days_ago)
+        row.last_review = now - timedelta(days=days_ago)
+        row.due = now - timedelta(hours=1)
+        session.commit()
+
+
 # ---------- 词书与单词 ----------
 
 def test_vocab_books_list_with_stats(tmp_path) -> None:
@@ -542,3 +558,330 @@ def test_book_detail_summary_filters_and_practice_coverage(tmp_path) -> None:
         f"/api/vocab/books/{BOOK_ID}/words", params={"status": "bogus", "sort": "bogus"}, headers=headers
     ).json()["data"]
     assert fallback["total"] == 8
+
+
+# ---------- 每日背词目标 ----------
+
+def test_daily_goal_defaults_then_update(tmp_path) -> None:
+    """未设过目标时回缺省 10/30 且 updatedAt 为 null；PUT 后落库并回读。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal1@openlair.dev")
+
+    r = client.get("/api/vocab/daily-goal", headers=headers)
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data == {
+        "newTarget": 10,
+        "reviewTarget": 30,
+        "todayNew": 0,
+        "todayReviewed": 0,
+        "remaining": 10,
+        "achieved": False,
+        "reviewRemaining": 30,
+        "reviewAchieved": False,
+        "updatedAt": None,  # 从未改过 → 无行
+    }
+
+    r = client.put("/api/vocab/daily-goal", json={"newTarget": 20}, headers=headers)
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["newTarget"] == 20 and data["reviewTarget"] == 30  # 未传的字段保持
+    assert data["remaining"] == 20 and data["achieved"] is False
+    assert data["updatedAt"] is not None
+
+    # 再改 reviewTarget：仍是一条行（user_id 唯一，upsert）
+    data = client.put("/api/vocab/daily-goal", json={"reviewTarget": 40}, headers=headers).json()["data"]
+    assert data["newTarget"] == 20 and data["reviewTarget"] == 40
+
+    r = client.get("/api/vocab/daily-goal", headers=headers)
+    assert r.json()["data"]["newTarget"] == 20 and r.json()["data"]["reviewTarget"] == 40
+
+
+def test_daily_goal_rejects_bad_payload(tmp_path) -> None:
+    client = make_client(tmp_path)
+    headers = register(client, "goal2@openlair.dev")
+
+    # 空请求体：没有需要更新的目标
+    r = client.put("/api/vocab/daily-goal", json={}, headers=headers)
+    assert r.status_code == 400
+    assert r.json()["code"] == 400
+
+    # 越界走统一信封的 400（区间校验在服务层，不是 Pydantic 的 422 裸 detail）——
+    # 这样前端能和 mock 一样拿到 data.message 里的中文提示
+    for payload in ({"newTarget": 0}, {"newTarget": 101}, {"reviewTarget": 0}, {"reviewTarget": 101}):
+        r = client.put("/api/vocab/daily-goal", json=payload, headers=headers)
+        assert r.status_code == 400, payload
+        assert r.json()["code"] == 400
+        assert r.json()["message"] == "每日目标需在 1-100 之间"
+
+    # 被拒后目标不变
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["newTarget"] == 10
+
+
+def test_daily_goal_caps_new_words_and_blocks_when_achieved(tmp_path) -> None:
+    """核心行为：目标改成 2 → 一节课只发 2 个新词；达标后再开课不再发新词。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal3@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 2}, headers=headers)
+
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    assert len(session["queue"]) == 2  # 词书有 8 个词，但今日配额只有 2
+    assert all(item["progress"] is None for item in session["queue"])
+
+    for item in session["queue"]:
+        client.post(
+            f"/api/vocab/practice/sessions/{session['id']}/answers",
+            json={"wordId": item["id"], "correct": True, "wrongTimes": 0},
+            headers=headers,
+        )
+
+    data = client.get("/api/vocab/daily-goal", headers=headers).json()["data"]
+    assert data["todayNew"] == 2 and data["remaining"] == 0 and data["achieved"] is True
+
+    # 达标且没有到期复习 → 明确拒绝（而非含糊的「暂无可练习的单词」）
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers)
+    assert r.status_code == 400
+    assert r.json()["message"] == "今日新词目标已完成，暂无到期复习"
+
+    # stats 与目标口径一致
+    stats = client.get("/api/vocab/stats", headers=headers).json()["data"]
+    assert stats["today"]["newLearned"] == 2
+
+
+def test_daily_goal_achieved_still_serves_due_reviews(tmp_path) -> None:
+    """达标只挡新词，不挡到期复习。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal4@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 1}, headers=headers)
+
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    assert len(session["queue"]) == 1
+    word_id = session["queue"][0]["id"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": word_id, "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["remaining"] == 0
+
+    # 模拟时间流逝让这个词到期 → 仍能开课，且队列里只有复习词
+    with client.app.state.session_factory() as db:
+        row = db.query(VocabWordProgress).filter(VocabWordProgress.word_id == word_id).one()
+        row.due = datetime.now(UTC) - timedelta(hours=1)
+        db.commit()
+
+    data = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    assert [w["id"] for w in data["queue"]] == [word_id]
+    assert data["queue"][0]["progress"] is not None  # 复习词带进度，不是新词
+
+    goal = client.get("/api/vocab/daily-goal", headers=headers).json()["data"]
+    assert goal["todayNew"] == 1 and goal["remaining"] == 0
+
+
+def test_explicit_new_limit_overrides_daily_goal(tmp_path) -> None:
+    """显式传 newLimit 时不受目标限制（留给「今天想多学一轮」）。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal5@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 1}, headers=headers)
+
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers
+    ).json()["data"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": session["queue"][0]["id"], "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["remaining"] == 0
+
+    # 目标已满，但显式要 5 个新词照样给
+    forced = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": BOOK_ID, "mode": "follow", "newLimit": 5},
+        headers=headers,
+    ).json()["data"]
+    assert len(forced["queue"]) == 5
+
+
+def test_collect_only_progress_does_not_count_as_learned(tmp_path) -> None:
+    """只收藏（没做过题）不该计入「今日已记」；真正作答后才计入。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal6@openlair.dev")
+
+    client.put("/api/vocab/progress/5", json={"collected": True}, headers=headers)
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["todayNew"] == 0
+
+    # 通过收藏池真正练一次这个词
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": 0, "mode": "follow", "source": "collect"}, headers=headers
+    ).json()["data"]
+    assert [w["id"] for w in session["queue"]] == [5]
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": 5, "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+
+    data = client.get("/api/vocab/daily-goal", headers=headers).json()["data"]
+    assert data["todayNew"] == 1 and data["remaining"] == 9
+
+    # 标记已掌握也不计入（同一个词第二次不会重复计数）
+    client.put("/api/vocab/progress/6", json={"status": "mastered"}, headers=headers)
+    assert client.get("/api/vocab/daily-goal", headers=headers).json()["data"]["todayNew"] == 1
+
+
+def test_daily_goal_caps_due_reviews_per_day(tmp_path) -> None:
+    """复习目标与新增目标对称：按「每日累计剩余量」发到期复习，两侧都达标后明确拒绝。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal10@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 1, "reviewTarget": 2}, headers=headers)
+
+    def start(**extra) -> dict:
+        return client.post(
+            "/api/vocab/practice/sessions",
+            json={"bookId": BOOK_ID, "mode": "follow", **extra},
+            headers=headers,
+        ).json()["data"]
+
+    def answer_all(session: dict) -> None:
+        for item in session["queue"]:
+            client.post(
+                f"/api/vocab/practice/sessions/{session['id']}/answers",
+                json={"wordId": item["id"], "correct": True, "wrongTimes": 0},
+                headers=headers,
+            )
+
+    # ① 今天新学 1 个词并留着 —— 用它把「每日新词目标」用满（todayNew=1, 目标=1）
+    first = start(newLimit=1)
+    answer_all(first)
+
+    # ② 再用显式 newLimit 学 3 个（绕过目标），然后把它们改造成「几天前学过、现在到期」
+    session = start(newLimit=3)
+    assert len(session["queue"]) == 3
+    answer_all(session)
+    for item in session["queue"]:
+        make_old_due_word(client, item["id"])
+
+    goal = client.get("/api/vocab/daily-goal", headers=headers).json()["data"]
+    assert goal["todayNew"] == 1  # 那 3 个已被改造成「老词」，不再算今天新学
+    assert goal["todayReviewed"] == 0
+    assert goal["reviewRemaining"] == 2 and goal["reviewAchieved"] is False
+
+    # ③ 到期 3 条，但复习目标只剩 2 → 只发 2 条复习，且没有新词（新词额度已满）
+    data = start()
+    assert len(data["queue"]) == 2
+    assert all(w["progress"] is not None for w in data["queue"])  # 全是复习词，不是新词
+    answer_all(data)
+
+    goal = client.get("/api/vocab/daily-goal", headers=headers).json()["data"]
+    assert goal["todayReviewed"] == 2 and goal["reviewAchieved"] is True and goal["reviewRemaining"] == 0
+
+    # ④ 两侧都达标 → 明确拒绝（而不是含糊的「暂无可练习的单词」）；此时其实还剩 1 条到期
+    r = client.post("/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=headers)
+    assert r.status_code == 400
+    assert r.json()["message"] == "今日新词与复习目标均已完成"
+
+
+def test_explicit_review_limit_zero_serves_new_words_only(tmp_path) -> None:
+    """显式 reviewLimit=0 表示「只要新词，别给我复习」，且不因此报错。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal11@openlair.dev")
+
+    session = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": BOOK_ID, "mode": "follow", "newLimit": 3},
+        headers=headers,
+    ).json()["data"]
+    for item in session["queue"]:
+        client.post(
+            f"/api/vocab/practice/sessions/{session['id']}/answers",
+            json={"wordId": item["id"], "correct": True, "wrongTimes": 0},
+            headers=headers,
+        )
+    for item in session["queue"]:
+        make_old_due_word(client, item["id"])
+
+    data = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": BOOK_ID, "mode": "follow", "newLimit": 2, "reviewLimit": 0},
+        headers=headers,
+    ).json()["data"]
+    assert len(data["queue"]) == 2
+    assert all(w["progress"] is None for w in data["queue"])  # 只要新词
+
+
+def test_wrong_and_collect_ignore_daily_goal(tmp_path) -> None:
+    """错词本/收藏是纠错通道，不受每日目标限制（复习目标设成 1 也照样全给）。"""
+    client = make_client(tmp_path)
+    headers = register(client, "goal12@openlair.dev")
+    client.put("/api/vocab/daily-goal", json={"newTarget": 1, "reviewTarget": 1}, headers=headers)
+
+    session = client.post(
+        "/api/vocab/practice/sessions",
+        json={"bookId": BOOK_ID, "mode": "follow", "newLimit": 3},
+        headers=headers,
+    ).json()["data"]
+    queue = session["queue"]
+    # 前两个打错 → 进错词本；第三个答对
+    for item in queue[:2]:
+        client.post(
+            f"/api/vocab/practice/sessions/{session['id']}/answers",
+            json={"wordId": item["id"], "correct": False, "wrongTimes": 1},
+            headers=headers,
+        )
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": queue[2]["id"], "correct": True, "wrongTimes": 0},
+        headers=headers,
+    )
+
+    wrong = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": 0, "mode": "follow", "source": "wrong"}, headers=headers
+    ).json()["data"]
+    assert len(wrong["queue"]) == 2  # 复习目标只有 1，错词本仍给全
+    assert all(w["progress"]["wrongActive"] for w in wrong["queue"])
+
+    # 收藏池同理
+    client.put(f"/api/vocab/progress/{queue[2]['id']}", json={"collected": True}, headers=headers)
+    collected = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": 0, "mode": "follow", "source": "collect"}, headers=headers
+    ).json()["data"]
+    assert len(collected["queue"]) == 1
+
+
+def test_daily_goal_isolated_per_user(tmp_path) -> None:
+    client = make_client(tmp_path)
+    h1 = register(client, "goal7@openlair.dev")
+    h2 = register(client, "goal8@openlair.dev")
+
+    client.put("/api/vocab/daily-goal", json={"newTarget": 20}, headers=h1)
+    session = client.post(
+        "/api/vocab/practice/sessions", json={"bookId": BOOK_ID, "mode": "follow"}, headers=h1
+    ).json()["data"]
+    client.post(
+        f"/api/vocab/practice/sessions/{session['id']}/answers",
+        json={"wordId": session["queue"][0]["id"], "correct": True, "wrongTimes": 0},
+        headers=h1,
+    )
+
+    g1 = client.get("/api/vocab/daily-goal", headers=h1).json()["data"]
+    g2 = client.get("/api/vocab/daily-goal", headers=h2).json()["data"]
+    assert (g1["newTarget"], g1["todayNew"], g1["remaining"]) == (20, 1, 19)
+    assert (g2["newTarget"], g2["todayNew"], g2["remaining"]) == (10, 0, 10)
+
+
+def test_daily_goal_requires_auth_and_accepts_tz_offset(tmp_path) -> None:
+    client = make_client(tmp_path)
+    assert client.get("/api/vocab/daily-goal").status_code == 401
+    headers = register(client, "goal9@openlair.dev")
+    r = client.get("/api/vocab/daily-goal", params={"tzOffset": 480}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["data"]["todayNew"] == 0
+    # 越界 tzOffset 由 Query 校验拦下
+    assert client.get("/api/vocab/daily-goal", params={"tzOffset": 9999}, headers=headers).status_code == 422

@@ -264,6 +264,23 @@ export interface VocabProgressRow {
   state: number
   step?: number
   lastReview?: string
+  /**
+   * 首次真正作答（submit_answer）的时间 —— 「今日已记 N 个」的唯一计数依据。
+   * 只收藏 / 只标已掌握不写这里，否则空进度行会把今日进度灌水。
+   */
+  firstLearnedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** vocab_daily_goals 表：每日背词目标（每用户一条，未设过则不加行、回缺省值） */
+export interface VocabDailyGoalRow {
+  id: number
+  userId: number
+  /** 每日新词目标 */
+  newTarget: number
+  /** 每日复习目标 */
+  reviewTarget: number
   createdAt: string
   updatedAt: string
 }
@@ -334,6 +351,7 @@ export interface StoreShape {
   vocabProgress: VocabProgressRow[]
   vocabSessions: VocabSessionRow[]
   vocabLogs: VocabLogRow[]
+  vocabDailyGoals: VocabDailyGoalRow[]
 }
 
 const g = globalThis as unknown as { __openlair_mock__?: SharedRuntime }
@@ -652,6 +670,7 @@ function seed(): StoreShape {
     vocabProgress: [],
     vocabSessions: [],
     vocabLogs: [],
+    vocabDailyGoals: [],
   }
 }
 

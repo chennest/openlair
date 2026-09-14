@@ -8,6 +8,7 @@ from app.api.v1.schemas import (
     ImportBooksInput,
     StartSessionInput,
     SubmitAnswerInput,
+    UpdateDailyGoalInput,
     UpdateVocabProgressInput,
 )
 from app.core.envelope import ok_response
@@ -86,6 +87,7 @@ async def start_practice_session(
             new_limit=payload.newLimit,
             review_limit=payload.reviewLimit,
             source=payload.source,
+            tz_offset=payload.tzOffset,
         )
     )
 
@@ -142,6 +144,29 @@ async def update_vocab_progress(
     return ok_response(
         request.app.state.vocab_service.update_progress(
             user_id=user.id, word_id=word_id, patch=payload.model_dump(exclude_unset=True)
+        )
+    )
+
+
+@vocabulary_router.get("/daily-goal")
+async def get_vocab_daily_goal(
+    request: Request,
+    tzOffset: int = Query(default=0, ge=-840, le=840),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(request.app.state.vocab_service.daily_goal(user.id, tz_offset=tzOffset))
+
+
+@vocabulary_router.put("/daily-goal")
+async def update_vocab_daily_goal(
+    request: Request,
+    payload: UpdateDailyGoalInput,
+    tzOffset: int = Query(default=0, ge=-840, le=840),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return ok_response(
+        request.app.state.vocab_service.set_daily_goal(
+            user_id=user.id, patch=payload.model_dump(exclude_unset=True), tz_offset=tzOffset
         )
     )
 

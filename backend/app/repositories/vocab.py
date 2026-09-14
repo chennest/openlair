@@ -6,6 +6,7 @@ from app.db.session import SessionFactory
 from app.models.vocab import (
     VocabBook,
     VocabBookWord,
+    VocabDailyGoal,
     VocabPracticeLog,
     VocabPracticeSession,
     VocabWord,
@@ -207,6 +208,56 @@ class VocabRepository:
             "collected": int(collected or 0),
         }
 
+    # ---------- 每日目标（按用户隔离） ----------
+
+    def get_daily_goal(self, user_id: int) -> VocabDailyGoal | None:
+        with self._session_factory() as session:
+            stmt = select(VocabDailyGoal).where(VocabDailyGoal.user_id == user_id)
+            return session.scalar(stmt)
+
+    def upsert_daily_goal(self, *, user_id: int, patch: dict) -> VocabDailyGoal:
+        """按 user_id upsert（无行则建），只覆盖 patch 里出现的字段。user_id 唯一约束保证幂等。"""
+        with self._session_factory() as session:
+            stmt = select(VocabDailyGoal).where(VocabDailyGoal.user_id == user_id)
+            item = session.scalar(stmt)
+            if item is None:
+                item = VocabDailyGoal(user_id=user_id)
+                session.add(item)
+            for key, value in patch.items():
+                if value is not None and hasattr(item, key):
+                    setattr(item, key, value)
+            session.commit()
+            session.refresh(item)
+            return item
+
+    def count_today_learned(self, user_id: int, since: datetime) -> dict[str, int]:
+        """一次聚合出「今日新学」与「今日复习」词数（since = 本地零点换算成 UTC）。
+
+        - 新学 = first_learned_at >= since：今天首次真正作答的词（对齐「每天记 N 个」）
+        - 复习 = last_review >= since 且首次学习更早：今天回顾过的老词
+        两列都可为 NULL（仅标记收藏/已掌握但没做过题的进度行），NULL 比较落 else_=0，天然不计入。
+        """
+        with self._session_factory() as session:
+            stmt = select(
+                func.sum(case((VocabWordProgress.first_learned_at >= since, 1), else_=0)),
+                func.sum(
+                    case(
+                        (
+                            VocabWordProgress.last_review.is_not(None)
+                            & (VocabWordProgress.last_review >= since)
+                            & (
+                                VocabWordProgress.first_learned_at.is_(None)
+                                | (VocabWordProgress.first_learned_at < since)
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+            ).where(VocabWordProgress.user_id == user_id)
+            new_learned, reviewed = session.execute(stmt).one()
+        return {"newLearned": int(new_learned or 0), "reviewed": int(reviewed or 0)}
+
     # ---------- 单词（全局共享） ----------
 
     def get_word(self, word_id: int) -> VocabWord | None:
@@ -379,9 +430,13 @@ class VocabRepository:
             )
             return list(session.scalars(stmt))
 
-    def create_progress(self, *, user_id: int, word_id: int, book_id: int = 0) -> VocabWordProgress:
+    def create_progress(
+        self, *, user_id: int, word_id: int, book_id: int = 0, first_learned_at: datetime | None = None
+    ) -> VocabWordProgress:
         with self._session_factory() as session:
-            item = VocabWordProgress(user_id=user_id, word_id=word_id, book_id=book_id)
+            item = VocabWordProgress(
+                user_id=user_id, word_id=word_id, book_id=book_id, first_learned_at=first_learned_at
+            )
             session.add(item)
             session.commit()
             session.refresh(item)

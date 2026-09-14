@@ -2,6 +2,7 @@ import { defineMock } from 'vite-plugin-mock-dev-server'
 import {
   store,
   type VocabBookItem,
+  type VocabDailyGoalRow,
   type VocabProgressRow,
   type VocabSessionRow,
   type VocabWordItem,
@@ -137,6 +138,70 @@ function bookStats(userId: number): Record<number, { learning: number; mastered:
 
 function getProgress(userId: number, wordId: number): VocabProgressRow | undefined {
   return store.vocabProgress.find((p) => p.userId === userId && p.wordId === wordId)
+}
+
+// ---------- 每日背词目标（与后端 count_today_learned / daily_goal 同构） ----------
+
+const MIN_DAILY_TARGET = 1
+const MAX_DAILY_TARGET = 100
+
+const clampTz = (v: unknown) => Math.max(-840, Math.min(840, Number(v) || 0))
+
+/** 客户端「今天零点」对应的 UTC 毫秒（与后端 _day_start 同构：先平移取本地零点，再平移回来） */
+function dayStartMs(tzOffset: number): number {
+  const shifted = new Date(Date.now() + tzOffset * 60000)
+  shifted.setUTCHours(0, 0, 0, 0)
+  return shifted.getTime() - tzOffset * 60000
+}
+
+function getDailyGoalRow(userId: number): VocabDailyGoalRow | undefined {
+  return store.vocabDailyGoals.find((g) => g.userId === userId)
+}
+
+/**
+ * 今日新学 / 今日复习词数。口径与后端一致：
+ * 新学看 firstLearnedAt（首次真正作答），复习看 lastReview 且首次学习更早 ——
+ * 只收藏/标已掌握的空进度行（两列皆无）天然不计入。
+ */
+function countTodayLearned(userId: number, since: number): { newLearned: number; reviewed: number } {
+  let newLearned = 0
+  let reviewed = 0
+  for (const p of store.vocabProgress) {
+    if (p.userId !== userId) continue
+    const first = p.firstLearnedAt ? new Date(p.firstLearnedAt).getTime() : null
+    if (first !== null && first >= since) newLearned += 1
+    const last = p.lastReview ? new Date(p.lastReview).getTime() : null
+    if (last !== null && last >= since && (first === null || first < since)) reviewed += 1
+  }
+  return { newLearned, reviewed }
+}
+
+/** 每日目标视图（未设过目标时回缺省值，updatedAt 为 null；新词/复习两侧字段对称） */
+function dailyGoalDto(userId: number, tzOffset: number) {
+  const row = getDailyGoalRow(userId)
+  const newTarget = row?.newTarget ?? DEFAULT_NEW_LIMIT
+  const reviewTarget = row?.reviewTarget ?? DEFAULT_REVIEW_LIMIT
+  const { newLearned, reviewed } = countTodayLearned(userId, dayStartMs(tzOffset))
+  return {
+    newTarget,
+    reviewTarget,
+    todayNew: newLearned,
+    todayReviewed: reviewed,
+    remaining: Math.max(0, newTarget - newLearned),
+    achieved: newLearned >= newTarget,
+    reviewRemaining: Math.max(0, reviewTarget - reviewed),
+    reviewAchieved: reviewed >= reviewTarget,
+    updatedAt: row?.updatedAt ?? null,
+  }
+}
+
+/** 今日剩余的新词 / 复习配额 = 各自目标 − 今日已完成量（下限 0）；一次算出两者，少打一遍聚合 */
+function remainingQuota(userId: number, tzOffset: number): [number, number] {
+  const row = getDailyGoalRow(userId)
+  const newTarget = row?.newTarget ?? DEFAULT_NEW_LIMIT
+  const reviewTarget = row?.reviewTarget ?? DEFAULT_REVIEW_LIMIT
+  const { newLearned, reviewed } = countTodayLearned(userId, dayStartMs(tzOffset))
+  return [Math.max(0, newTarget - newLearned), Math.max(0, reviewTarget - reviewed)]
 }
 
 // ---------- 词书详情（分页筛选 + 模式覆盖 + 汇总，与后端同构） ----------
@@ -514,12 +579,29 @@ export default {
     response: respond(
       guard((req, auth: AuthContext) => {
         const userId = Number(auth.userId)
-        const body = (req.body ?? {}) as { bookId?: number; mode?: string; source?: string; newLimit?: number; reviewLimit?: number }
+        const body = (req.body ?? {}) as {
+          bookId?: number
+          mode?: string
+          source?: string
+          newLimit?: number
+          reviewLimit?: number
+          tzOffset?: number
+        }
         const mode = MODES.includes(String(body.mode)) ? String(body.mode) : null
         if (!mode) return err(400, '不支持的练习模式')
         const source = ['book', 'wrong', 'collect'].includes(String(body.source)) ? String(body.source) : 'book'
-        const reviewLimit = Math.min(100, Math.max(1, Number(body.reviewLimit) || DEFAULT_REVIEW_LIMIT))
-        const newLimit = Math.min(100, Math.max(0, Number(body.newLimit ?? DEFAULT_NEW_LIMIT)))
+        const tzOffset = clampTz(body.tzOffset)
+        // 词书排课：未显式指定配额时按「每日目标剩余量」发新词/复习 —— 「每天记 N 个、复习 M 个」
+        // 由此自动生效（两者都达标后再开课就发不出东西了）。显式传值仍优先（留给「今天想多学一轮」）。
+        // 错词本 / 收藏复习是「纠错」通道，刻意不受每日目标限制（与后端一致）。
+        let remainingNew: number | null = null
+        let remainingReview: number | null = null
+        if (source === 'book') [remainingNew, remainingReview] = remainingQuota(userId, tzOffset)
+
+        const rawNewLimit = body.newLimit ?? remainingNew ?? 0
+        const newLimit = Math.min(100, Math.max(0, Number(rawNewLimit)))
+        const rawReviewLimit = body.reviewLimit ?? remainingReview ?? DEFAULT_REVIEW_LIMIT
+        const reviewLimit = Math.min(100, Math.max(0, Number(rawReviewLimit)))
 
         let bookName = ''
         let sessionBookId = 0
@@ -557,6 +639,10 @@ export default {
           }
         }
         if (!queue.length) {
+          if (source === 'book') {
+            if (remainingNew === 0 && remainingReview === 0) return err(400, '今日新词与复习目标均已完成')
+            if (remainingNew === 0) return err(400, '今日新词目标已完成，暂无到期复习')
+          }
           return err(400, source === 'book' ? '暂无可练习的单词（到期复习与新词均为空）' : '暂无可练习的单词')
         }
 
@@ -616,6 +702,9 @@ export default {
           }
           store.vocabProgress.push(progress)
         }
+        // 首次真正作答即「记住这个词」的时点（与后端 submit_answer 同构）；
+        // 只收藏/标过已掌握的空进度行在这里补上首学时间，已有值不覆盖。
+        const firstLearn = progress.firstLearnedAt ? null : now
         Object.assign(progress, schedule(progress, correct, wrongTimes), {
           rightCount: progress.rightCount + (passed ? 1 : 0),
           wrongCount: progress.wrongCount + wrongTimes,
@@ -623,6 +712,7 @@ export default {
           lastWrongAt: passed ? progress.lastWrongAt : now,
           updatedAt: now,
         })
+        if (firstLearn) progress.firstLearnedAt = firstLearn
 
         session.totalCount += 1
         session.correctCount += passed ? 1 : 0
@@ -745,6 +835,8 @@ export default {
           store.vocabProgress.push(progress)
         }
         const now = nowISO()
+        // 注意：这里刻意不写 firstLearnedAt —— 只收藏/只标已掌握不算「记住这个词」，
+        // 否则「今日已记」会被虚高的空进度行灌水。首学时间只由 answer 落。
         if (body.status === 'learning' || body.status === 'mastered') progress.status = body.status
         if (body.collected !== undefined && body.collected !== null) progress.collected = Boolean(body.collected)
         if (body.dismissWrong) progress.wrongActive = false
@@ -761,7 +853,7 @@ export default {
     response: respond(
       guard((req, auth: AuthContext) => {
         const userId = Number(auth.userId)
-        const tzOffset = Math.max(-840, Math.min(840, Number(req.query?.tzOffset) || 0))
+        const tzOffset = clampTz(req.query?.tzOffset)
         const nowDate = new Date()
         // 与后端同构：时间平移 tz 分钟后取零点，再平移回 UTC
         const shifted = new Date(nowDate.getTime() + tzOffset * 60000)
@@ -778,8 +870,11 @@ export default {
           wrong: rows.reduce((m, r) => m + r.wrongCount, 0),
           durationSec: rows.reduce((m, r) => m + r.durationSec, 0),
         })
+        // 词数口径来自进度表（首次真正作答的时刻），不是会话作答次数 ——
+        // 同一个词在一节课里答多次只算「记了 1 个」，与每日目标同口径。
+        const todayLearned = countTodayLearned(userId, dayStart.getTime())
         return ok({
-          today: summarize(today),
+          today: { ...summarize(today), ...todayLearned },
           total: {
             ...summarize(mine),
             learned: progress.length,
@@ -789,6 +884,58 @@ export default {
             ).length,
           },
         })
+      }),
+    ),
+  }),
+
+  // 每日背词目标 + 今日进度（未设过目标的用户不建行，直接回退缺省值）
+  dailyGoal: defineMock({
+    url: '/api/vocab/daily-goal',
+    method: 'GET',
+    response: respond(
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
+        return ok(dailyGoalDto(userId, clampTz(req.query?.tzOffset)))
+      }),
+    ),
+  }),
+
+  // 改每日目标（upsert）：只接受出现的字段，逐字段校验区间，改完回读带今日进度的完整视图。
+  // 对进行中的练习会话无影响：已排好的队列不重排，下一节课按新目标算剩余量。
+  setDailyGoal: defineMock({
+    url: '/api/vocab/daily-goal',
+    method: 'PUT',
+    response: respond(
+      guard((req, auth: AuthContext) => {
+        const userId = Number(auth.userId)
+        const body = (req.body ?? {}) as { newTarget?: number; reviewTarget?: number }
+        const patch: { newTarget?: number; reviewTarget?: number } = {}
+        for (const field of ['newTarget', 'reviewTarget'] as const) {
+          const value = body[field]
+          if (value === undefined || value === null) continue
+          const n = Math.trunc(Number(value))
+          if (!Number.isFinite(n) || n < MIN_DAILY_TARGET || n > MAX_DAILY_TARGET) {
+            return err(400, `每日目标需在 ${MIN_DAILY_TARGET}-${MAX_DAILY_TARGET} 之间`)
+          }
+          patch[field] = n
+        }
+        if (!Object.keys(patch).length) return err(400, '没有需要更新的目标')
+
+        const now = nowISO()
+        let row = getDailyGoalRow(userId)
+        if (!row) {
+          row = {
+            id: nextId(store.vocabDailyGoals),
+            userId,
+            newTarget: DEFAULT_NEW_LIMIT,
+            reviewTarget: DEFAULT_REVIEW_LIMIT,
+            createdAt: now,
+            updatedAt: now,
+          }
+          store.vocabDailyGoals.push(row)
+        }
+        Object.assign(row, patch, { updatedAt: now })
+        return ok(dailyGoalDto(userId, clampTz(req.query?.tzOffset)))
       }),
     ),
   }),

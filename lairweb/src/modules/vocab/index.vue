@@ -12,11 +12,13 @@ import {
   type ImportBooksResult,
   type QueueItem,
   type VocabBook,
+  type VocabDailyGoal,
   type VocabImportScope,
   type VocabMode,
   type VocabStats,
 } from './api'
 import BookCard from './BookCard.vue'
+import DailyGoalCard from './DailyGoalCard.vue'
 import VocabWordRow from './VocabWordRow.vue'
 import VocabImportDialog from './VocabImportDialog.vue'
 import StatStrip, { type StatItem } from './StatStrip.vue'
@@ -28,6 +30,9 @@ const loading = ref(true)
 const error = ref('')
 const books = ref<VocabBook[]>([])
 const stats = ref<VocabStats | null>(null)
+const goal = ref<VocabDailyGoal | null>(null)
+const goalSaving = ref(false)
+const goalError = ref('')
 const wrongWords = ref<QueueItem[]>([])
 const collectedWords = ref<QueueItem[]>([])
 
@@ -60,15 +65,33 @@ const listTitle = computed(() => (filter.value === 'wrong' ? '错词本' : '收�
 async function load() {
   loading.value = true
   try {
-    const [booksRes, statsRes] = await Promise.all([vocabApi.books(), vocabApi.stats()])
+    const [booksRes, statsRes, goalRes] = await Promise.all([
+      vocabApi.books(),
+      vocabApi.stats(),
+      vocabApi.dailyGoal(),
+    ])
     books.value = booksRes.books
     stats.value = statsRes
+    goal.value = goalRes
     wrongWords.value = (await vocabApi.wrong()).words
     collectedWords.value = (await vocabApi.collect()).words
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
     loading.value = false
+  }
+}
+
+/** 改每日目标：只提交变化的字段，成功后用后端回读的完整视图覆盖（含今日进度），弹窗据此自动收起 */
+async function onSaveGoal(patch: { newTarget?: number; reviewTarget?: number }) {
+  goalSaving.value = true
+  goalError.value = ''
+  try {
+    goal.value = await vocabApi.setDailyGoal(patch)
+  } catch (e) {
+    goalError.value = e instanceof Error ? e.message : '保存失败'
+  } finally {
+    goalSaving.value = false
   }
 }
 
@@ -148,6 +171,15 @@ onMounted(load)
         导入词书
       </Button>
     </div>
+
+    <!-- 每日背词目标：今日已记 / 目标，可就地改目标 -->
+    <DailyGoalCard
+      v-if="goal"
+      :goal="goal"
+      :saving="goalSaving"
+      :error="goalError"
+      @save="onSaveGoal"
+    />
 
     <!-- Tab：词书 / 错词本 / 收藏 -->
     <div class="toolbar">
