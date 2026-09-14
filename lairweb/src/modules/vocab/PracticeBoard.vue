@@ -5,6 +5,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { RotateCcw, Volume2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { playWord } from './audio'
 import type { QueueItem, VocabMode } from './api'
 
@@ -87,20 +88,36 @@ onMounted(() => {
     <p class="meaning">{{ item.translations.map((t) => `${t.pos} ${t.cn}`).join('；') }}</p>
 
     <div class="board-actions">
-      <button class="ghost-btn" type="button" @click="replay">
+      <Button variant="outline" size="sm" class="rounded-full text-[var(--text-2)]" @click="replay">
         <Volume2 class="size-4" />
         发音（Tab）
-      </button>
-      <button class="ghost-btn" type="button" :title="ukAccent ? '切换为美音' : '切换为英音'" @click="ukAccent = !ukAccent; replay()">
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        class="rounded-full text-[var(--text-2)]"
+        :title="ukAccent ? '切换为美音' : '切换为英音'"
+        @click="ukAccent = !ukAccent; replay()"
+      >
         {{ ukAccent ? '英音' : '美音' }}
-      </button>
-      <button class="ghost-btn" type="button" @click="typedCount = 0; wrongTimes = 0">
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        class="rounded-full text-[var(--text-2)]"
+        @click="typedCount = 0; wrongTimes = 0"
+      >
         <RotateCcw class="size-4" />
         重打
-      </button>
-      <button class="ghost-btn danger" type="button" @click="finish(false)">
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        class="rounded-full text-[var(--text-2)] hover:bg-[rgba(255,59,48,0.08)] hover:text-[var(--destructive)]"
+        @click="finish(false)"
+      >
         跳过（Esc）
-      </button>
+      </Button>
     </div>
   </div>
 </template>
@@ -176,32 +193,9 @@ onMounted(() => {
 
 .board-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   margin-top: 8px;
-}
-.ghost-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-thumb);
-  background: transparent;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.ghost-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-.ghost-btn.danger:hover {
-  background: rgba(255, 59, 48, 0.08);
-  color: #ff3b30;
-}
-.ghost-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 </style>

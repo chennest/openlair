@@ -3,6 +3,7 @@
 import { onMounted, ref } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { Volume2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { playWord } from './audio'
 import type { QueueItem, VocabWord } from './api'
 
@@ -45,9 +46,15 @@ onMounted(() => playWord(props.item.word))
   <div class="question">
     <div class="word-head">
       <span class="q-word">{{ item.word }}</span>
-      <button class="sound-btn" type="button" aria-label="播放发音" @click="playWord(item.word)">
+      <Button
+        variant="ghost"
+        size="icon"
+        class="rounded-full text-[var(--accent)] hover:bg-[rgba(var(--accent-rgb),0.08)] hover:text-[var(--accent)]"
+        aria-label="播放发音"
+        @click="playWord(item.word)"
+      >
         <Volume2 class="size-5" />
-      </button>
+      </Button>
     </div>
     <span v-if="item.phoneticUs || item.phoneticUk" class="q-phonetic">/{{ item.phoneticUs || item.phoneticUk }}/</span>
 
@@ -87,19 +94,6 @@ onMounted(() => playWord(props.item.word))
   font-size: clamp(2rem, 5vw, 2.8rem);
   font-weight: 700;
 }
-.sound-btn {
-  display: inline-flex;
-  padding: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.sound-btn:hover {
-  background: rgba(0, 113, 227, 0.08);
-}
 .q-phonetic {
   color: var(--text-3);
 }
@@ -128,7 +122,7 @@ onMounted(() => playWord(props.item.word))
 }
 .option-btn:hover {
   border-color: var(--accent);
-  background: rgba(0, 113, 227, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 .option-btn.wrong {
   border-color: rgba(255, 59, 48, 0.5);

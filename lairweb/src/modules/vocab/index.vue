@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUser } from '@/api/request'
 import { Plus } from '@lucide/vue'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -18,6 +19,7 @@ import {
 import BookCard from './BookCard.vue'
 import VocabWordRow from './VocabWordRow.vue'
 import VocabImportDialog from './VocabImportDialog.vue'
+import StatStrip, { type StatItem } from './StatStrip.vue'
 
 const router = useRouter()
 const currentUserId = Number((getUser() as { id?: number } | null)?.id ?? 0)
@@ -42,6 +44,18 @@ const accuracy = computed(() => {
   const t = stats.value?.today
   return t && t.words > 0 ? Math.round((t.correct / t.words) * 100) : null
 })
+
+/** 今日概览：只有「待复习」用 heat 强调，其余走灰阶 */
+const statItems = computed<StatItem[]>(() => [
+  { num: stats.value?.today.words ?? 0, label: '今日练词' },
+  { num: accuracy.value === null ? '—' : `${accuracy.value}%`, label: '今日正确率' },
+  { num: stats.value?.total.due ?? 0, label: '待复习', tone: 'heat' },
+  { num: stats.value?.total.mastered ?? 0, label: '已记住' },
+])
+
+/** 当前 Tab 的列表数据（错词本 / 收藏共用一套行组件） */
+const currentList = computed(() => (filter.value === 'wrong' ? wrongWords.value : collectedWords.value))
+const listTitle = computed(() => (filter.value === 'wrong' ? '错词本' : '收藏'))
 
 async function load() {
   loading.value = true
@@ -128,25 +142,8 @@ onMounted(load)
         <h1>词汇练习</h1>
         <p class="page-sub">一次敲击，一点进步 · 打字即背词</p>
       </div>
-      <div v-if="stats" class="stat-strip">
-        <div class="stat-item">
-          <span class="num">{{ stats.today.words }}</span>
-          <span class="label">今日练词</span>
-        </div>
-        <div class="stat-item">
-          <span class="num">{{ accuracy === null ? '—' : `${accuracy}%` }}</span>
-          <span class="label">今日正确率</span>
-        </div>
-        <div class="stat-item">
-          <span class="num due">{{ stats.total.due }}</span>
-          <span class="label">待复习</span>
-        </div>
-        <div class="stat-item">
-          <span class="num">{{ stats.total.mastered }}</span>
-          <span class="label">已掌握</span>
-        </div>
-      </div>
-      <Button size="sm" class="import-btn rounded-full px-4" @click="openImport">
+      <StatStrip v-if="stats" :items="statItems" />
+      <Button size="sm" class="rounded-full px-4 shadow-[var(--sh-cta)]" @click="openImport">
         <Plus class="size-4" />
         导入词书
       </Button>
@@ -168,57 +165,59 @@ onMounted(load)
           >{{ f.label }}</TabsTrigger>
         </TabsList>
       </Tabs>
-      <button
+      <Button
         v-if="filter === 'wrong' && wrongWords.length"
-        class="extra-btn"
-        type="button"
+        variant="outline"
+        size="sm"
+        class="rounded-full px-4"
         @click="practiceSource('wrong')"
-      >开始错词练习（{{ wrongWords.length }}）</button>
-      <button
+      >开始错词练习（{{ wrongWords.length }}）</Button>
+      <Button
         v-if="filter === 'collect' && collectedWords.length"
-        class="extra-btn"
-        type="button"
+        variant="outline"
+        size="sm"
+        class="rounded-full px-4"
         @click="practiceSource('collect')"
-      >复习收藏（{{ collectedWords.length }}）</button>
+      >复习收藏（{{ collectedWords.length }}）</Button>
     </div>
 
     <!-- 词书墙 -->
-    <div v-if="filter === 'books'" class="card-wall">
-      <BookCard
-        v-for="b in books"
-        :key="b.id"
-        :book="b"
-        :can-delete="b.ownerId === currentUserId || (b.ownerId === null && currentUserId === 1)"
-        @practice="(m) => onPractice(m, b.id)"
-        @open="onOpenBook"
-        @delete="onDeleteBook"
-      />
-      <div v-if="!books.length" class="placeholder empty"><div><p>还没有词书，点右上角「导入词书」添加</p></div></div>
-    </div>
+    <template v-if="filter === 'books'">
+      <div v-if="books.length" class="card-wall">
+        <BookCard
+          v-for="b in books"
+          :key="b.id"
+          :book="b"
+          :can-delete="b.ownerId === currentUserId || (b.ownerId === null && currentUserId === 1)"
+          @practice="(m) => onPractice(m, b.id)"
+          @open="onOpenBook"
+          @delete="onDeleteBook"
+        />
+      </div>
+      <div v-else class="placeholder empty"><div><p>还没有词书，点右上角「导入词书」添加</p></div></div>
+    </template>
 
-    <!-- 错词本 -->
-    <div v-else-if="filter === 'wrong'" class="word-list">
-      <VocabWordRow
-        v-for="w in wrongWords"
-        :key="w.id"
-        :item="w"
-        source="wrong"
-        @dismiss-wrong="onDismissWrong"
-        @master="onMaster"
-      />
-      <div v-if="!wrongWords.length" class="placeholder empty"><div><p>错词本是空的，继续保持！</p></div></div>
-    </div>
+    <!-- 错词本 / 收藏：一个面板 + hairline 行 -->
+    <article v-else-if="currentList.length" class="card list-panel">
+      <div class="card-title">
+        <span>{{ listTitle }}</span>
+        <Badge variant="secondary">{{ currentList.length }}</Badge>
+      </div>
+      <div class="row-list">
+        <VocabWordRow
+          v-for="w in currentList"
+          :key="w.id"
+          :item="w"
+          :source="filter === 'wrong' ? 'wrong' : 'collect'"
+          @dismiss-wrong="onDismissWrong"
+          @master="onMaster"
+          @uncollect="onUncollect"
+        />
+      </div>
+    </article>
 
-    <!-- 收藏 -->
-    <div v-else class="word-list">
-      <VocabWordRow
-        v-for="w in collectedWords"
-        :key="w.id"
-        :item="w"
-        source="collect"
-        @uncollect="onUncollect"
-      />
-      <div v-if="!collectedWords.length" class="placeholder empty"><div><p>还没有收藏的单词</p></div></div>
+    <div v-else class="placeholder empty">
+      <div><p>{{ filter === 'wrong' ? '错词本是空的，继续保持！' : '还没有收藏的单词' }}</p></div>
     </div>
 
     <!-- 导入词书弹窗 -->
@@ -252,60 +251,13 @@ onMounted(load)
   font-size: 0.9rem;
 }
 
-.stat-strip {
-  display: flex;
-  gap: 22px;
-  padding: 12px 20px;
-  background: var(--surface);
-  border-radius: var(--r-card);
-  box-shadow: var(--sh-card);
-}
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.num {
-  font-size: 1.2rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.num.due {
-  color: var(--heat);
-}
-.label {
-  font-size: 0.72rem;
-  color: var(--text-3);
-}
-.import-btn {
-  box-shadow: var(--sh-cta);
-}
-
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin: 22px 0 4px;
-}
-.extra-btn {
-  padding: 8px 18px;
-  border: none;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: var(--sh-cta);
-}
-.extra-btn:hover {
-  filter: brightness(1.05);
-}
-.extra-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .seg {
   height: auto;
@@ -317,15 +269,12 @@ onMounted(load)
 
 .card-wall {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 18px;
   margin-top: 18px;
 }
 
-.word-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.list-panel {
   margin-top: 18px;
 }
 
@@ -338,9 +287,8 @@ onMounted(load)
     flex-direction: column;
     align-items: flex-start;
   }
-  .stat-strip {
+  .page-head :deep(.stat-strip) {
     width: 100%;
-    justify-content: space-between;
   }
 }
 </style>

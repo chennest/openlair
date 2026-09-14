@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// 生词列表行（错词本 / 收藏共用）：发音 + 释义 + 上下文操作按钮
+// 生词列表行（错词本 / 收藏共用）：发音 + 释义 + 行内操作
+// 行本身不带卡片外观 —— 由父级一个面板 + hairline 分割承载（统一表面 > 碎片化卡片）
 import { computed } from 'vue'
 import { Volume2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { playWord } from './audio'
+import { MASTER_LABEL, reviewDueText, wordMeaning } from './status'
 import type { QueueItem } from './api'
 
 const props = defineProps<{
   item: QueueItem
-  /** tab 来源：wrong 显示移出错词本/已掌握，collect 显示取消收藏 */
+  /** tab 来源：wrong 显示移出错词本/标记记住，collect 显示取消收藏 */
   source: 'wrong' | 'collect'
 }>()
 const emit = defineEmits<{
@@ -16,27 +19,22 @@ const emit = defineEmits<{
   uncollect: [wordId: number]
 }>()
 
-const meaning = computed(() =>
-  props.item.translations
-    .slice(0, 2)
-    .map((t) => `${t.pos} ${t.cn}`)
-    .join('；'),
-)
-const dueText = computed(() => {
-  const due = props.item.progress?.due
-  if (!due) return ''
-  const days = Math.ceil((new Date(due).getTime() - Date.now()) / 86400000)
-  if (days <= 0) return '待复习'
-  if (days === 1) return '明天复习'
-  return `${days} 天后复习`
-})
+const meaning = computed(() => wordMeaning(props.item.translations))
+const dueText = computed(() => reviewDueText(props.item.progress?.due))
 </script>
 
 <template>
-  <div class="word-row">
-    <button class="sound" type="button" aria-label="播放发音" @click="playWord(item.word)">
+  <div class="row">
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="rounded-full text-[var(--accent)] hover:bg-[rgba(var(--accent-rgb),0.08)] hover:text-[var(--accent)]"
+      aria-label="播放发音"
+      @click="playWord(item.word)"
+    >
       <Volume2 class="size-4" />
-    </button>
+    </Button>
+
     <div class="word-main">
       <div class="word-line">
         <span class="w">{{ item.word }}</span>
@@ -45,52 +43,49 @@ const dueText = computed(() => {
       </div>
       <p class="m">{{ meaning }}</p>
     </div>
+
     <div class="actions">
-      <button
+      <Button
         v-if="source === 'wrong'"
-        class="act-btn"
-        type="button"
+        variant="ghost"
+        size="sm"
+        class="rounded-full text-[var(--text-2)]"
         @click="emit('dismissWrong', item.id)"
-      >移出错词本</button>
-      <button
+      >移出错词本</Button>
+      <Button
         v-if="source === 'wrong'"
-        class="act-btn"
-        type="button"
+        variant="outline"
+        size="sm"
+        class="rounded-full"
         @click="emit('master', item.id)"
-      >已掌握</button>
-      <button
+      >{{ MASTER_LABEL }}</Button>
+      <Button
         v-if="source === 'collect'"
-        class="act-btn"
-        type="button"
+        variant="ghost"
+        size="sm"
+        class="rounded-full text-[var(--text-2)]"
         @click="emit('uncollect', item.id)"
-      >取消收藏</button>
+      >取消收藏</Button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.word-row {
+.row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  background: var(--surface);
-  border-radius: var(--r-thumb);
-  box-shadow: var(--sh-card);
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--hairline);
+  transition: background 150ms ease;
 }
-.sound {
-  flex: none;
-  display: inline-flex;
-  padding: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
+.row:last-child {
+  border-bottom: 0;
 }
-.sound:hover {
-  background: rgba(0, 113, 227, 0.08);
+.row:hover {
+  background: var(--hover);
 }
+
 .word-main {
   flex: 1;
   min-width: 0;
@@ -122,27 +117,20 @@ const dueText = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .actions {
   flex: none;
   display: flex;
   gap: 8px;
 }
-.act-btn {
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  padding: 7px 13px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.act-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-.act-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+
+@media (max-width: 680px) {
+  .row {
+    flex-wrap: wrap;
+  }
+  .actions {
+    width: 100%;
+    padding-left: 44px;
+  }
 }
 </style>

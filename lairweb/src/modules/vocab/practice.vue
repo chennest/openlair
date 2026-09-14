@@ -4,6 +4,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { X } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import {
   vocabApi,
   VOCAB_MODES,
@@ -130,18 +132,28 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="loading" class="placeholder"><div><p>正在排课…</p></div></div>
-  <div v-else-if="error" class="placeholder"><div><p class="symbol">!</p><p>{{ error }}</p><button class="back-link" type="button" @click="router.push('/vocab')">返回词书</button></div></div>
+  <div v-else-if="error" class="placeholder">
+    <div>
+      <p class="symbol">!</p>
+      <p>{{ error }}</p>
+      <Button variant="outline" size="sm" class="mt-3.5 rounded-full px-4" @click="router.push('/vocab')">返回词书</Button>
+    </div>
+  </div>
 
   <div v-else class="practice-page">
     <!-- 顶栏：进度 + 用时 + 退出 -->
     <div v-if="!summary" class="practice-head">
-      <button class="quit-btn" type="button" aria-label="退出练习" @click="quit">
+      <Button
+        variant="outline"
+        size="icon"
+        class="flex-none rounded-full bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface)] hover:text-[var(--destructive)]"
+        aria-label="退出练习"
+        @click="quit"
+      >
         <X class="size-4" />
-      </button>
+      </Button>
       <div class="head-main">
-        <div class="progress-track">
-          <div class="progress-fill" :style="{ width: `${(idx / queue.length) * 100}%` }" />
-        </div>
+        <Progress :model-value="(idx / queue.length) * 100" class="h-2 bg-[var(--track)]" aria-label="本次练习进度" />
         <div class="head-meta">
           <span>《{{ bookName }}》· {{ modeLabel }}练习</span>
           <span class="meta-nums">
@@ -204,35 +216,9 @@ onBeforeUnmount(() => {
   gap: 14px;
   margin-bottom: 22px;
 }
-.quit-btn {
-  flex: none;
-  display: inline-flex;
-  padding: 9px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-2);
-  cursor: pointer;
-  box-shadow: var(--sh-card);
-}
-.quit-btn:hover {
-  color: #ff3b30;
-}
 .head-main {
   flex: 1;
   min-width: 0;
-}
-.progress-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--accent);
-  transition: width 0.3s var(--ease-out-quart);
 }
 .head-meta {
   display: flex;
@@ -255,16 +241,5 @@ onBeforeUnmount(() => {
 .no-num {
   font-style: normal;
   color: var(--heat);
-}
-
-.back-link {
-  margin-top: 14px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  padding: 8px 18px;
-  font-size: 0.85rem;
-  color: var(--text-2);
-  cursor: pointer;
 }
 </style>

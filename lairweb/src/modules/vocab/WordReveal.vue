@@ -3,7 +3,10 @@
 import { computed, onMounted } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { Volume2 } from '@lucide/vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { playSentence, playWord } from './audio'
+import { tone } from './status'
 import type { QueueItem } from './api'
 
 const props = defineProps<{
@@ -36,13 +39,22 @@ onMounted(() => {
 
 <template>
   <div class="reveal-mask" @click="emit('continue')">
-    <div class="reveal" :class="{ bad: !correct }" @click.stop>
-      <span class="verdict" :class="correct ? 'ok' : 'no'">{{ correct ? '✓ 通过' : '✗ 再练' }}</span>
+    <div class="reveal" @click.stop>
+      <Badge variant="ghost" class="self-start" :class="tone(correct ? 'green' : 'red')">
+        {{ correct ? '✓ 通过' : '✗ 再练' }}
+      </Badge>
       <div class="reveal-word">
         <h3>{{ item.word }}</h3>
-        <button v-if="item.phoneticUs || item.phoneticUk" class="sound-btn" type="button" aria-label="播放单词" @click="playWord(item.word)">
+        <Button
+          v-if="item.phoneticUs || item.phoneticUk"
+          variant="ghost"
+          size="icon-sm"
+          class="rounded-full text-[var(--accent)] hover:bg-[rgba(var(--accent-rgb),0.08)] hover:text-[var(--accent)]"
+          aria-label="播放单词"
+          @click="playWord(item.word)"
+        >
           <Volume2 class="size-4" />
-        </button>
+        </Button>
       </div>
       <span v-if="item.phoneticUs || item.phoneticUk" class="phonetic">/{{ item.phoneticUs || item.phoneticUk }}/</span>
 
@@ -60,7 +72,9 @@ onMounted(() => {
 
       <div class="reveal-foot">
         <span class="due">{{ dueText ?? '' }}</span>
-        <button class="continue-btn" type="button" @click="emit('continue')">继续 ⏎</button>
+        <Button class="rounded-full px-6 shadow-[var(--sh-cta)]" @click="emit('continue')">
+          继续 ⏎
+        </Button>
       </div>
     </div>
   </div>
@@ -87,22 +101,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
-.verdict {
-  align-self: flex-start;
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 4px 12px;
-  border-radius: 999px;
-}
-.verdict.ok {
-  color: var(--live);
-  background: rgba(48, 209, 88, 0.12);
-}
-.verdict.no {
-  color: #ff3b30;
-  background: rgba(255, 59, 48, 0.1);
-}
-
 .reveal-word {
   display: flex;
   align-items: center;
@@ -112,18 +110,6 @@ onMounted(() => {
   margin: 0;
   font-size: 2rem;
   font-weight: 700;
-}
-.sound-btn {
-  display: inline-flex;
-  padding: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-}
-.sound-btn:hover {
-  background: rgba(0, 113, 227, 0.08);
 }
 .phonetic {
   color: var(--text-3);
@@ -171,19 +157,5 @@ onMounted(() => {
 .due {
   font-size: 0.8rem;
   color: var(--text-3);
-}
-.continue-btn {
-  padding: 9px 22px;
-  border: none;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: var(--sh-cta);
-}
-.continue-btn:hover {
-  filter: brightness(1.05);
 }
 </style>

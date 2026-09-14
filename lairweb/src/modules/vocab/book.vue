@@ -2,7 +2,9 @@
 // 词书详情页：汇总统计 + 状态筛选/搜索/排序 + 单词列表（进度 / 模式覆盖 / 行内操作）
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft } from '@lucide/vue'
 import { getUser } from '@/api/request'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -15,7 +17,9 @@ import {
   type VocabWordFilter,
   type VocabWordSort,
 } from './api'
+import { tone } from './status'
 import BookWordRow from './BookWordRow.vue'
+import StatStrip, { type StatItem } from './StatStrip.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,11 +61,26 @@ const FILTERS = computed<Array<{ value: VocabWordFilter; label: string }>>(() =>
     { value: 'all', label: `全部 ${s?.total ?? 0}` },
     { value: 'unlearned', label: `未学 ${s?.unlearned ?? 0}` },
     { value: 'learning', label: `学习中 ${s?.learning ?? 0}` },
-    { value: 'mastered', label: `已掌握 ${s?.mastered ?? 0}` },
+    { value: 'mastered', label: `已记住 ${s?.mastered ?? 0}` },
     { value: 'wrong', label: `错词 ${s?.wrong ?? 0}` },
     { value: 'collected', label: `收藏 ${s?.collected ?? 0}` },
   ]
 })
+
+/** 词书汇总：只有「待复习」用 heat 强调，未学走灰阶 */
+const statItems = computed<StatItem[]>(() => {
+  const s = summary.value
+  return [
+    { num: s?.total ?? 0, label: '总词数' },
+    { num: s?.learned ?? 0, label: '已学' },
+    { num: s?.mastered ?? 0, label: '已记住' },
+    { num: s?.due ?? 0, label: '待复习', tone: 'heat' },
+    { num: s?.wrong ?? 0, label: '错词' },
+    { num: s?.unlearned ?? 0, label: '未学', tone: 'muted' },
+  ]
+})
+
+const isMine = computed(() => summary.value?.book.ownerId !== null)
 
 const canDelete = computed(() => {
   const s = summary.value
@@ -219,10 +238,18 @@ onUnmounted(() => {
   <div v-else-if="summary" class="book-page">
     <div class="page-head">
       <div class="head-left">
-        <button class="back-btn" type="button" @click="router.push('/vocab')">返回词书墙</button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="-ml-2 mb-1 rounded-full px-2 text-[var(--text-3)] hover:text-[var(--accent)]"
+          @click="router.push('/vocab')"
+        >
+          <ArrowLeft class="size-4" />
+          返回词书墙
+        </Button>
         <h1>
           {{ summary.book.emoji || '📖' }} {{ summary.book.name }}
-          <span v-if="summary.book.ownerId !== null" class="mine-badge">我的</span>
+          <Badge v-if="isMine" variant="ghost" :class="tone('blue')">我的</Badge>
         </h1>
         <p class="page-sub">
           {{ summary.total }} 个单词<span v-if="summary.book.description"> · {{ summary.book.description }}</span>
@@ -236,14 +263,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="stat-panel">
-      <div class="stat"><span class="num">{{ summary.total }}</span><span class="label">总词数</span></div>
-      <div class="stat"><span class="num">{{ summary.learned }}</span><span class="label">已学</span></div>
-      <div class="stat"><span class="num">{{ summary.mastered }}</span><span class="label">已掌握</span></div>
-      <div class="stat"><span class="num due">{{ summary.due }}</span><span class="label">待复习</span></div>
-      <div class="stat"><span class="num wrong">{{ summary.wrong }}</span><span class="label">错词</span></div>
-      <div class="stat"><span class="num muted">{{ summary.unlearned }}</span><span class="label">未学</span></div>
-    </div>
+    <StatStrip :items="statItems" class="book-stats" />
 
     <div class="toolbar">
       <Tabs v-model="filter">
@@ -305,76 +325,18 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
 }
-.back-btn {
-  margin-bottom: 8px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.back-btn:hover {
-  color: var(--accent);
-}
-.back-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.mine-badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(0, 113, 227, 0.1);
-  color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 600;
-}
 .page-sub {
   margin: 6px 0 0;
   color: var(--text-2);
-  font-size: 0.86rem;
+  font-size: 0.9rem;
 }
 .head-actions {
   display: flex;
   gap: 8px;
 }
 
-.stat-panel {
-  display: flex;
-  gap: 8px;
+.book-stats {
   margin-top: 18px;
-  padding: 14px 8px;
-  background: var(--surface);
-  border-radius: var(--r-card);
-  box-shadow: var(--sh-card);
-}
-.stat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.stat + .stat {
-  border-left: 1px solid var(--hairline);
-}
-.num {
-  font-size: 1.15rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.num.due {
-  color: var(--heat);
-}
-.num.wrong {
-  color: #d70015;
-}
-.num.muted {
-  color: var(--text-3);
-}
-.label {
-  font-size: 0.72rem;
-  color: var(--text-3);
 }
 
 .toolbar {
@@ -425,21 +387,16 @@ onUnmounted(() => {
   min-height: 24px;
 }
 
-@media (max-width: 680px) {
+@media (max-width: 860px) {
   .page-head {
     flex-direction: column;
     align-items: flex-start;
   }
-  .stat-panel {
-    flex-wrap: wrap;
-    gap: 12px 0;
+  .book-stats {
+    width: 100%;
   }
-  .stat {
-    flex: 0 0 33.33%;
-  }
-  .stat + .stat {
-    border-left: none;
-  }
+}
+@media (max-width: 680px) {
   .tools {
     width: 100%;
   }

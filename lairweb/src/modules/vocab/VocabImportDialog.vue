@@ -92,10 +92,12 @@ watch(
 
       <div class="field content-field">
         <Label>词书内容</Label>
-        <div class="source-switch" role="tablist" aria-label="选择内容来源">
-          <button type="button" role="tab" :aria-selected="source === 'paste'" :class="{ active: source === 'paste' }" @click="source = 'paste'">粘贴文本</button>
-          <button type="button" role="tab" :aria-selected="source === 'file'" :class="{ active: source === 'file' }" @click="source = 'file'">上传文件</button>
-        </div>
+        <Tabs v-model="source" class="choice-tabs">
+          <TabsList class="segmented-list" aria-label="选择内容来源">
+            <TabsTrigger value="paste" class="segment">粘贴文本</TabsTrigger>
+            <TabsTrigger value="file" class="segment">上传文件</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <Textarea
           v-if="source === 'paste'"
@@ -154,7 +156,7 @@ watch(
   padding: 10px 14px;
   border-radius: var(--r-thumb);
   background: rgba(255, 59, 48, 0.08);
-  color: #ff3b30;
+  color: var(--destructive);
   font-size: 0.84rem;
 }
 .choice-tabs,
@@ -165,7 +167,7 @@ watch(
   height: 40px;
   padding: 3px;
   border-radius: var(--r-pill);
-  background: rgba(0, 0, 0, 0.045);
+  background: rgba(0, 0, 0, 0.05);
 }
 .segment {
   flex: 1;
@@ -179,32 +181,6 @@ watch(
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
-.source-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
-  width: 100%;
-  padding: 3px;
-  border-radius: var(--r-pill);
-  background: rgba(0, 0, 0, 0.045);
-}
-.source-switch button {
-  min-height: 36px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 0.84rem;
-  cursor: pointer;
-}
-.source-switch button.active {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-.source-switch button:focus-visible,
 .file-btn:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -225,7 +201,7 @@ watch(
   padding: 18px;
   border: 1px dashed var(--hairline);
   border-radius: var(--r-sheet);
-  background: rgba(0, 0, 0, 0.018);
+  background: var(--hover);
 }
 .file-btn {
   display: flex;
@@ -239,7 +215,7 @@ watch(
   cursor: pointer;
 }
 .file-btn:hover {
-  background: rgba(0, 113, 227, 0.05);
+  background: rgba(var(--accent-rgb), 0.05);
   color: var(--accent);
 }
 .foot {
@@ -261,7 +237,7 @@ watch(
   padding: 14px 16px;
   list-style: none;
   border-radius: var(--r-thumb);
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--bg);
   color: var(--text-2);
   font-size: 0.88rem;
 }

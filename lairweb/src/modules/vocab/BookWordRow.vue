@@ -2,7 +2,17 @@
 // 词书详情列表行：发音 + 状态 + 对错/复习 + 模式覆盖 + 行内操作；点击行展开释义例句短语
 import { computed, ref } from 'vue'
 import { Volume2 } from '@lucide/vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { playSentence, playWord } from './audio'
+import {
+  MASTER_LABEL,
+  UNMASTER_LABEL,
+  reviewDueText,
+  statusMeta,
+  tone,
+  wordMeaning,
+} from './status'
 import type { BookWordItem } from './api'
 
 const props = defineProps<{ item: BookWordItem }>()
@@ -16,32 +26,13 @@ const expanded = ref(false)
 
 const progress = computed(() => props.item.progress)
 
-const statusText = computed(() => {
-  const p = progress.value
-  if (!p) return '未学'
-  return p.status === 'mastered' ? '已掌握' : '学习中'
-})
-const statusKind = computed(() => {
-  const p = progress.value
-  if (!p) return 'none'
-  return p.status === 'mastered' ? 'done' : 'learning'
-})
+/** 状态标签：未学 / 学习中 / 已记住（文案与配色统一在 status.ts） */
+const status = computed(() => statusMeta(progress.value?.status))
+const isMastered = computed(() => progress.value?.status === 'mastered')
 
-const meaning = computed(() =>
-  props.item.translations
-    .slice(0, 2)
-    .map((t) => `${t.pos} ${t.cn}`)
-    .join('；'),
-)
+const meaning = computed(() => wordMeaning(props.item.translations))
 
-const dueText = computed(() => {
-  const due = progress.value?.due
-  if (!due) return ''
-  const days = Math.ceil((new Date(due).getTime() - Date.now()) / 86400000)
-  if (days <= 0) return '待复习'
-  if (days === 1) return '明天复习'
-  return `${days} 天后复习`
-})
+const dueText = computed(() => reviewDueText(progress.value?.due))
 
 /** 模式覆盖 chip：练过的显示次数，没练过的显示「–」并置灰 */
 const modeChips = computed(() => {
@@ -60,19 +51,25 @@ const hasDetail = computed(
 </script>
 
 <template>
-  <div class="word-row" :class="{ expanded }">
+  <div class="word-row">
     <div class="row-main" role="button" tabindex="0" @click="expanded = !expanded" @keydown.enter="expanded = !expanded">
-      <button class="sound" type="button" aria-label="播放发音" @click.stop="playWord(item.word)">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class="rounded-full text-[var(--accent)] hover:bg-[rgba(var(--accent-rgb),0.08)] hover:text-[var(--accent)]"
+        aria-label="播放发音"
+        @click.stop="playWord(item.word)"
+      >
         <Volume2 class="size-4" />
-      </button>
+      </Button>
 
       <div class="word-main">
         <div class="word-line">
           <span class="w">{{ item.word }}</span>
           <span v-if="item.phoneticUs || item.phoneticUk" class="p">/{{ item.phoneticUs || item.phoneticUk }}/</span>
-          <span class="badge" :class="statusKind">{{ statusText }}</span>
-          <span v-if="progress?.wrongActive" class="badge wrong">错词本</span>
-          <span v-if="progress?.collected" class="badge collect">收藏</span>
+          <Badge variant="ghost" :class="tone(status.tone)">{{ status.label }}</Badge>
+          <Badge v-if="progress?.wrongActive" variant="ghost" :class="tone('red')">错词本</Badge>
+          <Badge v-if="progress?.collected" variant="ghost" :class="tone('gold')">收藏</Badge>
         </div>
         <p class="m">{{ meaning || '暂无释义' }}</p>
       </div>
@@ -92,15 +89,28 @@ const hasDetail = computed(
       </div>
 
       <div class="actions" @click.stop>
-        <button class="act-btn" type="button" @click="emit('collect', item.id)">
+        <Button
+          :variant="progress?.collected ? 'outline' : 'ghost'"
+          size="sm"
+          class="rounded-full"
+          :class="progress?.collected ? '' : 'text-[var(--text-2)]'"
+          @click="emit('collect', item.id)"
+        >
           {{ progress?.collected ? '取消收藏' : '收藏' }}
-        </button>
-        <button v-if="progress?.wrongActive" class="act-btn" type="button" @click="emit('dismissWrong', item.id)">
-          移出错词本
-        </button>
-        <button class="act-btn" type="button" @click="emit('master', item.id)">
-          {{ progress?.status === 'mastered' ? '取消掌握' : '已掌握' }}
-        </button>
+        </Button>
+        <Button
+          v-if="progress?.wrongActive"
+          variant="ghost"
+          size="sm"
+          class="rounded-full text-[var(--text-2)]"
+          @click="emit('dismissWrong', item.id)"
+        >移出错词本</Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-full"
+          @click="emit('master', item.id)"
+        >{{ isMastered ? UNMASTER_LABEL : MASTER_LABEL }}</Button>
       </div>
     </div>
 
@@ -134,8 +144,8 @@ const hasDetail = computed(
 .row-main {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 13px 16px;
+  gap: 12px;
+  padding: 12px 16px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -145,20 +155,6 @@ const hasDetail = computed(
 .row-main:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-.sound {
-  flex: none;
-  display: inline-flex;
-  padding: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-}
-.sound:hover {
-  background: rgba(0, 113, 227, 0.08);
 }
 
 .word-main {
@@ -178,31 +174,6 @@ const hasDetail = computed(
 .p {
   color: var(--text-3);
   font-size: 0.8rem;
-}
-.badge {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--text-3);
-}
-.badge.learning {
-  background: rgba(0, 113, 227, 0.1);
-  color: var(--accent);
-}
-.badge.done {
-  background: rgba(48, 209, 88, 0.14);
-  color: #1a7f37;
-}
-.badge.wrong {
-  background: rgba(255, 59, 48, 0.1);
-  color: #d70015;
-}
-.badge.collect {
-  background: rgba(255, 149, 0, 0.14);
-  color: #a05a00;
 }
 .m {
   margin: 3px 0 0;
@@ -241,14 +212,14 @@ const hasDetail = computed(
 }
 .chip {
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--r-chip);
   font-size: 0.68rem;
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text-4);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 .chip.on {
-  background: rgba(0, 113, 227, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   font-weight: 600;
 }
@@ -256,30 +227,11 @@ const hasDetail = computed(
 .actions {
   flex: none;
   display: flex;
-  gap: 8px;
-}
-.act-btn {
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: transparent;
-  padding: 6px 12px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.act-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text);
-}
-.act-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  gap: 6px;
 }
 
 .row-detail {
-  padding: 4px 16px 16px 58px;
+  padding: 4px 16px 16px 60px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -313,12 +265,12 @@ const hasDetail = computed(
   color: var(--text-4);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .modes {
     display: none;
   }
 }
-@media (max-width: 680px) {
+@media (max-width: 860px) {
   .metric {
     display: none;
   }
@@ -327,6 +279,7 @@ const hasDetail = computed(
   }
   .actions {
     width: 100%;
+    padding-left: 44px;
   }
   .row-detail {
     padding-left: 16px;
