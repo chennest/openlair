@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { playSentence, playWord } from './audio'
 import { masteryText, tone } from './status'
-import type { QueueItem, VocabProgress } from './api'
+import type { QueueItem, VocabProgress, VocabWord } from './api'
 
 const props = defineProps<{
   item: QueueItem
@@ -16,11 +16,24 @@ const props = defineProps<{
   due: string | null
   /** 作答响应里带回来的最新进度：用来显示「还差 N 次答对」 */
   progress: VocabProgress | null
+  /** 跟打四选一的作答项：回显「你选的是 X → 对应英语」；其余模式为 null */
+  picked?: { word: VocabWord; correct: boolean } | null
 }>()
 const emit = defineEmits<{ continue: [] }>()
 
 const firstSentence = computed(() => props.item.sentences[0] ?? null)
 const mastery = computed(() => masteryText(props.progress))
+
+/** 选中项的中文释义（只取首义，与选项按钮上的字一致） */
+const pickedMeaning = computed(() => {
+  const t = props.picked?.word.translations[0]
+  return t ? `${t.pos} ${t.cn}` : ''
+})
+
+/** 选中那个英文词的全部词性释义：错选时要说清"它自己是什么意思" */
+const pickedSenses = computed(() =>
+  (props.picked?.word.translations ?? []).map((t) => `${t.pos} ${t.cn}`).join(' / '),
+)
 
 const dueText = computed(() => {
   if (!props.due) return null
@@ -60,6 +73,21 @@ onMounted(() => {
         </Button>
       </div>
       <span v-if="item.phoneticUs || item.phoneticUk" class="phonetic">/{{ item.phoneticUs || item.phoneticUk }}/</span>
+
+      <!-- 跟打四选一：先给「选对没选对」的判定，再把「你选的中文 → 那个英语词」摊开，
+           并列出那个英语词自己的全部释义（选对时就是题面词，跟下方 .meanings 会有重复，
+           但这是刻意保留的：让人在同一块里就能把「我选的中文 = 哪个英文 = 它还有什么意思」看完） -->
+      <div v-if="picked" class="pick-note" :class="{ bad: !picked.correct }">
+        <span class="pick-mark">{{ picked.correct ? '✓ 选对了' : '✗ 选错了' }}</span>
+        <p class="pick-line">
+          你选的是 <b>{{ pickedMeaning }}</b>
+          <span class="pick-arrow">→</span>
+          <b class="pick-word">{{ picked.word.word }}</b>
+        </p>
+        <p class="pick-senses">
+          {{ picked.word.word }}：{{ pickedSenses }}
+        </p>
+      </div>
 
       <ul class="meanings">
         <li v-for="(t, i) in item.translations" :key="i">
@@ -120,6 +148,50 @@ onMounted(() => {
 .phonetic {
   color: var(--text-3);
   font-size: 0.92rem;
+}
+
+/* 跟打四选一的作答回显：中性底，错选转暖红；比正文低一档，不跟释义抢视线 */
+.pick-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: var(--r-thumb);
+  background: rgba(0, 0, 0, 0.03);
+}
+.pick-note.bad {
+  background: rgba(255, 59, 48, 0.06);
+}
+.pick-mark {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--live);
+}
+.pick-note.bad .pick-mark {
+  color: var(--destructive);
+}
+.pick-line {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.pick-line b {
+  color: var(--text);
+  font-weight: 600;
+}
+.pick-arrow {
+  margin: 0 6px;
+  color: var(--text-3);
+}
+.pick-word {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.pick-senses {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
 }
 
 .meanings {

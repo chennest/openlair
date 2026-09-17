@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 练习页（第二路由入口 /vocab/practice/:bookId?mode=&source=&extra=）：
-// 开课排课 → 逐词作答（打字/自测）→ 答词复习面板 → 结束页汇总
+// 开课排课 → 逐词作答（跟打=打字+释义四选一 / 听写 / 默写 / 自测）→ 答词复习面板 → 结束页汇总
 //
 // extra=1 表示「今日任务已达标，再来一组」：本轮显式带 newLimit 越过每日目标。
 // 达标之后不留死胡同 —— 无论入口还是结束页，都给出「继续学习」而不是只甩一句完成提示。
@@ -46,18 +46,40 @@ const pool = ref<VocabWord[]>([])
 
 const results = ref<Array<{ word: string; due: string | null; correct: boolean }>>([])
 const summary = ref<VocabSessionSummary | null>(null)
-const reveal = ref<{ item: QueueItem; correct: boolean; due: string | null; progress: VocabProgress | null } | null>(
-  null,
-)
+/** 四选一的作答项：只在跟打里有值，交给结果面板回显「你选的是 X → 对应英语」 */
+type PickedOption = { word: VocabWord; correct: boolean } | null
+const reveal = ref<{
+  item: QueueItem
+  correct: boolean
+  due: string | null
+  progress: VocabProgress | null
+  picked: PickedOption
+} | null>(null)
 
 const startedAt = ref(Date.now())
 const elapsedSec = ref(0)
 let timer: ReturnType<typeof setInterval> | undefined
 
 const current = computed(() => queue.value[idx.value] ?? null)
-const questionOptions = computed(() =>
-  current.value && mode.value === 'self_test' ? pickDistractors(current.value, pool.value) : [],
-)
+
+/**
+ * 释义选项（跟打与自测共用）：1 个正确项 + 若干易混干扰项。
+ *
+ * 跟打从「直显释义」改成「四选一作答」后也走这里 —— 两个模式考的虽然都是"认不认识释义"，
+ * 区别在跟打还得把词打一遍。差别只在兜底：自测没干扰项也至少有一个正确项可点（QuestionCard
+ * 自己兜底），跟打挑不出干扰项就返回空数组，让练习板退回「直显释义」，免得出现只有一个选项的假题。
+ */
+const meaningOptions = computed(() => {
+  const cur = current.value
+  if (!cur) return []
+  const opts = pickDistractors(cur, pool.value)
+  if (mode.value === 'self_test') return opts
+  if (mode.value === 'follow') return opts.length >= 2 ? opts : []
+  return []
+})
+
+/** 需要干扰项池的模式：跟打（选释义）与自测（选释义） */
+const needsPool = computed(() => mode.value === 'follow' || mode.value === 'self_test')
 const modeLabel = computed(() => VOCAB_MODES.find((m) => m.value === mode.value)?.label ?? '')
 const passedCount = computed(() => results.value.filter((r) => r.correct).length)
 
@@ -103,8 +125,8 @@ async function startPractice(opts: { over?: boolean } = {}) {
     sessionId.value = res.id
     queue.value = res.queue
     bookName.value = res.bookName
-    // 自测模式的干扰项候选池：词书练习取全词书，错词本/收藏练习取当前队列
-    if (mode.value === 'self_test') {
+    // 释义干扰项候选池：词书练习取全词书，错词本/收藏练习取当前队列
+    if (needsPool.value) {
       pool.value =
         source.value === 'book'
           ? (await vocabApi.bookWords(bookId, 100)).words
@@ -131,18 +153,26 @@ async function startPractice(opts: { over?: boolean } = {}) {
   }
 }
 
-async function onDone(payload: { correct: boolean; wrongTimes: number; durationMs: number }) {
+async function onDone(payload: {
+  correct: boolean
+  wrongTimes: number
+  durationMs: number
+  picked?: PickedOption
+}) {
   // 复习面板打开期间忽略后续作答事件（如面板下残留的 Esc）
   if (reveal.value || summary.value) return
   const item = current.value
   if (!item) return
+  // picked 只喂给结果面板，**不能进作答请求体** —— 后端 AnswerInput 里没有这个字段
+  const { picked = null, ...answerInput } = payload
   try {
-    const res = await vocabApi.answer(sessionId.value, { wordId: item.id, ...payload })
+    const res = await vocabApi.answer(sessionId.value, { wordId: item.id, ...answerInput })
     reveal.value = {
       item,
       correct: payload.correct && payload.wrongTimes === 0,
       due: res.item.due,
       progress: res.item,
+      picked,
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : '提交失败'
@@ -261,13 +291,14 @@ onBeforeUnmount(() => {
         :key="current.id"
         :item="current"
         :mode="mode"
+        :options="meaningOptions"
         @done="onDone"
       />
       <QuestionCard
         v-else
         :key="current.id"
         :item="current"
-        :options="questionOptions"
+        :options="meaningOptions"
         @done="onDone"
       />
     </template>
@@ -280,6 +311,7 @@ onBeforeUnmount(() => {
       :correct="reveal.correct"
       :due="reveal.due"
       :progress="reveal.progress"
+      :picked="reveal.picked"
       @continue="onContinue"
     />
   </div>

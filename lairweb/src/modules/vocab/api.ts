@@ -1,6 +1,12 @@
 import { get, post, put, del } from '../../api/request'
 
-/** 练习模式：follow 跟打 / dictation 听写 / self_test 自测 / spell 默写 */
+/**
+ * 练习模式（四种模式测的是不同能力，别混）：
+ * - follow 跟打     看词跟打 + **释义四选一**（不直显释义，答对才交卷）
+ * - dictation 听写  只听发音拼写，释义直显当解题线索
+ * - self_test 自测  看词选释义，不打字
+ * - spell 默写      只给中文释义拼写（释义即题面，不能藏）
+ */
 export type VocabMode = 'follow' | 'dictation' | 'self_test' | 'spell'
 
 export const VOCAB_MODES: Array<{ value: VocabMode; label: string }> = [
