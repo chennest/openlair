@@ -3,9 +3,22 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { setToken, setUser, getUser } from './api/request'
 import { authApi, type AuthUser } from './modules/auth/api'
+import { dayBadge, daysToNextRest } from './lib/holidays'
 
 const route = useRoute()
 const router = useRouter()
+
+// ---------- 顶栏日期 + 上班/休息徽标 ----------
+/** 今天（页面生命周期内固定，跨零点不做热更新） */
+const todayDate = new Date()
+/** 今天的性质徽标：节日名 / 休息 / 上班 */
+const todayBadge = dayBadge(todayDate)
+/** 距下一个休息日天数（今天已是休息日则为 0） */
+const restCountdown = daysToNextRest(todayDate)
+/** 桌面顶栏日期文案：'9月22日 星期二' */
+const todayLabel = todayDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
+/** 手机顶栏日期文案：'9/22 周二' */
+const todayShortLabel = todayDate.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' })
 
 // ---------- 登录态：路由变化时从 localStorage 刷新（登录/登出后生效） ----------
 const user = ref<AuthUser | null>(getUser() as AuthUser | null)
@@ -232,7 +245,11 @@ function onKeydown(e: KeyboardEvent) {
 
     <main class="content" :class="{ 'content-chat': isAssistantPage }">
       <header class="content-header">
-        <time class="today">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</time>
+        <time class="today">
+          <span class="today-text">{{ todayLabel }}</span>
+          <span class="day-badge" :class="todayBadge.kind" :title="todayBadge.isMakeupWorkday ? '调休补班：周末上班' : undefined">{{ todayBadge.label }}</span>
+          <span v-if="restCountdown > 0 && !todayBadge.isMakeupWorkday" class="today-rest">距休息 {{ restCountdown }} 天</span>
+        </time>
       </header>
       <RouterView />
     </main>
@@ -264,7 +281,10 @@ function onKeydown(e: KeyboardEvent) {
           <span class="ai-sheen"></span>
         </span>
       </button>
-      <time>{{ new Date().toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' }) }}</time>
+      <time class="m-today">
+        <span class="today-text">{{ todayShortLabel }}</span>
+        <span class="day-badge" :class="todayBadge.kind" :title="todayBadge.isMakeupWorkday ? '调休补班：周末上班' : undefined">{{ todayBadge.label }}</span>
+      </time>
       <button
         v-if="user"
         class="m-avatar"
