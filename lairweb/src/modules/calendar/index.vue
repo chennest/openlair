@@ -9,6 +9,7 @@ import {
   Calendar,
   CalendarCellTrigger,
 } from '@/components/ui/calendar'
+import { dayInfo } from '@/lib/holidays'
 import { calendarApi, type CalendarEvent, type CreateEventInput } from './api'
 import EventFormDialog from './EventFormDialog.vue'
 import EventDetailDialog from './EventDetailDialog.vue'
@@ -41,6 +42,61 @@ function eventsOf(d: DateValue | null | undefined): CalendarEvent[] {
   const k = dayKey(d)
   if (!k) return []
   return events.value.filter((e) => e.date === k)
+}
+
+// ---------- 节假日 / 调休 徽标 ----------
+
+/** 格子徽标内容 */
+interface CellBadge {
+  /** 桌面端文案：节日短名 / 休 / 班 */
+  text: string
+  /** 移动端单字文案：假 / 休 / 班（格子窄，两字会挤） */
+  mini: string
+  kind: 'holiday' | 'rest' | 'makeup'
+  title: string
+}
+
+/** 徽标缓存：节假日数据为静态常量，跨月导航可直接复用（键 = 'YYYY-MM-DD'） */
+const badgeCache = new Map<string, CellBadge | null>()
+
+/** 节日短名：超过 2 字时去掉末尾「节」（清明/劳动/端午/中秋/国庆），2 字原样保留（元旦/春节） */
+function shortFestival(name: string): string {
+  return name.length > 2 ? name.slice(0, -1) : name
+}
+
+/**
+ * 格子徽标。三档显示，普通工作日不显示（避免满屏噪音）：
+ * - 法定节假日 → 节日短名（假）
+ * - 调休补班   → 班（周末上班，最需要提醒）
+ * - 普通休息日 → 休
+ */
+function cellBadge(d: DateValue | null | undefined): CellBadge | null {
+  const k = dayKey(d)
+  if (!k || !d) return null
+  const cached = badgeCache.get(k)
+  if (cached !== undefined) return cached
+
+  // 注意：按该日期自身的年月日构造，跨年月份（如 12 月视图含次年 1 月）也能取对配置
+  const info = dayInfo(new Date(d.year, d.month - 1, d.day))
+  let badge: CellBadge | null = null
+  if (info.kind === 'holiday') {
+    const name = info.name ?? '节日'
+    badge = { text: shortFestival(name), mini: '假', kind: 'holiday', title: `法定节假日：${name}` }
+  } else if (info.kind === 'work') {
+    badge = info.isMakeupWorkday
+      ? { text: '班', mini: '班', kind: 'makeup', title: `调休补班（补 ${info.name}）` }
+      : null
+  } else {
+    badge = { text: '休', mini: '休', kind: 'rest', title: '休息日' }
+  }
+  badgeCache.set(k, badge)
+  return badge
+}
+
+/** 相邻月份的格子（reka 月网格含上月尾 / 下月头）→ 徽标淡化，不抢当前月视线 */
+function isOutsideMonth(d: DateValue | null | undefined, month: DateValue): boolean {
+  if (!d) return false
+  return d.month !== month.month || d.year !== month.year
 }
 
 /** 回到今天 */
@@ -134,13 +190,24 @@ onMounted(load)
     >
       <template #calendar-cell="{ date, month }">
         <div v-if="date" class="cal-cell-box">
-          <CalendarCellTrigger
-            :day="date"
-            :month="month"
-            class="cal-day-trigger"
-          >
-            {{ date.day }}
-          </CalendarCellTrigger>
+          <div class="cal-day-head">
+            <CalendarCellTrigger
+              :day="date"
+              :month="month"
+              class="cal-day-trigger"
+            >
+              {{ date.day }}
+            </CalendarCellTrigger>
+            <span
+              v-if="cellBadge(date)"
+              class="cal-day-badge"
+              :class="[cellBadge(date)!.kind, { outside: isOutsideMonth(date, month) }]"
+              :title="cellBadge(date)!.title"
+            >
+              <span class="badge-full">{{ cellBadge(date)!.text }}</span>
+              <span class="badge-mini">{{ cellBadge(date)!.mini }}</span>
+            </span>
+          </div>
           <div class="cal-events">
             <div
               v-for="ev in eventsOf(date).slice(0, 3)"
@@ -249,6 +316,52 @@ onMounted(load)
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
+/* ── 日期头行：日期数字 + 节假日/调休徽标 ── */
+.cal-day-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+/* 三档徽标：节日（暖橙）/ 休息（绿）/ 调休补班（橙描边，最需提醒） */
+.cal-day-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.cal-day-badge.holiday {
+  color: #c93400;
+  background: rgba(255, 107, 0, 0.14);
+}
+
+.cal-day-badge.rest {
+  color: #1f9d43;
+  background: rgba(48, 209, 88, 0.16);
+}
+
+.cal-day-badge.makeup {
+  color: var(--heat);
+  background: var(--heat-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 0, 0.35);
+}
+
+/* 相邻月份的格子（上月尾 / 下月头）：徽标淡化，不抢当前月视线 */
+.cal-day-badge.outside {
+  opacity: 0.45;
+}
+
+/* 默认隐藏单字文案；桌面端由下方媒体查询切回完整文案 */
+.badge-mini {
+  display: none;
+}
+
 .cal-events {
   display: flex;
   flex-direction: column;
@@ -336,9 +449,28 @@ onMounted(load)
   }
 
   .calendar :deep(.cal-day-trigger) {
-    width: 26px;
-    height: 26px;
-    font-size: 0.78rem;
+    width: 24px;
+    height: 24px;
+    font-size: 0.72rem;
+  }
+
+  /* 格子窄（375px 视口下约 42px 可用）→ 单字徽标 + 收紧内距，避免挤压换行 */
+  .badge-full {
+    display: none;
+  }
+
+  .badge-mini {
+    display: inline;
+  }
+
+  .cal-day-head {
+    gap: 2px;
+  }
+
+  .cal-day-badge {
+    padding: 0 3px;
+    font-size: 0.5rem;
+    line-height: 1.4;
   }
 
   .cal-ev {
