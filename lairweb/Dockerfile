@@ -14,12 +14,6 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine A
 
 WORKDIR /app
 
-# 版本信息（CI 经 --build-arg 传入：APP_VERSION=镜像 tag、APP_COMMIT=git 短哈希）
-ARG APP_VERSION=dev
-ARG APP_COMMIT=unknown
-ENV APP_VERSION=${APP_VERSION} \
-    APP_COMMIT=${APP_COMMIT}
-
 # 安装 pnpm（国内镜像下载，固定版本避免 latest 解析波动；与 CI web-build 的 pnpm@9.15.0 一致）
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 ENV npm_config_registry=https://registry.npmmirror.com
@@ -31,6 +25,16 @@ RUN pnpm install --frozen-lockfile
 
 # 拷贝源码并构建（vue-tsc 类型检查 + vite build）
 COPY . .
+
+# 版本信息（CI 经 --build-arg 传入：APP_VERSION=镜像 tag、APP_COMMIT=git 短哈希）
+# ⚠️ 必须声明在 COPY . . 之后：CI 每次传入的 APP_VERSION 都是新值（如 test-42），
+#    若放在依赖安装之前，该层缓存键每次变化会连带让 pnpm install 及之后所有层缓存失效，
+#    此时 CI 侧 --layers --cache-to 的远程缓存也无层可命中（等于白配）。
+ARG APP_VERSION=dev
+ARG APP_COMMIT=unknown
+ENV APP_VERSION=${APP_VERSION} \
+    APP_COMMIT=${APP_COMMIT}
+
 RUN pnpm run build
 
 # --- Stage 2: 运行（nginx 托管 + 反代后端）---

@@ -11,6 +11,13 @@
 #   KUBE_CONFIG_TEST（File 类型）= test 集群 admin.conf 全文
 #   KUBE_CONFIG_PROD（File 类型）= prod 集群 admin.conf 全文
 #   （集群级变量不支持 environment scope，由各 deploy job 的 variables 映射为统一 KUBE_CONFIG）
+#
+# ⚠️ Harbor 侧需手动配置（不入库）：
+#   为 openlair-backend-cache / openlair-web-cache 两个【缓存专用 repository】配置
+#   Tag 保留策略（Project → Policy → Tag Retention，仓库过滤可写 **/*-cache）。
+#   原因：buildah 的远程缓存在 registry 上以 <repo>:<sha256(cacheKey)> 存放，
+#   tag 数量随构建次数线性增长且为内容哈希（无法自定义命名），不清理会持续堆积；
+#   注意缓存同样计入 HARBOR_PROJECT（chennest）的存储配额。
 
 stages:
   - test
@@ -74,8 +81,14 @@ backend-package:
     - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
     # tag 策略：Git tag 优先，否则分支名-pipeline序号
     - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
+    # 层缓存仓库名（裸仓库名：--cache-from/--cache-to 走 RepoNamesToNamedReferences 解析，
+    # 不接受 https:// 前缀，会直接报解析错误；故从 HARBOR_HOST 剥掉 scheme 再拼）
+    - CACHE_HOST="${HARBOR_HOST#*//}"; CACHE_HOST="${CACHE_HOST%/}"; CACHE_REPO="$CACHE_HOST/$HARBOR_PROJECT/openlair-backend-cache"
     # 构建（buildah bud = build）
-    - buildah bud -t "$IMAGE_NAME:${TAG}" backend/
+    # ⚡ --layers 必须显式开启（buildah 默认 layers=false，且不写 --layers 时 --cache-from/--cache-to 被直接忽略）
+    #    缓存镜像以 <repo>:<sha256(cacheKey)> 推到 Harbor，tag 是内容哈希 → 天然幂等，多流水线并发不覆盖；
+    #    首次构建缓存仓库不存在时仅打 debug 日志并继续，不会导致构建失败
+    - buildah bud --layers --cache-from "$CACHE_REPO" --cache-to "$CACHE_REPO" -t "$IMAGE_NAME:${TAG}" backend/
     # 推送
     - buildah push "$IMAGE_NAME:${TAG}"
     # 清理
@@ -105,8 +118,14 @@ web-package:
     # ⚠️ printf 不带换行（echo 会加 \n，Harbor 拒绝带换行密码 → invalid username/password）
     - printf '%s' "$HARBOR_PASSWORD" | buildah login -u "$HARBOR_USERNAME" --password-stdin $HARBOR_HOST
     - if [ -n "$CI_COMMIT_TAG" ]; then TAG="${CI_COMMIT_TAG}"; else TAG="${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}"; fi
+    # 层缓存仓库名（裸仓库名：--cache-from/--cache-to 走 RepoNamesToNamedReferences 解析，
+    # 不接受 https:// 前缀，会直接报解析错误；故从 HARBOR_HOST 剥掉 scheme 再拼）
+    - CACHE_HOST="${HARBOR_HOST#*//}"; CACHE_HOST="${CACHE_HOST%/}"; CACHE_REPO="$CACHE_HOST/$HARBOR_PROJECT/openlair-web-cache"
     # 多阶段构建（Dockerfile 在 lairweb/ 下）；注入版本 tag + git 短哈希（front-version 响应头 / meta）
-    - buildah bud --build-arg APP_VERSION="${TAG}" --build-arg APP_COMMIT="${CI_COMMIT_SHORT_SHA}" -t "$IMAGE_NAME:${TAG}" lairweb/
+    # ⚡ --layers + 远程层缓存：依赖安装层（pnpm install）可跨流水线复用
+    # ⚠️ 依赖 Dockerfile 侧把 APP_VERSION/APP_COMMIT 的 ARG 放在 COPY . . 之后（见 lairweb/Dockerfile 注释），
+    #    否则版本号每次变化会让 install 层缓存键失效，缓存形同虚设
+    - buildah bud --layers --cache-from "$CACHE_REPO" --cache-to "$CACHE_REPO" --build-arg APP_VERSION="${TAG}" --build-arg APP_COMMIT="${CI_COMMIT_SHORT_SHA}" -t "$IMAGE_NAME:${TAG}" lairweb/
     - buildah push "$IMAGE_NAME:${TAG}"
     - buildah logout $HARBOR_HOST
   rules:
