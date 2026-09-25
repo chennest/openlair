@@ -44,19 +44,23 @@ function eventsOf(d: DateValue | null | undefined): CalendarEvent[] {
   return events.value.filter((e) => e.date === k)
 }
 
-// ---------- 节假日 / 调休 徽标 ----------
+// ---------- 节假日 / 调休 标注 ----------
 
-/** 格子徽标内容 */
+/**
+ * 格子标注内容。只标两类「需要你知道」的信息：
+ * - 法定节假日 → 节日短名（红）
+ * - 调休补班   → 班（蓝）
+ *
+ * 普通工作日与普通周末一律不标：周末靠列位置就能识别，全标「休」只是噪音，
+ * 反而会把真正需要提醒的「班」淹掉。
+ */
 interface CellBadge {
-  /** 桌面端文案：节日短名 / 休 / 班 */
   text: string
-  /** 移动端单字文案：假 / 休 / 班（格子窄，两字会挤） */
-  mini: string
-  kind: 'holiday' | 'rest' | 'makeup'
+  kind: 'holiday' | 'makeup'
   title: string
 }
 
-/** 徽标缓存：节假日数据为静态常量，跨月导航可直接复用（键 = 'YYYY-MM-DD'） */
+/** 标注缓存：节假日数据为静态常量，跨月导航可直接复用（键 = 'YYYY-MM-DD'） */
 const badgeCache = new Map<string, CellBadge | null>()
 
 /** 节日短名：超过 2 字时去掉末尾「节」（清明/劳动/端午/中秋/国庆），2 字原样保留（元旦/春节） */
@@ -64,12 +68,7 @@ function shortFestival(name: string): string {
   return name.length > 2 ? name.slice(0, -1) : name
 }
 
-/**
- * 格子徽标。三档显示，普通工作日不显示（避免满屏噪音）：
- * - 法定节假日 → 节日短名（假）
- * - 调休补班   → 班（周末上班，最需要提醒）
- * - 普通休息日 → 休
- */
+/** 格子标注；返回 null 表示不标（普通工作日 / 普通周末） */
 function cellBadge(d: DateValue | null | undefined): CellBadge | null {
   const k = dayKey(d)
   if (!k || !d) return null
@@ -81,13 +80,9 @@ function cellBadge(d: DateValue | null | undefined): CellBadge | null {
   let badge: CellBadge | null = null
   if (info.kind === 'holiday') {
     const name = info.name ?? '节日'
-    badge = { text: shortFestival(name), mini: '假', kind: 'holiday', title: `法定节假日：${name}` }
-  } else if (info.kind === 'work') {
-    badge = info.isMakeupWorkday
-      ? { text: '班', mini: '班', kind: 'makeup', title: `调休补班（补 ${info.name}）` }
-      : null
-  } else {
-    badge = { text: '休', mini: '休', kind: 'rest', title: '休息日' }
+    badge = { text: shortFestival(name), kind: 'holiday', title: `法定节假日：${name}` }
+  } else if (info.kind === 'work' && info.isMakeupWorkday) {
+    badge = { text: '班', kind: 'makeup', title: `调休补班（补 ${info.name}）` }
   }
   badgeCache.set(k, badge)
   return badge
@@ -203,10 +198,7 @@ onMounted(load)
               class="cal-day-badge"
               :class="[cellBadge(date)!.kind, { outside: isOutsideMonth(date, month) }]"
               :title="cellBadge(date)!.title"
-            >
-              <span class="badge-full">{{ cellBadge(date)!.text }}</span>
-              <span class="badge-mini">{{ cellBadge(date)!.mini }}</span>
-            </span>
+            >{{ cellBadge(date)!.text }}</span>
           </div>
           <div class="cal-events">
             <div
@@ -275,28 +267,41 @@ onMounted(load)
   box-shadow: var(--sh-panel);
 }
 
-/* ── 格子：定高、内容顶对齐（覆盖 shadcn 默认小格子） ── */
+/* ── 格子：定高 + 淡网格线（覆盖 shadcn 默认小格子） ── */
 .calendar :deep([data-slot='calendar-cell']) {
-  height: 104px;
+  height: 84px;
   align-items: flex-start;
-  padding: 6px 4px 4px;
+  padding: 5px 4px 4px;
   overflow: hidden;
+  border-top: 1px solid var(--hairline);
+  /* flex 项默认 min-width:auto 会被事件条撑破容器（窄屏下整个网格溢出、末两列被切） */
+  min-width: 0;
 }
 
-/* 选中日期：整格浅蓝底（非实色） */
+/* 纵向分隔线：每行首个格子不加，避免出现最左侧外框线 */
+.calendar :deep([data-slot='calendar-cell'] + [data-slot='calendar-cell']) {
+  border-left: 1px solid var(--hairline);
+}
+
+/* 行间距归零：shadcn 的行自带 mt-2，会把纵向网格线断成一截一截 */
+.calendar :deep([data-slot='calendar-grid-row']) {
+  margin-top: 0;
+}
+
+/* 选中日期：去掉整格浅蓝底（那一大块空蓝框是最显眼的"空"），
+   选中态只由数字上的蓝色圆点表达 */
 .calendar :deep([data-slot='calendar-cell']:has([data-selected])) {
-  background: rgba(0, 113, 227, 0.06);
-  border-radius: var(--r-thumb);
+  background: transparent;
 }
 
-/* ── 格子内：日期数字 + 日程区 ── */
+/* ── 格子内：日期 + 标注居中，日程区左对齐 ── */
 .cal-cell-box {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   width: 100%;
   height: 100%;
-  gap: 3px;
+  gap: 2px;
 }
 
 /* CalendarCellTrigger 根是 reka Primitive，scoped 类不穿透 → :deep 从页面根命中 */
@@ -306,9 +311,10 @@ onMounted(load)
   font-size: 0.84rem;
   font-weight: 500;
   flex: 0 0 auto;
+  border-radius: 50%;
 }
 
-/* 今日（未选中）：蓝色细描边，与选中蓝底区分 */
+/* 今日（未选中）：蓝色细描边圆 + 蓝字，与选中实心圆区分 */
 .calendar :deep(.cal-day-trigger[data-today]:not([data-selected])) {
   background: transparent;
   color: var(--accent);
@@ -316,50 +322,38 @@ onMounted(load)
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
-/* ── 日期头行：日期数字 + 节假日/调休徽标 ── */
+/* ── 日期头：数字在上、节日名/「班」居中在下 ── */
 .cal-day-head {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   width: 100%;
+  flex: 0 0 auto;
 }
 
-/* 三档徽标：节日（暖橙）/ 休息（绿）/ 调休补班（橙描边，最需提醒） */
+/* 两类标注：只上色、不做药丸底。
+   节日（正红，喜庆而非告警）/ 调休补班（蓝，与顶栏「上班」同色） */
 .cal-day-badge {
   flex: 0 0 auto;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.25;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .cal-day-badge.holiday {
-  color: #c93400;
-  background: rgba(255, 107, 0, 0.14);
-}
-
-.cal-day-badge.rest {
-  color: #1f9d43;
-  background: rgba(48, 209, 88, 0.16);
+  color: #d70015;
 }
 
 .cal-day-badge.makeup {
-  color: var(--heat);
-  background: var(--heat-bg);
-  box-shadow: inset 0 0 0 1px rgba(255, 107, 0, 0.35);
+  color: var(--accent);
 }
 
-/* 相邻月份的格子（上月尾 / 下月头）：徽标淡化，不抢当前月视线 */
+/* 相邻月份的格子（上月尾 / 下月头）：标注淡化，不抢当前月视线 */
 .cal-day-badge.outside {
-  opacity: 0.45;
-}
-
-/* 默认隐藏单字文案；桌面端由下方媒体查询切回完整文案 */
-.badge-mini {
-  display: none;
+  opacity: 0.4;
 }
 
 .cal-events {
@@ -376,6 +370,7 @@ onMounted(load)
   align-items: center;
   gap: 4px;
   width: 100%;
+  min-width: 0;
   padding: 1px 6px;
   border-radius: 5px;
   background: rgba(0, 113, 227, 0.09);
@@ -405,7 +400,9 @@ onMounted(load)
 }
 
 .ev-time {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-2);
   font-size: 0.66rem;
   font-weight: 600;
@@ -417,7 +414,10 @@ onMounted(load)
 }
 
 .ev-title {
-  flex: 1;
+  flex: 1 1 0;
+  /* 关键：nowrap 文本会撑出固有最小宽度，导致窄屏下整个网格溢出（末两列被切）。
+     width:0 + flex-grow:1 让它只吃剩余空间，配合 overflow/ellipsis 正常截断。 */
+  width: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -444,7 +444,7 @@ onMounted(load)
 /* ── 响应式：手机端格子变矮 ── */
 @media (max-width: 860px) {
   .calendar :deep([data-slot='calendar-cell']) {
-    height: 64px;
+    height: 72px;
     padding: 3px 2px;
   }
 
@@ -454,23 +454,16 @@ onMounted(load)
     font-size: 0.72rem;
   }
 
-  /* 格子窄（375px 视口下约 42px 可用）→ 单字徽标 + 收紧内距，避免挤压换行 */
-  .badge-full {
-    display: none;
-  }
-
-  .badge-mini {
-    display: inline;
-  }
-
-  .cal-day-head {
-    gap: 2px;
-  }
-
+  /* 标注现在独占一行、居中，不再和数字抢横向空间，故保留两字完整文案；
+     字号守住 11px 下限 —— 8px 的中文字形会糊成一团 */
   .cal-day-badge {
-    padding: 0 3px;
-    font-size: 0.5rem;
-    line-height: 1.4;
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+
+  /* 窄屏格子放不下「时间 + 标题」两段，只留圆点 + 标题（时间点开日程详情可见） */
+  .ev-time {
+    display: none;
   }
 
   .cal-ev {
